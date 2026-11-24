@@ -40,6 +40,13 @@ describe('pairCodemodeRuns', () => {
     expect(Object.fromEntries(matches)).toEqual({ c1: 'r1', c2: 'r2' })
   })
 
+  it('pairs a settled run when the calls come as a one-shot iterator', () => {
+    const matches = new Map<string, string>()
+    const watched = new Map([['c1', call('c1', false)]])
+    pairCodemodeRuns([run('r1', 'ok')], watched.values(), matches)
+    expect(Object.fromEntries(matches)).toEqual({ c1: 'r1' })
+  })
+
   it('keeps a running run for its own call when only an old settled row has the code', () => {
     const matches = new Map<string, string>()
     const runs = [run('new', 'running')]

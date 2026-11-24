@@ -3,8 +3,8 @@ import { matchRunToCall } from '../../../../../shared/codemode/codemode-run-matc
 
 export type CodemodeWatchedCall = { callId: string; code: string | null; running: boolean }
 
-function candidates(calls: Iterable<CodemodeWatchedCall>, running: boolean) {
-  return [...calls]
+function candidates(calls: readonly CodemodeWatchedCall[], running: boolean) {
+  return calls
     .filter((call) => call.running === running && call.code !== null)
     .map((call) => ({ callId: call.callId, name: 'orca/run_js', input: { code: call.code } }))
 }
@@ -16,6 +16,8 @@ export function pairCodemodeRuns(
   calls: Iterable<CodemodeWatchedCall>,
   matches: Map<string, string>
 ): void {
+  // Why: callers pass a Map's values(), a one-shot iterator; both passes below must see every call.
+  const watched = [...calls]
   const runIds = new Set(runs.map((run) => run.runId))
   for (const [callId, runId] of matches) {
     if (!runIds.has(runId)) {
@@ -26,7 +28,7 @@ export function pairCodemodeRuns(
     calls: new Set(matches.keys()),
     runs: new Set(matches.values())
   })
-  const running = candidates(calls, true)
+  const running = candidates(watched, true)
   for (const run of runs) {
     if (run.state !== 'running' || run.codeTruncated || taken().runs.has(run.runId)) {
       continue
@@ -39,7 +41,7 @@ export function pairCodemodeRuns(
       matches.set(callId, run.runId)
     }
   }
-  const settled = candidates(calls, false).toReversed()
+  const settled = candidates(watched, false).toReversed()
   for (const run of runs.toReversed()) {
     // A running run waits for its own running call; an old settled row with the same code is not it.
     if (run.state === 'running' || run.codeTruncated || taken().runs.has(run.runId)) {
