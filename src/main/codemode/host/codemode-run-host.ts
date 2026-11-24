@@ -54,6 +54,8 @@ export type CodemodeSessionOptions = {
 type RunState = {
   runId: string
   approver: Approver
+  /** The agent connection the run came in on; allow_session answers stay with it. */
+  connection: object
   signal: AbortSignal
   seq: number
   /** Server starts the approver refused in this run; not asked again until the next run. */
@@ -112,7 +114,7 @@ export class CodemodeSession {
 
   async run(
     code: string,
-    opts: { signal: AbortSignal; approver: Approver }
+    opts: { signal: AbortSignal; approver: Approver; connection?: object }
   ): Promise<{ text: string; isError: boolean }> {
     if (this.closed) {
       return { text: 'Error: code mode session is closed', isError: true }
@@ -127,6 +129,8 @@ export class CodemodeSession {
     const run: RunState = {
       runId: randomUUID(),
       approver: opts.approver,
+      // Without a connection, an allow_session answer lasts only this run.
+      connection: opts.connection ?? {},
       signal: controller.signal,
       seq: 0,
       refusedStarts: new Map()
@@ -209,7 +213,7 @@ export class CodemodeSession {
         trusted: this.opts.trusted,
         signal: run.signal
       })
-      const refusal = await this.approvals.check(planned, run.approver, run.signal)
+      const refusal = await this.approvals.check(planned, run)
       if (refusal !== null) {
         return { ok: false, error: refusal }
       }
@@ -233,7 +237,7 @@ export class CodemodeSession {
     if (earlier !== undefined) {
       throw new Error(earlier)
     }
-    const refusal = await this.approvals.check(serverStartCheck(spec), run.approver, run.signal)
+    const refusal = await this.approvals.check(serverStartCheck(spec), run)
     if (refusal === null) {
       return true
     }

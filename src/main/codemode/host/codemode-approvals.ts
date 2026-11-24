@@ -50,14 +50,21 @@ function ask(approver: Approver, request: ApprovalRequest): Promise<ApprovalDeci
   })
 }
 
-/** Session-wide gate: the mode is read on every call; allow_session answers are kept by key. */
+/**
+ * The session's gate: the mode is read on every call; allow_session answers are kept by key for the
+ * agent connection that got them, so another holder of the token never inherits them.
+ */
 export class CodemodeApprovals {
-  private readonly sessionAllowed = new Set<string>()
+  private readonly sessionAllowed = new WeakMap<object, Set<string>>()
 
   constructor(private readonly mode: () => GateMode) {}
 
   /** Resolves null when the call may run, otherwise the refusal text the script sees. */
-  async check(check: GateCheck, approver: Approver, signal: AbortSignal): Promise<string | null> {
+  async check(
+    check: GateCheck,
+    run: { approver: Approver; signal: AbortSignal; connection: object }
+  ): Promise<string | null> {
+    const { approver, signal, connection } = run
     const decision = decideGate(check.gate, this.mode())
     if (decision === 'allow') {
       return null
@@ -65,7 +72,8 @@ export class CodemodeApprovals {
     if (decision === 'refuse') {
       return REFUSED_TEXT
     }
-    if (this.sessionAllowed.has(check.allowKey)) {
+    const allowed = this.sessionAllowed.get(connection) ?? new Set<string>()
+    if (allowed.has(check.allowKey)) {
       return null
     }
     const answer = await ask(approver, {
@@ -75,7 +83,7 @@ export class CodemodeApprovals {
     })
     switch (answer) {
       case 'allow_session':
-        this.sessionAllowed.add(check.allowKey)
+        this.sessionAllowed.set(connection, allowed.add(check.allowKey))
         return null
       case 'allow_once':
         return null

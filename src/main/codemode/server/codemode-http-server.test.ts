@@ -212,6 +212,15 @@ describe('CodemodeHttpServer', () => {
     expect(result.content).toEqual([{ type: 'text', text: 'unsupported' }])
   })
 
+  it('keeps one live connection per token: a new initialize replaces an idle one', async () => {
+    const token = register(async () => ({ text: 'ok', isError: false }))
+    const first = await connect(token)
+    await first.listTools()
+    const second = await connect(token)
+    await expect(first.listTools()).rejects.toThrow()
+    expect((await second.listTools()).tools.map((tool) => tool.name)).toEqual(['run_js'])
+  })
+
   it("stops accepting a session's token once it is unregistered", async () => {
     const token = register(async () => ({ text: 'ok', isError: false }))
     const client = await connect(token)

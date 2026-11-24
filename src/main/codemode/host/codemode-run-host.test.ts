@@ -93,12 +93,15 @@ function makeSession(opts: {
     requests.push(request)
     return opts.answer ? opts.answer(request) : Promise.resolve('allow_once')
   }
+  // One agent connection for every run, as one agent's MCP client is.
+  const connection = {}
   return {
     session,
     events,
     runs,
     requests,
-    run: (code, signal = new AbortController().signal) => session.run(code, { signal, approver })
+    run: (code, signal = new AbortController().signal) =>
+      session.run(code, { signal, approver, connection })
   }
 }
 

@@ -14,6 +14,9 @@ export type CodemodeSessionHandle = Pick<CodemodeSession, 'run' | 'serverNames' 
 
 type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>
 
+/** One agent connection: keys its allow_session answers and counts its scripts in flight. */
+export type CodemodeConnectionState = { running: number }
+
 // Why: a person may take minutes to answer; past this the call fails closed as deny.
 const APPROVAL_WAIT_MS = 30 * 60_000
 const DECISIONS: readonly ApprovalDecision[] = ['allow_once', 'allow_session', 'deny']
@@ -35,7 +38,8 @@ const DECISION_SCHEMA = {
 export function createCodemodeMcpServer(
   session: CodemodeSessionHandle,
   describeInput: () => { servers: string[] },
-  progressMs: number
+  progressMs: number,
+  connection: CodemodeConnectionState = { running: 0 }
 ): McpServer {
   const mcp = new McpServer({ name: 'orca-codemode', version: '1.0.0' })
   mcp.registerTool(
@@ -47,13 +51,16 @@ export function createCodemodeMcpServer(
     },
     async ({ code }, extra) => {
       const stopProgress = reportProgress(extra, progressMs)
+      connection.running += 1
       try {
         const result = await session.run(code, {
           signal: extra.signal,
-          approver: elicitingApprover(mcp, extra.requestId)
+          approver: elicitingApprover(mcp, extra.requestId),
+          connection
         })
         return { content: [{ type: 'text', text: result.text }], isError: result.isError }
       } finally {
+        connection.running -= 1
         stopProgress()
       }
     }
@@ -96,6 +103,7 @@ function elicitingApprover(mcp: McpServer, relatedRequestId: RequestId): Approve
           requestedSchema: DECISION_SCHEMA,
           _meta: {
             'anthropic/permissionDisplay': { title, displayName: 'Code mode', description: detail },
+            // A UI hint only: whoever holds the token answers its own connection's prompts.
             'orca/personOnly': personOnly
           }
         },

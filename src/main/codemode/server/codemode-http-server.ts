@@ -4,12 +4,20 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { CODEMODE_LIMITS } from '../codemode-limits'
-import { createCodemodeMcpServer, type CodemodeSessionHandle } from './codemode-mcp-connection'
+import {
+  createCodemodeMcpServer,
+  type CodemodeConnectionState,
+  type CodemodeSessionHandle
+} from './codemode-mcp-connection'
 import { CodemodeTokens } from './codemode-tokens'
 
 export type { CodemodeSessionHandle } from './codemode-mcp-connection'
 
-type Connection = { mcp: McpServer; transport: StreamableHTTPServerTransport }
+type Connection = {
+  mcp: McpServer
+  transport: StreamableHTTPServerTransport
+  state: CodemodeConnectionState
+}
 type Registration = {
   sessionId: string
   session: CodemodeSessionHandle
@@ -19,8 +27,6 @@ type Registration = {
 
 const PATH = /^\/codemode\/mcp(?:\?.*)?$/
 const METHODS = new Set(['POST', 'GET', 'DELETE'])
-// Why: agents that reconnect without DELETE would otherwise pile up servers.
-const MAX_CONNECTIONS_PER_SESSION = 32
 
 class Refusal extends Error {
   constructor(
@@ -169,26 +175,28 @@ export class CodemodeHttpServer {
     await this.openConnection(req, res, registration)
   }
 
+  /** One live connection per token: a new initialize replaces the current one. */
   private async openConnection(
     req: IncomingMessage,
     res: ServerResponse,
     registration: Registration
   ): Promise<void> {
     const { connections } = registration
+    const state: CodemodeConnectionState = { running: 0 }
     const mcp = createCodemodeMcpServer(
       registration.session,
       registration.describeInput,
-      this.progressMs
+      this.progressMs,
+      state
     )
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
-        const oldest = connections.keys().next().value
-        if (oldest !== undefined && connections.size >= MAX_CONNECTIONS_PER_SESSION) {
-          void connections.get(oldest)?.mcp.close()
-          connections.delete(oldest)
+        for (const [oldId, old] of connections) {
+          void old.mcp.close()
+          connections.delete(oldId)
         }
-        connections.set(id, { mcp, transport })
+        connections.set(id, { mcp, transport, state })
       }
     })
     mcp.server.onclose = () => {
