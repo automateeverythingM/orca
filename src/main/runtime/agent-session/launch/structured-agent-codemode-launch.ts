@@ -97,3 +97,20 @@ export async function withSessionCodemode(
   starts.codemode ||= withCodemode !== tools
   return withCodemode
 }
+
+/** A chat's worktree/workspace ids from its live record, for `orca.context()`; empty when unknown. */
+export function codemodeRecordContext(store: {
+  getRecord(sessionId: string): Pick<AgentSessionRecord, 'location'> | null
+}): (sessionId: string) => { worktreeId?: string; workspaceId?: string } {
+  return (sessionId) => {
+    const location = store.getRecord(sessionId)?.location
+    if (!location) {
+      return {}
+    }
+    const { workspaceId } = location
+    // Why: a git-worktree workspace's id is its worktree id; a folder has no worktree.
+    return location.workspaceKind === 'git-worktree'
+      ? { worktreeId: workspaceId, workspaceId }
+      : { workspaceId }
+  }
+}

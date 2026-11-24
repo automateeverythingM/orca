@@ -9,6 +9,9 @@ describe('buildToolDescription', () => {
     expect(text).toContain('3 or more tool calls')
     expect(text).toContain('never `.then`')
     expect(text).toContain('MCP servers: crm, linear, github.')
+    expect(text).toContain(
+      "orca.areas(), orca.describe(area or method), orca.<area>.<method>(params) for Orca's own actions; orca.context() for this chat's ids."
+    )
     expect(words(text)).toBeLessThanOrEqual(150)
   })
 

@@ -13,10 +13,10 @@ import {
   CodemodeSessionConnectors,
   CodemodeSessionConnectorToggle
 } from '../../../../../shared/rpc-contract/codemode/codemode-connectors-params'
-import {
-  installedCodemodeService,
-  type CodemodeConnectorWiring,
-  type CodemodeService
+import { installedCodemodeService } from '../../../../codemode/codemode-process-service'
+import type {
+  CodemodeConnectorWiring,
+  CodemodeService
 } from '../../../../codemode/codemode-service'
 import {
   searchRegistry,

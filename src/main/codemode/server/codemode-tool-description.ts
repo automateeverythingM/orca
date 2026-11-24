@@ -12,7 +12,8 @@ export function buildToolDescription(input: { servers: string[] }): string {
     'bash(cmd, {timeout?}) -> {exit_code, output} (timeout in seconds), print(...values).',
     'MCP tool results are an object when the tool returns structured content, otherwise text (JSON.parse it if it is JSON).',
     `MCP servers: ${servers}.`,
-    "Call mcp.describe(server) before using a server's tools for the first time."
+    "Call mcp.describe(server) before using a server's tools for the first time.",
+    "orca.areas(), orca.describe(area or method), orca.<area>.<method>(params) for Orca's own actions; orca.context() for this chat's ids."
   ]
   if (shadowed.length > 0) {
     lines.push(`Call ${shadowed.join(', ')} through mcp.call(server, tool, args).`)

@@ -28,8 +28,11 @@ import type { CatalogOwner } from '../model-catalog/structured-agent-model-catal
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime-contract'
 import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecycle/agent-session-record'
 import { observePRWatchCommittedRows } from '../lifecycle/pr-watch-runtime'
-import { processCodemodeService } from '../../../codemode/codemode-service'
-import { codemodeRecordOptions } from '../launch/structured-agent-codemode-launch'
+import { processCodemodeService } from '../../../codemode/codemode-process-service'
+import {
+  codemodeRecordContext,
+  codemodeRecordOptions
+} from '../launch/structured-agent-codemode-launch'
 import { CodemodeAcquisitionRouter } from './structured-agent-codemode-router'
 
 export async function installOnJournal(
@@ -55,7 +58,8 @@ export async function installOnJournal(
         service: processCodemodeService({
           log: (message, error) => deps.logger.warn(message, { scope: 'codemode', error }),
           ...(deps.codemodeTrustedServers ? { trustedServers: deps.codemodeTrustedServers } : {}),
-          sessionOptions: codemodeRecordOptions(store)
+          sessionOptions: codemodeRecordOptions(store),
+          sessionContext: codemodeRecordContext(store)
         })
       }
     : undefined

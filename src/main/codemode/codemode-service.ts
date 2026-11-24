@@ -1,89 +1,43 @@
 import type { BotToolServer } from '../../shared/bot-tools'
-import type { CodemodeConnector } from '../../shared/codemode/codemode-connector-types'
-import { botToolRelay, type BotToolRelay } from '../bots/tool-relay/bot-tool-relay'
-import { CODEMODE_LIMITS } from './codemode-limits'
-import { CodemodeConnectorAuth, type ConnectorStatus } from './connectors/codemode-connector-auth'
-import { CodemodeConnectorPool } from './connectors/codemode-connector-pool'
+import { botToolRelay } from '../bots/tool-relay/bot-tool-relay'
+import { createLaunchSession } from './codemode-launch-session'
+import type {
+  CodemodeConnectorWiring,
+  CodemodeInnerCallListener,
+  CodemodeLaunchInput,
+  CodemodeOrcaRpc,
+  CodemodeServerHost,
+  CodemodeServiceOptions,
+  CodemodeSessionConnector,
+  ConnectorRelay,
+  LiveLaunch
+} from './codemode-service-types'
 import {
   codemodeCallerKey,
   connectorRelayServers,
   createConnectorRelayRoute
 } from './connectors/codemode-connector-relay-route'
 import {
-  codemodeServerTrust,
   type CodemodeSessionOptionsAccess,
-  connectorAccess,
   memorySessionOptions,
   CONNECTORS_OFF_OPTION,
   connectorsOffValue,
   readConnectorsOff
 } from './connectors/codemode-connector-session-switch'
-import { CodemodeConnectorStore } from './connectors/codemode-connector-store'
-import type { GateMode } from './gate/codemode-gate'
-import { CodemodeSession, type InnerCallEvent } from './host/codemode-run-host'
+import type { InnerCallEvent } from './host/codemode-run-host'
 import { readCodemodeServerSpecs } from './mcp-pool/codemode-mcp-config'
 import { type CodemodeRunStore, processCodemodeRunStore } from './runs/codemode-run-store'
 import { CodemodeHttpServer } from './server/codemode-http-server'
 
-export type CodemodeLaunchInput = {
-  sessionId: string
-  /** The startup attempt this launch is for: only its own teardown may end it. */
-  launchId: string
-  /** The session's launch directory. */
-  root: string
-  /** The session's launch environment. */
-  env: NodeJS.ProcessEnv
-  /** Read on every inner call, so a mode change applies to the next one. */
-  mode: () => GateMode
-}
-
-export type CodemodeInnerCallListener = (sessionId: string, event: InnerCallEvent) => void
-
-type CodemodeServerHost = Pick<
-  CodemodeHttpServer,
-  'start' | 'register' | 'unregister' | 'stop' | 'resolveToken'
->
-type ConnectorRelay = Pick<BotToolRelay, 'addRoute' | 'origin' | 'endCaller'>
-
-type LiveLaunch = {
-  launchId: string
-  session: CodemodeSession
-  /** The child this launch spawned, once its acquisition succeeded. */
-  generation?: string
-  /** Ends seen before the child was known: an early end of this launch's own child stays owed. */
-  earlyEnds: Set<string>
-}
-
-export type CodemodeServiceOptions = {
-  log?: (message: string, error?: unknown) => void
-  /** Tests only. */
-  server?: CodemodeServerHost
-  /** Tests only; default is the bundled worker entry. */
-  workerPath?: string
-  /** Where runs are kept for the chat to show; default is the process's store. */
-  runs?: CodemodeRunStore
-  /** Opened on the first launch; absent: chats get no connectors. */
-  connectors?: () => Promise<CodemodeConnectorWiring>
-  /** Local MCP server names whose calls need no approval; read on every call. */
-  trustedServers?: () => readonly string[]
-  /** Where each chat's connector switches are kept; default is memory. */
-  sessionOptions?: CodemodeSessionOptionsAccess
-  /** Serves connectors to agents directly; default is the process's tool relay. */
-  relay?: ConnectorRelay
-}
-
-export type CodemodeConnectorWiring = {
-  store: CodemodeConnectorStore
-  auth: CodemodeConnectorAuth
-  pool: CodemodeConnectorPool
-}
-
-export type CodemodeSessionConnector = {
-  connector: CodemodeConnector
-  /** This chat's switch; a connector off globally stays `on` here but is still unusable. */
-  on: boolean
-  status: ConnectorStatus
-}
+export type {
+  CodemodeConnectorWiring,
+  CodemodeInnerCallListener,
+  CodemodeLaunchInput,
+  CodemodeOrcaRpc,
+  CodemodeServiceOptions,
+  CodemodeSessionConnector,
+  CodemodeSessionContext
+} from './codemode-service-types'
 
 /** One per process: the loopback run_js server and each structured session's code-mode session. */
 export class CodemodeService {
@@ -99,6 +53,7 @@ export class CodemodeService {
   private startFailureLogged = false
   private readonly relay: ConnectorRelay
   private removeRelayRoute: (() => void) | null = null
+  private orcaRpc: CodemodeOrcaRpc | undefined
 
   constructor(private readonly opts: CodemodeServiceOptions = {}) {
     this.server = opts.server ?? new CodemodeHttpServer()
@@ -106,6 +61,12 @@ export class CodemodeService {
     this.sessionOptions = opts.sessionOptions ?? memorySessionOptions()
     this.relay = opts.relay ?? botToolRelay
     this.log = opts.log ?? ((message, error) => console.warn(`[codemode] ${message}`, error ?? ''))
+    this.orcaRpc = opts.orcaRpc
+  }
+
+  /** Orca's runtime for launches from now on; a launched chat keeps the access it opened with. */
+  setOrcaRpc(orcaRpc: CodemodeOrcaRpc): void {
+    this.orcaRpc = orcaRpc
   }
 
   onInnerCall(listener: CodemodeInnerCallListener): () => void {
@@ -136,26 +97,14 @@ export class CodemodeService {
         this.log(`MCP config problems for session ${sessionId}: ${problems.join('; ')}`)
       }
       const wiring = await this.openConnectors()
-      const connectors = wiring
-        ? connectorAccess({
-            store: wiring.store,
-            pool: wiring.pool,
-            off: () => this.connectorsOff(sessionId)
-          })
-        : undefined
-      const session = new CodemodeSession({
-        sessionId,
-        root: input.root,
-        env: input.env,
-        mode: input.mode,
-        trusted: codemodeServerTrust({
-          connectors,
-          connectorTrusted: (name) => wiring?.store.byName(name)?.trusted === true,
-          trustedServers: this.opts.trustedServers ?? (() => [])
-        }),
+      const session = createLaunchSession({
+        input,
         specs,
-        ...(connectors ? { connectors } : {}),
-        limits: CODEMODE_LIMITS,
+        wiring,
+        connectorsOff: () => this.connectorsOff(sessionId),
+        trustedServers: this.opts.trustedServers ?? (() => []),
+        ...(this.orcaRpc ? { orcaRpc: this.orcaRpc } : {}),
+        ...(this.opts.sessionContext ? { sessionContext: this.opts.sessionContext } : {}),
         onEvent: (event) => this.emit(sessionId, event),
         onRun: (event) => this.runs.run(sessionId, event),
         ...(this.opts.workerPath ? { workerPath: this.opts.workerPath } : {})
@@ -344,20 +293,4 @@ export class CodemodeService {
       }
     }
   }
-}
-
-let processService: CodemodeService | null = null
-
-async function openDefaultConnectors(): Promise<CodemodeConnectorWiring> {
-  const store = await CodemodeConnectorStore.open()
-  const auth = new CodemodeConnectorAuth(store)
-  return { store, auth, pool: new CodemodeConnectorPool(store, auth) }
-}
-
-/** The process's service once the runtime created it; null before. */
-export const installedCodemodeService = (): CodemodeService | null => processService
-
-/** The process's one service, with the user's connector list; the first caller's options win. */
-export function processCodemodeService(opts?: CodemodeServiceOptions): CodemodeService {
-  return (processService ??= new CodemodeService({ connectors: openDefaultConnectors, ...opts }))
 }

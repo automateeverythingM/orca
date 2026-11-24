@@ -50,6 +50,7 @@ import { reapLeftoverMacOSPermissionStatusHelpers } from '../computer/macos-perm
 import { repairDuplicatePtyPanesOnStart } from '../runtime/terminal/identity/moved-pane-owner-rekey'
 import { WslUsageReporter } from '../telemetry/wsl-usage-reporter'
 import { ALL_RPC_METHODS } from '../runtime/rpc/methods/rpc-method-registry'
+import { connectCodemodeToOrcaRuntime } from '../codemode/orca/codemode-orca-runtime-wiring'
 import { startWorkspaceCleanupRunner } from '../workspaces/cleanup/workspace-cleanup-runner-startup'
 import { agentHookServer } from '../agent-hooks/server/agent-hook-server'
 import { installHookStatusSessionTabsRepublish } from '../agent-hooks/runtime/hook-status-session-tabs-republish'
@@ -250,6 +251,7 @@ export async function composeDesktopCore(
     attachBrowserHost: native.attachBrowserHost,
     registerCleanup: deps.registerCleanup
   })
+  connectCodemodeToOrcaRuntime(runtime)
   core.rendererCheckpoint = createRendererShutdownCheckpointService(
     store,
     (session) => runtime.quitResumeRecordsFor(session),

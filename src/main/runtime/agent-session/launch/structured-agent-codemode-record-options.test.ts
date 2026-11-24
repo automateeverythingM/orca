@@ -13,7 +13,7 @@ import {
   closeTestAgentSessionRecordStores,
   openTestAgentSessionRecordStore
 } from '../records/agent-session-record-store-test-harness'
-import { codemodeRecordOptions } from './structured-agent-codemode-launch'
+import { codemodeRecordContext, codemodeRecordOptions } from './structured-agent-codemode-launch'
 
 const NOW = 1_800_000_000_000
 const SESSION = 'chat-a-0001'
@@ -107,5 +107,32 @@ describe('codemodeRecordOptions', () => {
     expect(readConnectorsOff({ options: saved })).toEqual(new Set())
     const reopened = await openTestAgentSessionRecordStore(root, { mode: 'observe' })
     expect(reopened.getRecord(SESSION)?.options).toEqual(saved)
+  })
+})
+
+describe('codemodeRecordContext', () => {
+  it("reads the chat's worktree from its live record, and nothing for an unknown chat", async () => {
+    const store = await openTestAgentSessionRecordStore(root)
+    await liveChat(store)
+
+    const context = codemodeRecordContext(store)
+
+    expect(context(SESSION)).toEqual({ worktreeId: 'workspace-1', workspaceId: 'workspace-1' })
+    expect(context('chat-unknown')).toEqual({})
+  })
+
+  it('gives a folder chat its workspace id only', () => {
+    const context = codemodeRecordContext({
+      getRecord: () => ({
+        location: {
+          executionHostId: 'local',
+          wslDistro: null,
+          workspaceId: 'folder-1',
+          workspaceKind: 'folder'
+        }
+      })
+    })
+
+    expect(context(SESSION)).toEqual({ workspaceId: 'folder-1' })
   })
 })
