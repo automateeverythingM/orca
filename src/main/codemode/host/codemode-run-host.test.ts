@@ -152,11 +152,17 @@ describe('CodemodeSession', () => {
     const h = makeSession({ mode: () => mode, answer: async () => 'deny' })
     const denied = await h.run(`
       try { await ${crm('add_credits', "{ user_id: 'u1', amount: 5 }")} } catch (e) { return e.message }`)
-    expect(denied).toEqual({ text: '=> "denied by user"', isError: false })
+    expect(denied).toEqual({
+      text: '=> "mcp.fake-crm.add_credits: denied by user"',
+      isError: false
+    })
     expect(h.requests).toHaveLength(1)
     expect(h.requests[0]).toMatchObject({ personOnly: false })
     expect(h.requests[0].title).toContain('add_credits')
-    expect(h.events.at(-1)).toMatchObject({ state: 'error', output: 'denied by user' })
+    expect(h.events.at(-1)).toMatchObject({
+      state: 'error',
+      output: 'mcp.fake-crm.add_credits: denied by user'
+    })
     mode = 'full-access'
     expect(await h.run(creditsScript)).toEqual({ text: '=> 0', isError: false })
   })
@@ -214,7 +220,7 @@ describe('CodemodeSession', () => {
       }
       return out`
     expect(await h.run(retry)).toEqual({
-      text: '=> ["denied by user","denied by user","denied by user"]',
+      text: '=> ["mcp.describe: denied by user","mcp.describe: denied by user","mcp.describe: denied by user"]',
       isError: false
     })
     expect(h.requests).toHaveLength(1)
@@ -311,7 +317,10 @@ describe('CodemodeSession', () => {
 
     it('refuses an outside write the approver denies', async () => {
       const h = makeSession({ mode: () => 'auto', answer: async () => 'deny' })
-      expect(await h.run(writeOutside)).toEqual({ text: '=> "denied by user"', isError: false })
+      expect(await h.run(writeOutside)).toEqual({
+        text: '=> "write: denied by user"',
+        isError: false
+      })
       expect(existsSync(join(base, 'outside.txt'))).toBe(false)
     })
 

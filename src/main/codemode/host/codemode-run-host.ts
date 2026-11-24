@@ -10,6 +10,7 @@ import {
   type Approver,
   CodemodeApprovals,
   DENIED_TEXT,
+  deniedCallText,
   INTERRUPTED_TEXT,
   UNSUPPORTED_TEXT
 } from './codemode-approvals'
@@ -184,7 +185,12 @@ export class CodemodeSession {
       }
     }
     emit('running')
-    const reply = await this.execute(run, call)
+    const executed = await this.execute(run, call)
+    // A denial here may be the call's own or its server's start; either way it names this call.
+    const reply: HostReply =
+      !executed.ok && executed.error === DENIED_TEXT
+        ? { ok: false, error: deniedCallText(shown.tool) }
+        : executed
     if (reply.ok) {
       emit('ok', eventOutput(reply.value))
     } else {

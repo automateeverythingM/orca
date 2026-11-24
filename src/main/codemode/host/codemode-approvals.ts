@@ -19,6 +19,11 @@ export type GateCheck = {
 }
 
 export const DENIED_TEXT = 'denied by user'
+
+/** What the script sees for a denied call: the call's label, so the agent can tell which one. */
+export function deniedCallText(label: string): string {
+  return `${label}: ${DENIED_TEXT}`
+}
 export const UNSUPPORTED_TEXT =
   'approval needed but this agent cannot show approval cards; switch the chat to full access or call the tool directly'
 export const REFUSED_TEXT = 'not allowed in this chat mode'

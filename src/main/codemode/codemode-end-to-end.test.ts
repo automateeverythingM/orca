@@ -132,7 +132,7 @@ describe('code mode end to end', () => {
 
     const result = await runJs(client, FOUR_STEPS)
     expect(result.isError).toBe(true)
-    expect(result.text).toContain('denied by user')
+    expect(result.text).toContain('mcp.fake-crm.add_credits: denied by user')
     expect(asked.map((message) => message.split('\n')[0]).sort()).toEqual([
       'Call fake-crm.add_credits',
       'Call fake-crm.add_to_group',

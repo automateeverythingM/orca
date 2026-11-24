@@ -312,7 +312,11 @@ test.describe('code mode with a real agent', () => {
     expect(names).toContain('mcp__orca__run_js')
     expect(names.filter((name) => /fake[-_]crm/.test(name))).toEqual([])
     expect(cards.some((card) => /add_credits/.test(card))).toBe(true)
-    expect(transcript.toolResults.some((result) => result.includes('denied by user'))).toBe(true)
+    expect(
+      transcript.toolResults.some((result) =>
+        result.includes('mcp.fake-crm.add_credits: denied by user')
+      )
+    ).toBe(true)
     expect(crm?.credits).toBe(0)
     await shootRunJsRow(orcaPage, 'claude-ask-deny.png')
   })
