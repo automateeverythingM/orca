@@ -253,7 +253,7 @@ export class BotToolRelay {
     let upstream: Response
     for (let tries = 1; ; tries += 1) {
       if (answer.kind === 'sign-in-needed') {
-        answerSignInNeeded(req, res, body)
+        answerSignInNeeded(req, res, body, route.signInNeeded?.(credentialId))
         return
       }
       if (answer.kind === 'unavailable') {
@@ -261,7 +261,7 @@ export class BotToolRelay {
         return
       }
       if (answer.kind === 'missing') {
-        throw new RelayRefusal(404, 'This bot has no such tool.')
+        throw new RelayRefusal(404, route.missing ?? 'This bot has no such tool.')
       }
       this.sessions.check(req, scope, answer, route.adoptsUnknownSessions === true)
       upstream = await sendUpstream(this.fetchUpstream, req, answer, body, signal)
@@ -272,7 +272,7 @@ export class BotToolRelay {
       await upstream.body?.cancel()
       if (tries === 2) {
         // A token fresh from the app was refused too: only a new sign-in helps.
-        answerSignInNeeded(req, res, body)
+        answerSignInNeeded(req, res, body, route.signInNeeded?.(credentialId))
         return
       }
       answer = await this.ask(source, { ...request, rejected: answer.bearer })

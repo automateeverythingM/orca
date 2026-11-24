@@ -52,11 +52,12 @@ function errorsFor(message: unknown, code: number, text: string): unknown {
 export function answerSignInNeeded(
   req: IncomingMessage,
   res: ServerResponse,
-  body: Buffer | undefined
+  body: Buffer | undefined,
+  text: string = SIGN_IN_NEEDED
 ): void {
   if (req.method !== 'POST') {
     res.writeHead(405, { 'content-type': 'application/json', allow: 'POST' })
-    res.end(JSON.stringify({ error: SIGN_IN_NEEDED }))
+    res.end(JSON.stringify({ error: text }))
     return
   }
   const message = parsed(body)
@@ -65,7 +66,7 @@ export function answerSignInNeeded(
     res.end(JSON.stringify(errorFor(null, -32700, 'Parse error')))
     return
   }
-  const errors = errorsFor(message, SIGN_IN_NEEDED_CODE, SIGN_IN_NEEDED)
+  const errors = errorsFor(message, SIGN_IN_NEEDED_CODE, text)
   if (!errors) {
     res.writeHead(202)
     res.end()

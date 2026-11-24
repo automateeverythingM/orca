@@ -157,6 +157,10 @@ export class CodemodeService {
         ...(this.opts.workerPath ? { workerPath: this.opts.workerPath } : {})
       })
       const previous = this.sessions.get(sessionId)
+      if (previous && this.removeRelayRoute) {
+        // Why: the old launch's relay calls and upstream sessions must not outlive its token.
+        this.relay.endCaller(codemodeCallerKey(sessionId))
+      }
       this.sessions.set(sessionId, { launchId: input.launchId, session, earlyEnds: new Set() })
       const token = this.server.register(sessionId, session, () => ({
         servers: session.serverNames()

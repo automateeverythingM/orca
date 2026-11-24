@@ -1,6 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CodemodeConnector } from '../../../shared/codemode/codemode-connector-types'
 import { FakeOAuthMcpServer } from '../../bots/tool-oauth/testing/fake-oauth-mcp-server'
 import { BotToolRelay } from '../../bots/tool-relay/bot-tool-relay'
@@ -22,6 +22,10 @@ const env = setUpConnectorTestEnv(async () => {
   relay = null
   await fake?.stop()
   fake = null
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 const INITIALIZE = JSON.stringify({
@@ -54,10 +58,10 @@ async function setUp(kind: 'oauth' | 'token' = 'oauth'): Promise<{ id: string; o
 }
 
 /** The chat's code-mode token, as its agent holds it. */
-async function launch(sessionId: string): Promise<string> {
+async function launch(sessionId: string, launchId = `launch-${sessionId}`): Promise<string> {
   const server = await service!.launchServer({
     sessionId,
-    launchId: `launch-${sessionId}`,
+    launchId,
     root: env.current().dir,
     env: process.env,
     mode: () => 'full-access'
@@ -177,8 +181,25 @@ describe('relay route for direct connector access', () => {
     fake!.revokeAll()
     await expect(
       client.callTool({ name: 'count', arguments: {} }, undefined, { timeout: 2000 })
-    ).rejects.toMatchObject({ code: -32001 })
+    ).rejects.toMatchObject({
+      code: -32001,
+      message: 'MCP error -32001: connector fake needs sign-in'
+    })
     expect(fake!.counts().refreshes).toBe(1)
+  })
+
+  it('answers unknown connector when it is removed after the chat was let through', async () => {
+    const { id, origin } = await setUp()
+    const token = await launch('s1')
+    const { store } = env.current()
+    // `allow` reads the switch last: a removal there lands between allow and the source.
+    vi.spyOn(service!, 'connectorsOff').mockImplementation(() => {
+      store.remove(id)
+      return new Set()
+    })
+    const answer = await post(`${origin}/c/${id}/mcp`, token)
+    expect(answer.status).toBe(404)
+    expect(JSON.parse(answer.body)).toEqual({ error: 'unknown connector' })
   })
 
   it('refuses a chat that ended, and forgets its upstream sessions', async () => {
@@ -197,5 +218,23 @@ describe('relay route for direct connector access', () => {
     const list = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' })
     const headers = { 'mcp-session-id': transport.sessionId!, 'mcp-protocol-version': '2025-03-26' }
     expect((await post(`${origin}/c/${id}/mcp`, again, headers, list)).status).toBe(404)
+  })
+
+  it('ends the old launch’s relay sessions when the chat relaunches', async () => {
+    const { id, origin } = await setUp()
+    const token = await launch('s1', 'launch-1')
+    const transport = new StreamableHTTPClientTransport(new URL(`${origin}/c/${id}/mcp`), {
+      requestInit: { headers: { authorization: `Bearer ${token}` } }
+    })
+    const old = new Client({ name: 'agent', version: '1.0.0' })
+    clients.push(old)
+    await old.connect(transport)
+    const again = await launch('s1', 'launch-2')
+    expect((await post(`${origin}/c/${id}/mcp`, token)).status).toBe(401)
+    const list = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' })
+    const headers = { 'mcp-session-id': transport.sessionId!, 'mcp-protocol-version': '2025-03-26' }
+    expect((await post(`${origin}/c/${id}/mcp`, again, headers, list)).status).toBe(404)
+    const fresh = await agent(`${origin}/c/${id}/mcp`, again)
+    expect((await fresh.listTools()).tools).toHaveLength(3)
   })
 })

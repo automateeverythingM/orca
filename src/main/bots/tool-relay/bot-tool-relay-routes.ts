@@ -20,6 +20,10 @@ export type RelayRoute = {
   adoptsUnknownSessions?: boolean
   /** The 401 text for a missing or unknown token. */
   unauthorized?: string
+  /** The sign-in-needed answer's text for a target; default is the bots' wording. */
+  signInNeeded?(targetId: string): string
+  /** The 404 text when the source has no such target; default is the bots' wording. */
+  missing?: string
 }
 
 /** Who the request's token speaks for, when it may reach the target; refuses it otherwise. */

@@ -21,7 +21,8 @@ export type ConnectorRelayHost = {
   connectorsOff(sessionId: string): ReadonlySet<string>
 }
 
-const UNKNOWN: RelayAllowance = { ok: false, status: 404, message: 'unknown connector' }
+const UNKNOWN_CONNECTOR = 'unknown connector'
+const UNKNOWN: RelayAllowance = { ok: false, status: 404, message: UNKNOWN_CONNECTOR }
 
 export function createConnectorRelayRoute(service: ConnectorRelayHost): RelayRoute {
   return {
@@ -47,6 +48,11 @@ export function createConnectorRelayRoute(service: ConnectorRelayHost): RelayRou
       return { ok: true }
     },
     source: connectorCredentialSource(() => service.openedConnectors()),
+    signInNeeded: (connectorId) => {
+      const name = service.openedConnectors()?.store.get(connectorId)?.name ?? connectorId
+      return `connector ${name} needs sign-in`
+    },
+    missing: UNKNOWN_CONNECTOR,
     unauthorized: 'This connector needs the chat’s Orca token.'
   }
 }
