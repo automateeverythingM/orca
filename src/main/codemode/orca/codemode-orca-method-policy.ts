@@ -27,11 +27,16 @@ const EXCLUDED_AREAS: ReadonlySet<string> = new Set([
   'managedRuntime',
   'orcad',
   // prepareLaunch hands out auth env for any pane; tmuxCompat sends keys and runs shell commands.
-  'agentTeams'
+  'agentTeams',
+  // Bot management stores permission modes, member grants, schedules and prompts.
+  'bots'
 ])
 
 // Why: a script must never answer or change its own chat's approvals, questions or mode.
 const AGENT_SESSION_SELF_CONTROL = /respond|answer|approv|permission|setoption/i
+// Why: permission changes and human checkpoints (gates) stay with the person, in any area.
+const HUMAN_CONTROL = /permission|gate.*(resolve|approve|answer)/i
+const DENIED_PREFIXES = ['google.bot.']
 
 // Host↔client protocol: results, acks, stream teardown and client registration a client sends.
 const CLIENT_PROTOCOL_AREAS: ReadonlySet<string> = new Set(['desktopBrowserBridge', 'mobileWeb'])
@@ -73,6 +78,7 @@ export const CODEMODE_ORCA_DENIED_METHODS: ReadonlySet<string> = new Set([
   'agentSession.approveAutoReviewDenial',
   'agentSession.skipAsyncQuestions',
   'orchestration.approvalAnswer',
+  'orchestration.gateResolve',
   'bots.access.decide',
   // Keys, secrets and account sign-in.
   'webhooks.secret',
@@ -131,6 +137,8 @@ export function isExposedOrcaMethod(method: OrcaMethodSource): boolean {
     !EXCLUDED_AREAS.has(area) &&
     !CODEMODE_ORCA_DENIED_METHODS.has(method.name) &&
     !(area === 'agentSession' && AGENT_SESSION_SELF_CONTROL.test(method.name)) &&
+    !HUMAN_CONTROL.test(method.name) &&
+    !DENIED_PREFIXES.some((prefix) => method.name.startsWith(prefix)) &&
     !isClientProtocolMethod(method.name)
   )
 }

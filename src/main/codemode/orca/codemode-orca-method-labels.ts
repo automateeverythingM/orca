@@ -20,16 +20,7 @@ export const CODEMODE_ORCA_AGENT_LAUNCH_METHODS: ReadonlySet<string> = new Set([
   'orchestration.dispatch',
   'orchestration.workerStart',
   'orchestration.run',
-  'automation.runNow',
-  'bots.create',
-  'bots.session.start',
-  'bots.kickoff.retry',
-  'bots.sendRunAgain',
-  'bots.takeOver',
-  'bots.groups.send',
-  'bots.lookAround.lookNow',
-  'bots.suggestions.start',
-  'bots.tidyUp.now'
+  'automation.runNow'
 ])
 
 /** Methods that send a prompt or start a turn in an existing chat or worker: always ask. */
@@ -57,19 +48,9 @@ export const CODEMODE_ORCA_SHELL_INPUT_METHODS: ReadonlySet<string> = new Set([
   'git.discoverCommitMessageModels'
 ])
 
-/** Methods that deliver mail or set work that wakes a bot, worker or chat: always ask. */
+/** Methods that deliver mail or set work that wakes a worker or chat: always ask. */
 export const CODEMODE_ORCA_WAKE_METHODS: ReadonlySet<string> = new Set([
   'agentSession.threadGoal',
-  'bots.chat.open',
-  'bots.items.add',
-  'bots.items.set',
-  'bots.items.comment',
-  'bots.items.done',
-  'bots.items.cancel',
-  'bots.items.link',
-  'bots.items.owner.comment',
-  'bots.items.owner.snooze',
-  'bots.items.owner.opened',
   'orchestration.peerMailReturn',
   'webhooks.pause'
 ])
@@ -135,7 +116,10 @@ export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel>
     'terminal.stopExact',
     'workspaceCleanup.runNow',
     'agentSession.rewind',
-    'agentSession.conversationCommand'
+    'agentSession.conversationCommand',
+    'orchestration.taskCreate',
+    'jira.generateIssueSummary',
+    'worktree.restore'
   ]),
   ...labelled('write', [
     'git.resolveConflict',
@@ -144,8 +128,6 @@ export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel>
     'repo.saveSparsePreset',
     'terminal.resetInputModes',
     'browser.dropFiles',
-    // Sends owed mail to the bot.
-    'bots.items.owner.status',
     // Reads with side effects: PTY input, page actions, find highlighting.
     'terminal.viewClaudeAgent',
     'browser.find',
@@ -241,7 +223,6 @@ export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel>
     'stats.summary',
     'diagnostics.memory',
     'computer.capabilities',
-    'computer.permissionsStatus',
     'terminalDaemon.severedStatus'
   ])
 ])

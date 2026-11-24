@@ -23,7 +23,8 @@ const EXCLUDED_AREAS = [
   'updater',
   'managedRuntime',
   'orcad',
-  'agentTeams'
+  'agentTeams',
+  'bots'
 ]
 
 const AGENT_LAUNCHES = [
@@ -42,16 +43,7 @@ const AGENT_LAUNCHES = [
   'orchestration.dispatch',
   'orchestration.workerStart',
   'orchestration.run',
-  'automation.runNow',
-  'bots.create',
-  'bots.session.start',
-  'bots.kickoff.retry',
-  'bots.sendRunAgain',
-  'bots.takeOver',
-  'bots.groups.send',
-  'bots.lookAround.lookNow',
-  'bots.suggestions.start',
-  'bots.tidyUp.now'
+  'automation.runNow'
 ]
 const PROMPTS_AND_SHELL_INPUT = [
   'agentSession.send',
@@ -71,17 +63,10 @@ const PROMPTS_AND_SHELL_INPUT = [
   'git.generatePullRequestFields',
   'git.discoverCommitMessageModels',
   'agentSession.threadGoal',
-  'bots.chat.open',
-  'bots.items.add',
-  'bots.items.set',
-  'bots.items.comment',
-  'bots.items.done',
-  'bots.items.cancel',
-  'bots.items.link',
-  'bots.items.owner.comment',
-  'bots.items.owner.snooze',
-  'bots.items.owner.opened',
   'orchestration.peerMailReturn',
+  'orchestration.taskCreate',
+  'jira.generateIssueSummary',
+  'worktree.restore',
   'webhooks.pause'
 ]
 const CLIENT_PROTOCOL = [
@@ -154,7 +139,12 @@ describe('Orca method exposure for code mode', () => {
       'bots.tools.update',
       'automation.create',
       'automation.update',
-      'ui.set'
+      'ui.set',
+      'orchestration.gateResolve',
+      'google.bot.connected',
+      'bots.update',
+      'bots.lookAround.set',
+      'bots.composio.setup'
     ]) {
       expect(exposedNames.has(name), name).toBe(false)
     }
@@ -162,6 +152,14 @@ describe('Orca method exposure for code mode', () => {
       /^(accounts|settings)\./.test(name)
     )
     expect(accountOrSettings).toEqual([])
+    expect([...exposedNames].filter((name) => /^(bots|google\.bot)\./.test(name))).toEqual([])
+  })
+
+  it('never exposes permission changes or human gate checkpoints, in any area', () => {
+    const humanControl = [...exposedNames].filter(
+      (name) => /permission/i.test(name) || /gate.*(resolve|approve|answer)/i.test(name)
+    )
+    expect(humanControl).toEqual([])
   })
 
   it('never exposes host-client protocol plumbing', () => {
@@ -216,9 +214,7 @@ describe('Orca method exposure for code mode', () => {
       'aiVault.searchSessions': 'write',
       'aiVault.listSessions': 'write',
       'nativeChat.readSession': 'write',
-      'linkPreview.get': 'write',
-      'bots.items.owner.status': 'write',
-      'bots.items.list': 'read'
+      'linkPreview.get': 'write'
     }
     for (const [name, label] of Object.entries(expected)) {
       expect(labelOrcaMethod(name), name).toBe(label)
@@ -239,6 +235,7 @@ describe('Orca method exposure for code mode', () => {
     })
     expect(index.get('codemode.connectors.setToken')).toBeNull()
     expect(areas).not.toContain('agentTeams')
+    expect(areas).not.toContain('bots')
     expect(index.inArea('nope')).toEqual([])
     expect(index.inArea('worktree').every((entry) => entry.area === 'worktree')).toBe(true)
 
