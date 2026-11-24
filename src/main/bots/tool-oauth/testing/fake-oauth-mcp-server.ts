@@ -83,6 +83,10 @@ export class FakeOAuthMcpServer extends FakeOAuthApp {
     await new Promise<void>((resolve) => this.server.close(() => resolve()))
   }
 
+  protected override namesAuthServer(): boolean {
+    return this.requireAuth
+  }
+
   protected override async handleMcp(
     req: IncomingMessage,
     res: ServerResponse,

@@ -75,6 +75,11 @@ export class FakeOAuthApp {
     this.unauthorized(res)
   }
 
+  /** Whether the app's resource metadata names its authorization server; an open app names none. */
+  protected namesAuthServer(): boolean {
+    return true
+  }
+
   protected unauthorized(res: ServerResponse): void {
     res.writeHead(401, {
       'content-type': 'application/json',
@@ -102,7 +107,7 @@ export class FakeOAuthApp {
     }
     if (path === '/mcp') {
       await this.handleMcp(req, res, body)
-    } else if (path === '/.well-known/oauth-protected-resource/mcp') {
+    } else if (path === '/.well-known/oauth-protected-resource/mcp' && this.namesAuthServer()) {
       json(200, {
         resource: this.url,
         authorization_servers: [this.base],
