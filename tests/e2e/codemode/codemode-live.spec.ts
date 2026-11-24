@@ -11,11 +11,17 @@ import { expect } from '@stablyai/playwright-test'
 import { test } from '../desktop/electron-fixtures/orca-app'
 import { ensureTerminalVisible, waitForSessionReady } from '../desktop/renderer-probes/store'
 import { fakeCrmServerSpec } from '../../../src/main/codemode/mcp-pool/testing/fake-crm-command'
+import { FakeOAuthMcpServer } from '../../../src/main/bots/tool-oauth/testing/fake-oauth-mcp-server'
 import type { AgentChatPermissionMode } from '../../../src/shared/agent-launch/permissions/agent-chat-permission-mode'
 
 const LIVE = process.env.ORCA_CODEMODE_LIVE === '1'
 const PROMPT =
   'Using the fake-crm MCP server through code mode: find x@y.com, rename them to Bob, add them to Team A, and add 10 credits. Then tell me their final state.'
+const PROMPT_MARKER = 'through code mode'
+// Scenario 6: the connector is named `fake`, so Claude sees its tools as mcp__fake__*.
+const CONNECTOR_PROMPT =
+  'Connector check: first call the fake MCP server\'s echo tool directly with text "direct-ok". Then run one run_js script that returns await mcp.fake.echo({ text: "script-ok" }). Reply with both results.'
+const CONNECTOR_MARKER = 'Connector check'
 const SHOTS =
   process.env.ORCA_CODEMODE_LIVE_SHOTS ?? path.join(os.tmpdir(), 'orca-codemode-live-shots')
 
@@ -23,8 +29,22 @@ const SHOTS =
 const ALLOWED_TOOLS = new Set(['mcp__orca__run_js'])
 
 type CrmUser = { id: string; email: string; name: string; groups: string[]; credits: number }
-type ToolUse = { name: string; input: Record<string, unknown> }
-type Transcript = { toolUses: ToolUse[]; toolResults: string[]; finalText: string | null }
+type ToolUse = { id: string; name: string; input: Record<string, unknown> }
+type ToolOutcome = { text: string; isError: boolean }
+type Transcript = {
+  toolUses: ToolUse[]
+  toolResults: string[]
+  /** Each tool call's result by its tool_use id. */
+  outcomes: Map<string, ToolOutcome>
+  finalText: string | null
+}
+
+const emptyTranscript = (): Transcript => ({
+  toolUses: [],
+  toolResults: [],
+  outcomes: new Map(),
+  finalText: null
+})
 
 // Why: the app runs under an isolated HOME, so Claude's login reaches it only through these variables.
 const CLAUDE_CREDENTIAL_ENV = Object.fromEntries(
@@ -99,7 +119,8 @@ async function appHome(app: ElectronApplication): Promise<string> {
 async function startClaudeChat(
   page: Page,
   mode: AgentChatPermissionMode,
-  cleanup: (run: () => Promise<void>) => void
+  cleanup: (run: () => Promise<void>) => void,
+  prompt = PROMPT
 ): Promise<string> {
   const { folder, stateFile } = await makeWorkspace()
   cleanup(() => rm(folder, { recursive: true, force: true }))
@@ -112,7 +133,7 @@ async function startClaudeChat(
   const field = page.locator('[data-composer-field] [contenteditable="true"]').last()
   await expect(field).toBeVisible({ timeout: 30_000 })
   await field.click({ force: true })
-  await page.keyboard.insertText(PROMPT)
+  await page.keyboard.insertText(prompt)
   await page.keyboard.press('Enter')
   return stateFile
 }
@@ -143,15 +164,24 @@ function parseLine(line: string): TranscriptLine[] {
 }
 
 function parseTranscript(lines: TranscriptLine[]): Transcript {
-  const transcript: Transcript = { toolUses: [], toolResults: [], finalText: null }
+  const transcript = emptyTranscript()
   for (const entry of lines) {
     const content = Array.isArray(entry?.message?.content) ? entry.message.content : []
     for (const block of content) {
       if (block?.type === 'tool_use') {
-        transcript.toolUses.push({ name: block.name, input: block.input ?? {} })
+        transcript.toolUses.push({
+          id: String(block.id),
+          name: block.name,
+          input: block.input ?? {}
+        })
         transcript.finalText = null
       } else if (block?.type === 'tool_result') {
-        transcript.toolResults.push(JSON.stringify(block.content))
+        const text = JSON.stringify(block.content)
+        transcript.toolResults.push(text)
+        transcript.outcomes.set(String(block.tool_use_id), {
+          text,
+          isError: block.is_error === true
+        })
         transcript.finalText = null
       } else if (block?.type === 'text' && typeof block.text === 'string') {
         transcript.finalText = entry?.type === 'assistant' ? block.text : null
@@ -162,11 +192,11 @@ function parseTranscript(lines: TranscriptLine[]): Transcript {
 }
 
 /** The chat's own Claude transcript (not the title helper's): the one with the prompt and the most tool calls. */
-async function readClaudeTranscript(home: string): Promise<Transcript> {
-  let best: Transcript = { toolUses: [], toolResults: [], finalText: null }
+async function readClaudeTranscript(home: string, marker = PROMPT_MARKER): Promise<Transcript> {
+  let best = emptyTranscript()
   for (const file of await listJsonl(path.join(home, '.claude', 'projects'))) {
     const text = await readFile(file, 'utf8')
-    if (!text.includes('through code mode')) {
+    if (!text.includes(marker)) {
       continue
     }
     const transcript = parseTranscript(text.split('\n').flatMap(parseLine))
@@ -255,6 +285,70 @@ async function answerCards(page: Page, home: string): Promise<string[]> {
   return seen
 }
 
+/** Calls this computer's runtime the way the settings page does; a refusal throws its text. */
+async function runtimeCall(page: Page, method: string, params?: unknown): Promise<unknown> {
+  return page.evaluate(
+    async ({ method, params }) => {
+      const answer = await window.api.runtime.call({ method, params })
+      if (!answer.ok) {
+        throw new Error(answer.error.message)
+      }
+      return answer.result
+    },
+    { method, params }
+  )
+}
+
+function field(value: unknown, key: string): unknown {
+  return typeof value === 'object' && value !== null && key in value
+    ? Object.entries(value).find(([name]) => name === key)?.[1]
+    : undefined
+}
+
+/**
+ * Adds the fake OAuth MCP server as connector `fake` and signs it in the way a user would: the
+ * app opens the browser and the user approves. The server stops after the app does.
+ */
+async function addSignedInConnector(
+  page: Page,
+  app: ElectronApplication,
+  cleanup: (run: () => Promise<void>) => void
+): Promise<void> {
+  const server = await FakeOAuthMcpServer.start()
+  cleanup(() => server.stop())
+  await app.evaluate(({ shell }) => {
+    // Why: the fake server is loopback http, which connectors accept only under NODE_ENV=test
+    // (read per request); the E2E app launches as development.
+    process.env.NODE_ENV = 'test'
+    // The user approving in the browser: follow the authorize URL, then hit the app's callback.
+    shell.openExternal = async (url) => {
+      const authorized = await fetch(url, { redirect: 'manual' })
+      const location = authorized.headers.get('location')
+      if (location) {
+        await fetch(location)
+      }
+    }
+  })
+  await waitForSessionReady(page)
+  const added = field(
+    await runtimeCall(page, 'codemode.connectors.add', { url: server.mcpUrl, name: 'fake' }),
+    'connector'
+  )
+  const id = field(added, 'id')
+  expect(field(added, 'auth')).toBe('oauth')
+  expect(typeof id).toBe('string')
+  await runtimeCall(page, 'codemode.connectors.signIn.start', { id })
+  await expect
+    .poll(
+      async () =>
+        field(await runtimeCall(page, 'codemode.connectors.signIn.status', { id }), 'state'),
+      { timeout: 30_000 }
+    )
+    .toBe('done')
+  const listed = field(await runtimeCall(page, 'codemode.connectors.list'), 'connectors')
+  expect(listed).toEqual([expect.objectContaining({ id, name: 'fake', status: 'connected' })])
+}
+
 test.describe('code mode with a real agent', () => {
   test.skip(!LIVE, 'Live agent run: set ORCA_CODEMODE_LIVE=1')
   test.skip(
@@ -327,5 +421,45 @@ test.describe('code mode with a real agent', () => {
     // The calls the person allowed ran; only the denied one did not.
     expect(crm).toMatchObject({ name: 'Bob', groups: ['Team A'], credits: 0 })
     await shootRunJsRow(orcaPage, 'claude-ask-deny.png')
+  })
+
+  test('Claude calls a signed-in connector directly and inside run_js', async ({
+    orcaPage,
+    electronApp,
+    registerPostElectronShutdownCleanup
+  }) => {
+    await addSignedInConnector(orcaPage, electronApp, registerPostElectronShutdownCleanup)
+    await startClaudeChat(
+      orcaPage,
+      'full-access',
+      registerPostElectronShutdownCleanup,
+      CONNECTOR_PROMPT
+    )
+    const home = await appHome(electronApp)
+    await expect
+      .poll(async () => (await readClaudeTranscript(home, CONNECTOR_MARKER)).finalText, {
+        timeout: 5 * 60_000,
+        intervals: [2_000]
+      })
+      .toMatch(/script-ok/)
+
+    const transcript = await readClaudeTranscript(home, CONNECTOR_MARKER)
+    logEvidence('connector', transcript, null)
+    const outcome = (use: ToolUse | undefined): ToolOutcome | undefined =>
+      use && transcript.outcomes.get(use.id)
+    const direct = transcript.toolUses.find((use) => use.name.startsWith('mcp__fake__'))
+    const script = transcript.toolUses.find(
+      (use) => use.name === 'mcp__orca__run_js' && String(use.input.code).includes('mcp.fake')
+    )
+    expect(direct, 'a direct mcp__fake__* call').toBeDefined()
+    expect(script, 'a run_js call that uses mcp.fake').toBeDefined()
+    expect(outcome(direct)).toMatchObject({
+      isError: false,
+      text: expect.stringContaining('direct-ok')
+    })
+    expect(outcome(script)).toMatchObject({
+      isError: false,
+      text: expect.stringContaining('script-ok')
+    })
   })
 })
