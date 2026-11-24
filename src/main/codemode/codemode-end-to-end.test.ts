@@ -92,11 +92,21 @@ async function agent(mode: GateMode, policy: (message: string) => Decision): Pro
   return client
 }
 
-async function runJs(client: Client, code: string): Promise<{ text: string; isError: boolean }> {
+/** The script's own text, and the inner calls the result lists after it. */
+async function runJsWithCalls(
+  client: Client,
+  code: string
+): Promise<{ text: string; isError: boolean; calls: string[] }> {
   const result = await client.callTool({ name: 'run_js', arguments: { code } })
   const content = Array.isArray(result.content) ? result.content : []
-  const text = content.map((item) => (item.type === 'text' ? item.text : '')).join('\n')
-  return { text, isError: result.isError === true }
+  const whole = content.map((item) => (item.type === 'text' ? item.text : '')).join('\n')
+  const [text = '', calls] = whole.split('\nInner calls:\n')
+  return { text, isError: result.isError === true, calls: calls ? calls.split('\n') : [] }
+}
+
+async function runJs(client: Client, code: string): Promise<{ text: string; isError: boolean }> {
+  const { text, isError } = await runJsWithCalls(client, code)
+  return { text, isError }
 }
 
 async function crmState(client: Client): Promise<unknown> {
@@ -117,7 +127,14 @@ describe('code mode end to end', () => {
       return 'allow_once'
     })
 
-    expect(await runJs(client, FOUR_STEPS)).toEqual({ text: '=> "done"', isError: false })
+    const { calls, ...result } = await runJsWithCalls(client, FOUR_STEPS)
+    expect(result).toEqual({ text: '=> "done"', isError: false })
+    expect(calls.map((line) => line.replace(/\d+ms$/, 'Nms'))).toEqual([
+      'mcp.fake-crm.find_user ✓ Nms',
+      'mcp.fake-crm.update_user ✓ Nms',
+      'mcp.fake-crm.add_to_group ✓ Nms',
+      'mcp.fake-crm.add_credits ✓ Nms'
+    ])
     expect(await crmState(client)).toEqual([
       { id: 'u1', email: 'x@y.com', name: 'Bob', groups: ['Team A'], credits: 10 }
     ])

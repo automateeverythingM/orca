@@ -30,10 +30,25 @@ function valueText(value: unknown): string {
   }
 }
 
+/** One inner call as the text result lists it. */
+export type InnerCallLine = { tool: string; ok: boolean; ms: number }
+
+// The calls list takes at most this share of the budget; the script's own output keeps the rest.
+const CALLS_SHARE = 4
+
+/** Printed lines and the value, then the inner calls, if any, for a chat that can't show the run's rows. */
 export function formatScriptResult(
   result: ScriptResult,
-  maxBytes: number
+  maxBytes: number,
+  calls: readonly InnerCallLine[] = []
 ): { text: string; isError: boolean } {
   const last = result.ok ? `=> ${valueText(result.value)}` : `Error: ${result.error}`
-  return { text: trimOutput([...result.printed, last].join('\n'), maxBytes), isError: !result.ok }
+  const body = [...result.printed, last].join('\n')
+  if (calls.length === 0) {
+    return { text: trimOutput(body, maxBytes), isError: !result.ok }
+  }
+  const lines = calls.map(({ tool, ok, ms }) => `${tool} ${ok ? '✓' : '✗'} ${ms}ms`)
+  const list = trimOutput(['Inner calls:', ...lines].join('\n'), Math.floor(maxBytes / CALLS_SHARE))
+  const room = Math.max(0, maxBytes - Buffer.byteLength(list, 'utf8') - 1)
+  return { text: `${trimOutput(body, room)}\n${list}`, isError: !result.ok }
 }

@@ -60,8 +60,13 @@ type Harness = {
   events: InnerCallEvent[]
   runs: CodemodeRunEvent[]
   requests: ApprovalRequest[]
+  /** The script's own text, without the inner calls listed after it. */
   run: (code: string, signal?: AbortSignal) => Promise<{ text: string; isError: boolean }>
+  /** The whole text the agent gets. */
+  runWithCalls: (code: string) => Promise<{ text: string; isError: boolean }>
 }
+
+const CALLS_LIST = /\nInner calls:\n[\s\S]*$/
 
 function makeSession(opts: {
   mode: () => GateMode
@@ -95,13 +100,18 @@ function makeSession(opts: {
   }
   // One agent connection for every run, as one agent's MCP client is.
   const connection = {}
+  const runWithCalls = (code: string, signal = new AbortController().signal) =>
+    session.run(code, { signal, approver, connection })
   return {
     session,
     events,
     runs,
     requests,
-    run: (code, signal = new AbortController().signal) =>
-      session.run(code, { signal, approver, connection })
+    run: async (code, signal) => {
+      const { text, isError } = await runWithCalls(code, signal)
+      return { text: text.replace(CALLS_LIST, ''), isError }
+    },
+    runWithCalls
   }
 }
 
@@ -134,6 +144,15 @@ describe('CodemodeSession', () => {
     expect(new Set(h.events.map((e) => e.runId)).size).toBe(1)
     expect(h.events[1]).toMatchObject({ input: { email: 'x@y.com' }, ms: expect.any(Number) })
     expect(h.events[1].output).toContain('"id":"u1"')
+  })
+
+  it('lists the inner calls after the result, the failed one marked', async () => {
+    const h = makeSession({ mode: () => 'ask', answer: async () => 'deny' })
+    const { text, isError } = await h.runWithCalls(`
+      await read({ path: 'missing.txt' }).catch(() => null)
+      return 'after'`)
+    expect(isError).toBe(false)
+    expect(text).toMatch(/^=> "after"\nInner calls:\nread ✗ \d+ms$/)
   })
 
   it("reports a run's start and end under the run id its inner calls carry", async () => {

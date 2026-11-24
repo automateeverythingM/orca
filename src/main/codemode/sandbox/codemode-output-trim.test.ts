@@ -40,6 +40,30 @@ describe('formatScriptResult', () => {
     })
   })
 
+  it('lists the inner calls after the result, one line each', () => {
+    const calls = [
+      { tool: 'mcp.fcu.add_credits', ok: true, ms: 120 },
+      { tool: 'bash', ok: false, ms: 3 }
+    ]
+    expect(formatScriptResult({ ok: true, printed: [], value: 1 }, 1000, calls).text).toBe(
+      '=> 1\nInner calls:\nmcp.fcu.add_credits ✓ 120ms\nbash ✗ 3ms'
+    )
+  })
+
+  it('keeps output and the calls list within the budget together', () => {
+    const calls = Array.from({ length: 500 }, (_, i) => ({ tool: `mcp.s.t${i}`, ok: true, ms: i }))
+    const { text } = formatScriptResult(
+      { ok: true, printed: ['x'.repeat(50_000)], value: 'end' },
+      30_000,
+      calls
+    )
+    const markers = [...text.matchAll(/\n…\[\d+ bytes cut\]…\n/g)].map(([marker]) => marker)
+    const markerBytes = markers.reduce((sum, marker) => sum + bytes(marker), 0)
+    expect(bytes(text)).toBeLessThanOrEqual(30_000 + markerBytes)
+    expect(text).toContain('\n=> "end"\nInner calls:\nmcp.s.t0 ✓ 0ms')
+    expect(text.endsWith('mcp.s.t499 ✓ 499ms')).toBe(true)
+  })
+
   it('formats errors', () => {
     expect(formatScriptResult({ ok: false, printed: ['a'], error: 'boom' }, 1000)).toEqual({
       text: 'a\nError: boom',

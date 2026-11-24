@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { CodemodeLimits } from '../codemode-limits'
 import type { GateMode } from '../gate/codemode-gate'
 import { CodemodeMcpPool, type CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
-import { formatScriptResult, trimOutput } from '../sandbox/codemode-output-trim'
+import { formatScriptResult, type InnerCallLine, trimOutput } from '../sandbox/codemode-output-trim'
 import type { HostCall, HostReply } from '../sandbox/codemode-script-runner'
 import { runScriptInWorker } from '../sandbox/codemode-worker-run'
 import {
@@ -60,6 +60,8 @@ type RunState = {
   seq: number
   /** Server starts the approver refused in this run; not asked again until the next run. */
   refusedStarts: Map<string, string>
+  /** This run's settled inner calls, listed in its text result. */
+  calls: InnerCallLine[]
 }
 
 const EVENT_OUTPUT_BYTES = 8 * 1024
@@ -133,7 +135,8 @@ export class CodemodeSession {
       connection: opts.connection ?? {},
       signal: controller.signal,
       seq: 0,
-      refusedStarts: new Map()
+      refusedStarts: new Map(),
+      calls: []
     }
     this.pool.newTurn()
     const started = performance.now()
@@ -147,7 +150,7 @@ export class CodemodeSession {
         controller.signal,
         this.opts.workerPath
       )
-      const formatted = formatScriptResult(result, this.opts.limits.outputBytes)
+      const formatted = formatScriptResult(result, this.opts.limits.outputBytes, run.calls)
       failed = formatted.isError
       return formatted
     } finally {
@@ -182,6 +185,9 @@ export class CodemodeSession {
     const shown = hostCallLabel(call)
     const emit = (state: InnerCallEvent['state'], output?: string): void => {
       const timing = state === 'running' ? {} : { ms: Math.round(performance.now() - started) }
+      if (timing.ms !== undefined) {
+        run.calls.push({ tool: shown.tool, ok: state === 'ok', ms: timing.ms })
+      }
       try {
         this.opts.onEvent({ runId: run.runId, seq, ...shown, state, ...timing, output })
       } catch {
