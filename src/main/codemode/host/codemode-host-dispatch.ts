@@ -2,9 +2,19 @@ import { resolve } from 'node:path'
 import type { CodemodeLimits } from '../codemode-limits'
 import { isConnectorIdentity } from '../mcp-pool/codemode-mcp-connector-access'
 import type { CodemodeMcpPool, CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
-import { trimOutput } from '../sandbox/codemode-output-trim'
+import type { OrcaRpcAccess } from '../orca/codemode-orca-dispatch'
+import { planOrcaHostCall } from '../orca/codemode-orca-host-plan'
 import type { HostCall, HostReply } from '../sandbox/codemode-script-runner'
-import type { GateCheck } from './codemode-approvals'
+import { type GateCheck, READ_CHECK } from './codemode-approvals'
+import {
+  clipDetail as clip,
+  type Fields,
+  fieldsOf,
+  isFields,
+  optionalNumber,
+  optionalText,
+  text
+} from './codemode-host-call-fields'
 import { runBash } from './codemode-bash'
 import {
   editFileTool,
@@ -23,53 +33,12 @@ export type HostCallContext = {
   pool: CodemodeMcpPool
   trusted: (server: string) => boolean
   signal: AbortSignal
+  /** Absent: the chat has no Orca access and every `orca.*` call fails. */
+  orca?: OrcaRpcAccess
 }
 
 /** A validated inner call: what the gate judges, and how to run it once allowed. */
 export type PlannedHostCall = GateCheck & { execute: () => Promise<HostReply> }
-
-type Fields = Record<string, unknown>
-
-const DETAIL_BYTES = 2_000
-const NO_PROMPT = { title: '', detail: '' }
-
-function isFields(input: unknown): input is Fields {
-  return typeof input === 'object' && input !== null && !Array.isArray(input)
-}
-
-function fieldsOf(tool: string, input: unknown): Fields {
-  if (!isFields(input)) {
-    throw new Error(`${tool}: expected an object argument`)
-  }
-  return input
-}
-
-function text(tool: string, fields: Fields, key: string): string {
-  const value = fields[key]
-  if (typeof value !== 'string') {
-    throw new Error(`${tool}: ${key} must be a string`)
-  }
-  return value
-}
-
-function optionalText(tool: string, fields: Fields, key: string): string | undefined {
-  return fields[key] === undefined ? undefined : text(tool, fields, key)
-}
-
-function optionalNumber(tool: string, fields: Fields, key: string): number | undefined {
-  const value = fields[key]
-  if (value === undefined) {
-    return undefined
-  }
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`${tool}: ${key} must be a number`)
-  }
-  return value
-}
-
-function clip(value: string): string {
-  return trimOutput(value, DETAIL_BYTES)
-}
 
 function knownServer(pool: CodemodeMcpPool, server: string): string {
   const names = pool.names()
@@ -85,6 +54,9 @@ export function hostCallLabel(call: HostCall): { tool: string; input: unknown } 
     const { server, tool, args } = call.input
     return { tool: `mcp.${String(server)}.${String(tool)}`, input: args }
   }
+  if (call.tool === 'orca.call' && isFields(call.input)) {
+    return { tool: `orca.${String(call.input.method)}`, input: call.input.params }
+  }
   return { tool: call.tool, input: call.input }
 }
 
@@ -98,8 +70,6 @@ export function serverStartCheck(spec: CodemodeServerSpec): GateCheck {
     }
   }
 }
-
-const READ_CHECK: GateCheck = { gate: { kind: 'read' }, allowKey: 'read', prompt: NO_PROMPT }
 
 /**
  * Plans a file tool call: an inside path gets `inside`; an outside path gets a path-outside
@@ -266,6 +236,11 @@ export async function planHostCall(call: HostCall, ctx: HostCallContext): Promis
         })
       }
     }
+    case 'orca.areas':
+    case 'orca.describe':
+    case 'orca.context':
+    case 'orca.call':
+      return planOrcaHostCall(call.tool, fields, ctx.orca, ctx.signal)
     default:
       throw new Error(`unknown host tool ${call.tool}`)
   }

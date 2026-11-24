@@ -19,6 +19,13 @@ export type GateCheck = {
   prompt: { title: string; detail: string }
 }
 
+/** A plain read: allowed in every mode, so it never prompts. */
+export const READ_CHECK: GateCheck = {
+  gate: { kind: 'read' },
+  allowKey: 'read',
+  prompt: { title: '', detail: '' }
+}
+
 export const DENIED_TEXT = 'denied by user'
 
 /** What the script sees for a denied call: the call's label, so the agent can tell which one. */

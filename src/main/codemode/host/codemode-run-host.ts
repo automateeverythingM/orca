@@ -4,6 +4,7 @@ import type { CodemodeLimits } from '../codemode-limits'
 import type { GateMode } from '../gate/codemode-gate'
 import type { CodemodeConnectorAccess } from '../mcp-pool/codemode-mcp-connector-access'
 import { CodemodeMcpPool, type CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
+import type { OrcaRpcAccess } from '../orca/codemode-orca-dispatch'
 import { formatScriptResult, type InnerCallLine, trimOutput } from '../sandbox/codemode-output-trim'
 import type { HostCall, HostReply } from '../sandbox/codemode-script-runner'
 import { runScriptInWorker } from '../sandbox/codemode-worker-run'
@@ -47,6 +48,8 @@ export type CodemodeSessionOptions = {
   specs: CodemodeServerSpec[]
   /** Remote connectors this chat may call; they win over a local server of the same name. */
   connectors?: CodemodeConnectorAccess
+  /** Orca runtime methods as `orca.*`; absent, every `orca.*` call fails. */
+  orca?: OrcaRpcAccess
   limits: CodemodeLimits
   onEvent: (event: InnerCallEvent) => void
   onRun?: (event: CodemodeRunEvent) => void
@@ -221,7 +224,8 @@ export class CodemodeSession {
         limits: this.opts.limits,
         pool: this.pool,
         trusted: this.opts.trusted,
-        signal: run.signal
+        signal: run.signal,
+        orca: this.opts.orca
       })
       const refusal = await this.approvals.check(planned, run)
       if (refusal !== null) {

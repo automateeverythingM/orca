@@ -34,6 +34,31 @@ export const CODEMODE_PRELUDE = String.raw`(() => {
     }
   })
 
+  // orca.worktree.create(p) calls orca.call('worktree.create', p); JS protocol names stay unset so
+  // awaiting, printing or serializing a path never fires a call.
+  const notMethods = new Set(['then', 'toJSON', 'valueOf', 'constructor'])
+  const orcaPath = (method) =>
+    new Proxy(() => {}, {
+      get: (_target, key) => {
+        if (typeof key !== 'string' || notMethods.has(key)) return undefined
+        if (key === 'toString') return () => '[orca ' + method + ']'
+        return orcaPath(method + '.' + key)
+      },
+      apply: (_target, _this, args) => call('orca.call', { method, params: args[0] })
+    })
+  const orcaReserved = {
+    areas: () => call('orca.areas', {}),
+    describe: (target) => call('orca.describe', { target }),
+    context: () => call('orca.context', {}),
+    call: (method, params) => call('orca.call', { method, params })
+  }
+  globalThis.orca = new Proxy({}, {
+    get: (_target, name) => {
+      if (typeof name !== 'string' || notMethods.has(name)) return undefined
+      return Object.hasOwn(orcaReserved, name) ? orcaReserved[name] : orcaPath(name)
+    }
+  })
+
   globalThis.read = (arg) => call('read', pathArg(arg))
   globalThis.write = (arg) => call('write', arg)
   globalThis.edit = (arg) => call('edit', arg)

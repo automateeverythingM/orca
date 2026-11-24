@@ -121,6 +121,35 @@ describe('runScript', () => {
     ])
   })
 
+  it('orca chains a dotted path into orca.call; reserved names are top level only', async () => {
+    const { host, calls } = stubHost(() => ({ ok: true, value: 1 }))
+    const result = await run(
+      `await orca.worktree.create({ name: 'a' })
+       await orca.bots.tools.list()
+       await orca.areas(); await orca.describe('worktree'); await orca.context()
+       await orca.call('repo.list', { x: 1 })
+       await orca.worktree.describe({ id: 'w' })
+       const awaited = await orca.worktree
+       print(orca.worktree.list)
+       return [typeof orca.then, typeof orca.worktree.then, typeof awaited]`,
+      host
+    )
+    expect(result).toEqual({
+      ok: true,
+      printed: ['[orca worktree.list]'],
+      value: ['undefined', 'undefined', 'function']
+    })
+    expect(calls).toEqual([
+      { tool: 'orca.call', input: { method: 'worktree.create', params: { name: 'a' } } },
+      { tool: 'orca.call', input: { method: 'bots.tools.list' } },
+      { tool: 'orca.areas', input: {} },
+      { tool: 'orca.describe', input: { target: 'worktree' } },
+      { tool: 'orca.context', input: {} },
+      { tool: 'orca.call', input: { method: 'repo.list', params: { x: 1 } } },
+      { tool: 'orca.call', input: { method: 'worktree.describe', params: { id: 'w' } } }
+    ])
+  })
+
   it('abort', async () => {
     const controller = new AbortController()
     const { host } = stubHost(() => {

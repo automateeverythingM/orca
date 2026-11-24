@@ -9,7 +9,9 @@ import {
   type VmCallResult
 } from 'quickjs-emscripten-core'
 import type { CodemodeLimits } from '../codemode-limits'
+import { HOST_TOOLS, type HostCall, type HostReply, type ScriptHost } from './codemode-host-tools'
 import { CODEMODE_PRELUDE } from './codemode-prelude'
+import { ScriptPrintBuffer } from './codemode-print-buffer'
 import {
   byteSizeText,
   hostErrorText,
@@ -19,24 +21,11 @@ import {
   wrapScript
 } from './codemode-script-error-text'
 
-export type HostCall = { tool: string; input: unknown }
-export type HostReply = { ok: true; value: unknown } | { ok: false; error: string }
-export type ScriptHost = (call: HostCall) => Promise<HostReply>
+export type { HostCall, HostReply, ScriptHost } from './codemode-host-tools'
 export type ScriptResult =
   | { ok: true; printed: string[]; value: unknown }
   | { ok: false; printed: string[]; error: string }
 
-const HOST_TOOLS = new Set([
-  'mcp.list',
-  'mcp.describe',
-  'mcp.call',
-  'read',
-  'write',
-  'edit',
-  'grep',
-  'find',
-  'bash'
-])
 const PRELUDE_FILE = 'codemode-prelude'
 const INTERRUPTED = 'Interrupted by user'
 const UNSETTLED = 'script ended with an unsettled promise'
@@ -44,10 +33,8 @@ const UNSETTLED = 'script ended with an unsettled promise'
 class QuickJsScriptRun {
   private readonly runtime: QuickJSRuntime
   private readonly context: QuickJSContext
-  private readonly printed: string[] = []
+  private readonly prints: ScriptPrintBuffer
   private readonly inFlight = new Set<QuickJSDeferredPromise>()
-  private printedBytes = 0
-  private droppedPrintBytes = 0
   private callCount = 0
   private jsUsedMs = 0
   private vmEnteredAt: number | undefined
@@ -68,6 +55,7 @@ class QuickJsScriptRun {
     private readonly limits: CodemodeLimits,
     private readonly signal: AbortSignal
   ) {
+    this.prints = new ScriptPrintBuffer(limits.resultBytes)
     this.runtime = module.newRuntime()
     this.runtime.setMemoryLimit(limits.memoryBytes)
     this.runtime.setMaxStackSize(limits.stackBytes)
@@ -77,7 +65,7 @@ class QuickJsScriptRun {
       .newFunction('__host', (tool, input) => this.startHostCall(tool, input))
       .consume((fn) => this.context.setProp(this.context.global, '__host', fn))
     this.context
-      .newFunction('__print', (line) => this.recordPrint(this.context.getString(line)))
+      .newFunction('__print', (line) => this.prints.add(this.context.getString(line)))
       .consume((fn) => this.context.setProp(this.context.global, '__print', fn))
     signal.addEventListener('abort', this.wake)
   }
@@ -123,7 +111,7 @@ class QuickJsScriptRun {
           if (this.stopError !== undefined) {
             return this.fail(this.stopError)
           }
-          return { ok: true, printed: this.printedLines(), value }
+          return { ok: true, printed: this.prints.printed(), value }
         } finally {
           state.value.dispose()
         }
@@ -231,23 +219,6 @@ class QuickJsScriptRun {
     return payload
   }
 
-  // Bounds host memory when a script prints in a loop; the agent only sees outputBytes anyway.
-  private recordPrint(line: string): void {
-    const bytes = Buffer.byteLength(line, 'utf8') + 1
-    if (this.printedBytes + bytes > this.limits.resultBytes) {
-      this.droppedPrintBytes += bytes
-      return
-    }
-    this.printedBytes += bytes
-    this.printed.push(line)
-  }
-
-  private printedLines(): string[] {
-    return this.droppedPrintBytes > 0
-      ? [...this.printed, `…[${this.droppedPrintBytes} bytes of print output dropped]`]
-      : [...this.printed]
-  }
-
   private failWithThrown(handle: QuickJSHandle, code: string): ScriptResult {
     try {
       return this.fail(this.stopError ?? this.describeThrown(handle, code))
@@ -275,7 +246,7 @@ class QuickJsScriptRun {
   }
 
   private fail(error: string): ScriptResult {
-    return { ok: false, printed: this.printedLines(), error }
+    return { ok: false, printed: this.prints.printed(), error }
   }
 
   private dispose(): void {
