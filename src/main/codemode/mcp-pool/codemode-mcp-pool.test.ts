@@ -21,6 +21,14 @@ function makePool(approve: (s: CodemodeServerSpec) => Promise<boolean> = async (
 afterEach(async () => {
   await Promise.all(pools.splice(0).map((p) => p.close()))
 })
+function expectGone(pids: number[]): void {
+  if (process.platform === 'win32') {
+    return
+  }
+  for (const pid of pids) {
+    expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }))
+  }
+}
 const signal = () => new AbortController().signal
 
 describe('CodemodeMcpPool', () => {
@@ -89,6 +97,36 @@ describe('CodemodeMcpPool', () => {
     const controller = new AbortController()
     controller.abort()
     await expect(pool.call('fake-crm', 'get_state', {}, controller.signal)).rejects.toThrow()
+  })
+
+  it('shares one approval and one start between concurrent first calls', async () => {
+    let asked = 0
+    const pool = makePool(async () => {
+      asked++
+      return true
+    })
+    await Promise.all([
+      pool.call('fake-crm', 'get_state', {}, signal()),
+      pool.call('fake-crm', 'get_state', {}, signal())
+    ])
+    expect(asked).toBe(1)
+    expect(pool.startedCount()).toBe(1)
+    const pids = pool.pids()
+    await pool.close()
+    expectGone(pids)
+  })
+
+  it('close() during an in-flight start leaves no child, and later calls reject', async () => {
+    const pool = makePool()
+    const inFlight = pool.call('fake-crm', 'get_state', {}, signal()).catch(() => null)
+    await pool.close()
+    await inFlight
+    expectGone(pool.pids())
+    await expect(pool.call('fake-crm', 'get_state', {}, signal())).rejects.toThrow(
+      'MCP pool is closed'
+    )
+    await expect(pool.describe('fake-crm')).rejects.toThrow('MCP pool is closed')
+    expect(pool.startedCount()).toBeLessThanOrEqual(1)
   })
 
   it('close() leaves no child processes', async () => {

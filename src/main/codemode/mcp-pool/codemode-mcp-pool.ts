@@ -26,6 +26,7 @@ type Entry = {
   stderr: string[]
 }
 
+const POOL_CLOSED = 'MCP pool is closed'
 const REQUEST_TIMEOUT_MS = 600_000
 const STDERR_FLUSH_MS = 100
 const STDERR_LINES_KEPT = 5
@@ -44,6 +45,7 @@ export class CodemodeMcpPool {
   private readonly entries = new Map<string, Entry>()
   private readonly allPids: number[] = []
   private started = 0
+  private closed = false
 
   constructor(
     specs: CodemodeServerSpec[],
@@ -135,13 +137,17 @@ export class CodemodeMcpPool {
   }
 
   async close(): Promise<void> {
+    this.closed = true
+    const pending = [...this.entries.values()].flatMap((entry) =>
+      entry.starting ? [entry.starting.catch(() => null)] : []
+    )
+    await Promise.all(pending)
     const lives: Live[] = []
     for (const entry of this.entries.values()) {
       if (entry.live) {
         lives.push(entry.live)
       }
       entry.live = null
-      entry.starting = null
     }
     await Promise.all(lives.map((live) => live.client.close().catch(() => {})))
   }
@@ -154,13 +160,21 @@ export class CodemodeMcpPool {
     return entry
   }
 
-  private async ensure(entry: Entry): Promise<Live> {
+  private ensure(entry: Entry): Promise<Live> {
+    if (this.closed) {
+      return Promise.reject(new Error(POOL_CLOSED))
+    }
     if (entry.live?.alive) {
-      return entry.live
+      return Promise.resolve(entry.live)
     }
-    if (entry.starting) {
-      return entry.starting
-    }
+    // One promise covers approval and spawn so concurrent first calls share a single start.
+    entry.starting ??= this.begin(entry).finally(() => {
+      entry.starting = null
+    })
+    return entry.starting
+  }
+
+  private async begin(entry: Entry): Promise<Live> {
     if (entry.everStarted) {
       if (entry.restartsThisTurn >= 1) {
         throw this.failedError(entry)
@@ -173,10 +187,10 @@ export class CodemodeMcpPool {
       }
       entry.approved = true
     }
-    entry.starting = this.start(entry).finally(() => {
-      entry.starting = null
-    })
-    return entry.starting
+    if (this.closed) {
+      throw new Error(POOL_CLOSED)
+    }
+    return this.start(entry)
   }
 
   private async start(entry: Entry): Promise<Live> {
