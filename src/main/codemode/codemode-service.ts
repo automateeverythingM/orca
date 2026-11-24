@@ -316,7 +316,8 @@ export class CodemodeService {
     return readConnectorsOff({ options: this.sessionOptions.read(sessionId) })
   }
 
-  private openConnectors(): Promise<CodemodeConnectorWiring | null> {
+  /** The connector list and sign-ins, opened on first use; null when they can't be. */
+  openConnectors(): Promise<CodemodeConnectorWiring | null> {
     const open = this.opts.connectors
     if (!open) {
       return Promise.resolve(null)
@@ -352,6 +353,9 @@ async function openDefaultConnectors(): Promise<CodemodeConnectorWiring> {
   const auth = new CodemodeConnectorAuth(store)
   return { store, auth, pool: new CodemodeConnectorPool(store, auth) }
 }
+
+/** The process's service once the runtime created it; null before. */
+export const installedCodemodeService = (): CodemodeService | null => processService
 
 /** The process's one service, with the user's connector list; the first caller's options win. */
 export function processCodemodeService(opts?: CodemodeServiceOptions): CodemodeService {

@@ -350,6 +350,16 @@ import {
   StartImageUpload
 } from './clipboard/clipboard-params'
 import {
+  CodemodeConnectorAdd,
+  CodemodeConnectorRegistrySearch,
+  CodemodeConnectorSetToken,
+  CodemodeConnectorSignInCancel,
+  CodemodeConnectorTarget,
+  CodemodeConnectorUpdate,
+  CodemodeSessionConnectorToggle,
+  CodemodeSessionConnectors
+} from './codemode/codemode-connectors-params'
+import {
   ComputerCapabilitiesParams,
   ComputerPermissionsStatusParams
 } from './computer/computer-params'
@@ -1500,6 +1510,17 @@ export const RPC_PARAMS_BY_METHOD = {
   'clipboard.commitImageUpload': CommitImageUpload,
   'clipboard.saveImageAsTempFile': SaveImageAsTempFile,
   'clipboard.startImageUpload': StartImageUpload,
+  'codemode.connectors.add': CodemodeConnectorAdd,
+  'codemode.connectors.list': null,
+  'codemode.connectors.registry.search': CodemodeConnectorRegistrySearch,
+  'codemode.connectors.remove': CodemodeConnectorTarget,
+  'codemode.connectors.session.list': CodemodeSessionConnectors,
+  'codemode.connectors.session.toggle': CodemodeSessionConnectorToggle,
+  'codemode.connectors.setToken': CodemodeConnectorSetToken,
+  'codemode.connectors.signIn.cancel': CodemodeConnectorSignInCancel,
+  'codemode.connectors.signIn.start': CodemodeConnectorTarget,
+  'codemode.connectors.signIn.status': CodemodeConnectorTarget,
+  'codemode.connectors.update': CodemodeConnectorUpdate,
   'computer.capabilities': ComputerCapabilitiesParams,
   'computer.click': Click,
   'computer.drag': DragOfComputerSchemasParams,
