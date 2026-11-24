@@ -227,7 +227,8 @@ async function composedPart<L>(
       const own = sources.resolveToolServers
         ? await sources.resolveToolServers(record, root)
         : BotLaunchTools.none
-      return starts
+      // The setting first: a launch without code mode never resolves the agent's environment here.
+      return starts && sources.codemode?.enabled() === true
         ? withSessionCodemode(own, sources, {
             agent: definition.agent,
             sessionId: record.sessionId,
