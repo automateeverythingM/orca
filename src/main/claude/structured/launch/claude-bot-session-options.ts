@@ -24,7 +24,10 @@ export async function claudeBotSessionOptions(
   linked: readonly LinkedSkillProject[],
   tools: BotLaunchTools,
   refused: { mcpConfig: boolean }
-): Promise<Pick<ClaudeAgentSdkOptions, 'systemPrompt' | 'mcpServers'> & ClaudeReadOnlyOptions> {
+): Promise<
+  Pick<ClaudeAgentSdkOptions, 'systemPrompt' | 'mcpServers' | 'mcpServersDelivery'> &
+    ClaudeReadOnlyOptions
+> {
   // Claude loads every linked project's skills, so the section lists none as unloaded.
   const own = await basis.instructions(linkedSkillsSection(linked, []))
   // Managed settings that refuse --mcp-config would stop Claude starting; it starts without them.
@@ -45,8 +48,9 @@ export async function claudeBotSessionOptions(
       ? { systemPrompt: { type: 'preset', preset: 'claude_code', append: instructions } }
       : {}),
     ...(basis.readOnly ? claudeReadOnlyOptions(basis.readOnly) : {}),
+    // The user's own CLI may predate reading MCP servers from initialize, the SDK's planned default.
     ...(tools.servers.length > 0 && !refused.mcpConfig
-      ? { mcpServers: claudeLaunchServers(tools) }
+      ? { mcpServers: claudeLaunchServers(tools), mcpServersDelivery: 'argv' as const }
       : {})
   }
 }
