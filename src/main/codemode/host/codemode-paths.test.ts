@@ -49,4 +49,25 @@ describe('resolveInRoot', () => {
     expect((await resolveInRoot(root, '.')).inside).toBe(true)
     expect((await resolveInRoot(root, join(root, 'x'))).inside).toBe(true)
   })
+
+  it('resolves a dangling symlink to a missing outside target as outside', async () => {
+    await symlink(join(outside, 'planted.txt'), join(root, 'innocent.txt'))
+    expect((await resolveInRoot(root, 'innocent.txt')).inside).toBe(false)
+    await symlink('../outside/missing/deep.txt', join(root, 'rel.txt'))
+    expect((await resolveInRoot(root, 'rel.txt')).inside).toBe(false)
+  })
+
+  it('accepts a dangling symlink whose missing target is inside the root', async () => {
+    await symlink('later.txt', join(root, 'soon.txt'))
+    expect(await resolveInRoot(root, 'soon.txt')).toEqual({
+      path: join(root, 'later.txt'),
+      inside: true
+    })
+  })
+
+  it('fails closed on a symlink loop', async () => {
+    await symlink('b', join(root, 'a'))
+    await symlink('a', join(root, 'b'))
+    expect((await resolveInRoot(root, 'a')).inside).toBe(false)
+  })
 })

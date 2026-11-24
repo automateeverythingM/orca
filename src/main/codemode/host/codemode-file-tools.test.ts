@@ -69,6 +69,13 @@ describe('codemode file tools', () => {
     expect((await findTool({ pattern: '*', path: '..' }, ctx)).ok).toBe(false)
   })
 
+  it('refuses writing through a dangling symlink to a missing outside file', async () => {
+    await symlink(join(base, 'outside', 'planted.txt'), join(root, 'innocent.txt'))
+    const reply = await writeFileTool({ path: 'innocent.txt', content: 'x' }, ctx)
+    expect(reply).toEqual({ ok: false, error: 'path is outside the workspace: innocent.txt' })
+    await expect(readFile(join(base, 'outside', 'planted.txt'))).rejects.toThrow()
+  })
+
   describe('edit', () => {
     beforeEach(async () => {
       await writeFile(join(root, 'e.txt'), 'one two one\nthree')

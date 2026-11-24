@@ -50,6 +50,14 @@ describe('runBash', () => {
     expect(result.exit_code).toBe(0)
     expect(result.output.length).toBeLessThan(CODEMODE_LIMITS.outputBytes + 300)
     expect(result.output.length).toBeLessThan(100_000)
+    expect(result.output).toMatch(/…\[\d+ bytes cut\]…/)
+  })
+
+  it.skipIf(!posix)('keeps the real tail and true cut count beyond 8 MiB', async () => {
+    const result = await run('head -c 9000000 /dev/zero | tr "\\0" a; echo; echo TAIL-MARKER')
+    expect(result.output.endsWith('TAIL-MARKER\n')).toBe(true)
+    const cut = Number(/…\[(\d+) bytes cut\]…/.exec(result.output)?.[1])
+    expect(cut).toBeGreaterThan(8_900_000)
   })
 
   it.skipIf(!posix)('kills the whole process group on timeout', async () => {

@@ -2,9 +2,10 @@ import type { ScriptResult } from './codemode-script-runner'
 
 const isContinuationByte = (byte: number): boolean => (byte & 0xc0) === 0x80
 
-export function trimOutput(text: string, maxBytes: number): string {
+/** `extraCut` counts bytes the caller already dropped between head and tail of `text`. */
+export function trimOutput(text: string, maxBytes: number, extraCut = 0): string {
   const buffer = Buffer.from(text, 'utf8')
-  if (buffer.length <= maxBytes) {
+  if (buffer.length <= maxBytes && extraCut === 0) {
     return text
   }
   let headEnd = Math.floor(maxBytes / 2)
@@ -15,7 +16,7 @@ export function trimOutput(text: string, maxBytes: number): string {
   while (tailStart < buffer.length && isContinuationByte(buffer[tailStart])) {
     tailStart++
   }
-  const cut = tailStart - headEnd
+  const cut = Math.max(0, tailStart - headEnd) + extraCut
   const head = buffer.subarray(0, headEnd).toString('utf8')
   const tail = buffer.subarray(tailStart).toString('utf8')
   return `${head}\n…[${cut} bytes cut]…\n${tail}`

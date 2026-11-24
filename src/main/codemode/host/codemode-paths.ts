@@ -1,22 +1,44 @@
-import { realpath } from 'node:fs/promises'
+import { lstat, readlink, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
+const MAX_LINK_HOPS = 40
+
+/** Resolve a missing path by following dangling symlinks, so a link cannot hide an outside target. */
 async function realpathOfDeepestAncestor(target: string): Promise<string> {
-  const tail: string[] = []
-  let current = target
+  let hops = 0
+  let pending = target
   for (;;) {
-    try {
-      return join(await realpath(current), ...tail.toReversed())
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      const parent = dirname(current)
-      // ENOENT/ENOTDIR mean this component does not exist yet; any other error (EACCES, ELOOP) fails closed.
-      if ((code !== 'ENOENT' && code !== 'ENOTDIR') || parent === current) {
-        throw error
+    const tail: string[] = []
+    let current = pending
+    let redirected: string | null = null
+    for (;;) {
+      try {
+        return join(await realpath(current), ...tail.toReversed())
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        const parent = dirname(current)
+        // ENOENT/ENOTDIR mean this component is missing or dangling; any other error (EACCES, ELOOP) fails closed.
+        if ((code !== 'ENOENT' && code !== 'ENOTDIR') || parent === current) {
+          throw error
+        }
+        let isLink = false
+        try {
+          isLink = (await lstat(current)).isSymbolicLink()
+        } catch {
+          /* missing component */
+        }
+        if (isLink) {
+          redirected = join(resolve(parent, await readlink(current)), ...tail.toReversed())
+          break
+        }
+        tail.push(current.slice(parent.length).replace(/^[\\/]+/, ''))
+        current = parent
       }
-      tail.push(current.slice(parent.length).replace(/^[\\/]+/, ''))
-      current = parent
     }
+    if (++hops > MAX_LINK_HOPS) {
+      throw new Error('too many symbolic links')
+    }
+    pending = redirected
   }
 }
 

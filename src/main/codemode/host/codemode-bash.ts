@@ -1,7 +1,10 @@
 import type { ChildProcess } from 'node:child_process'
 import { spawnProcess } from '@orca/process-host'
+import {
+  forceTerminateProcessTree,
+  signalProcessTree
+} from '@orca/process-host/process-tree-termination'
 import { windowsSystem32Binary } from '@orca/process-host/windows-system-binary'
-import { terminateWindowsProcessTree } from '../../pty/process-retirement/windows-process-tree-kill'
 import type { CodemodeLimits } from '../codemode-limits'
 import { trimOutput } from '../sandbox/codemode-output-trim'
 
@@ -15,8 +18,6 @@ export type BashOptions = {
 
 const KILL_GRACE_MS = 2_000
 const CLOSE_WAIT_MS = 1_000
-// Bounds memory while the child is still running; trimOutput then cuts to the agent limit.
-const MAX_CAPTURE_BYTES = 8 * 1024 * 1024
 
 /** POSIX uses /bin/sh for predictable behaviour; Windows uses cmd.exe with verbatim arguments. */
 function shellProcess(cmd: string): { program: string; args: string[]; verbatim: boolean } {
@@ -28,27 +29,37 @@ function shellProcess(cmd: string): { program: string; args: string[]; verbatim:
 }
 
 function killGroup(child: ChildProcess): void {
-  const pid = child.pid
-  if (!pid) {
-    return
-  }
-  if (process.platform === 'win32') {
-    void terminateWindowsProcessTree(pid, { site: 'codemode-bash' }).then((ok) => {
-      if (!ok) {
-        child.kill()
-      }
-    })
-    return
-  }
-  const signalGroup = (signal: NodeJS.Signals): void => {
-    try {
-      process.kill(-pid, signal)
-    } catch {
-      /* group already gone */
+  void signalProcessTree(child, 'SIGTERM').catch(() => false)
+  setTimeout(() => {
+    void forceTerminateProcessTree(child).catch(() => false)
+  }, KILL_GRACE_MS).unref()
+}
+
+/** Keeps the first and last `limit` bytes plus a count of what was dropped between them. */
+class HeadTailCapture {
+  private head = Buffer.alloc(0)
+  private tail = Buffer.alloc(0)
+  private total = 0
+  constructor(private readonly limit: number) {}
+
+  push(chunk: Buffer): void {
+    this.total += chunk.length
+    let rest = chunk
+    if (this.head.length < this.limit) {
+      const take = this.limit - this.head.length
+      this.head = Buffer.concat([this.head, rest.subarray(0, take)])
+      rest = rest.subarray(take)
+    }
+    if (rest.length > 0) {
+      const joined = Buffer.concat([this.tail, rest])
+      this.tail = joined.length > this.limit ? joined.subarray(joined.length - this.limit) : joined
     }
   }
-  signalGroup('SIGTERM')
-  setTimeout(() => signalGroup('SIGKILL'), KILL_GRACE_MS).unref()
+
+  result(): { text: string; dropped: number } {
+    const dropped = this.total - this.head.length - this.tail.length
+    return { text: Buffer.concat([this.head, this.tail]).toString('utf8'), dropped }
+  }
 }
 
 function formatSeconds(ms: number): string {
@@ -65,9 +76,10 @@ export function runBash(
   const finish = (
     exit_code: number,
     text: string,
-    note = ''
+    note = '',
+    dropped = 0
   ): { exit_code: number; output: string } => {
-    const trimmed = trimOutput(text, opts.limits.outputBytes)
+    const trimmed = trimOutput(text, opts.limits.outputBytes, dropped)
     return {
       exit_code,
       output: note ? `${trimmed}${trimmed.endsWith('\n') || !trimmed ? '' : '\n'}${note}` : trimmed
@@ -93,18 +105,14 @@ export function runBash(
       resolve(finish(127, error instanceof Error ? error.message : String(error)))
       return
     }
-    const chunks: Buffer[] = []
-    let captured = 0
+    const capture = new HeadTailCapture(opts.limits.outputBytes)
     let note = ''
     let forcedCode: number | null = null
     let settled = false
     let closeWait: ReturnType<typeof setTimeout> | undefined
 
     const collect = (chunk: Buffer): void => {
-      if (captured < MAX_CAPTURE_BYTES) {
-        chunks.push(chunk)
-        captured += chunk.length
-      }
+      capture.push(chunk)
     }
     child.stdout?.on('data', collect)
     child.stderr?.on('data', collect)
@@ -117,7 +125,8 @@ export function runBash(
       clearTimeout(timer)
       clearTimeout(closeWait)
       opts.signal.removeEventListener('abort', onAbort)
-      resolve(finish(forcedCode ?? code, Buffer.concat(chunks).toString('utf8'), note))
+      const { text, dropped } = capture.result()
+      resolve(finish(forcedCode ?? code, text, note, dropped))
     }
     const stop = (code: number, message: string): void => {
       if (forcedCode !== null) {
@@ -137,7 +146,7 @@ export function runBash(
     opts.signal.addEventListener('abort', onAbort, { once: true })
 
     child.on('error', (error) => {
-      chunks.push(Buffer.from(error.message))
+      capture.push(Buffer.from(error.message))
       settle(127)
     })
     child.on('close', (code, signal) => settle(code ?? (signal ? 128 : 1)))
