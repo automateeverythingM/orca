@@ -19,5 +19,6 @@ export const WORKER_THREAD_ENTRY_NAMES = [
   'codex-project-trust-worker-entry',
   'claude-profile-setup-worker-entry',
   ...(['backup', 'writer'] as const).map((kind) => `profile-state-${kind}-worker-entry` as const),
-  'plugin-source-transpile-worker-entry'
+  'plugin-source-transpile-worker-entry',
+  'codemode-worker-entry'
 ] as const
