@@ -1,6 +1,7 @@
 import { defineFixture } from '../../../component-fixtures/component-fixture'
 import type { AgentSessionMcpServer } from '../../../../../shared/agent-session/options/protocol/agent-session-mcp'
 import type { AgentSessionMcpPanelState } from '../../../../../shared/agent-session/view/use-agent-session-mcp-panel'
+import type { CodemodeSessionConnectorView } from '../../../../../shared/codemode/codemode-connector-types'
 import { NativeChatThreadGoalBanner } from '../session/goals/NativeChatThreadGoalBanner'
 import { NativeChatMcpTrayView } from './NativeChatMcpTray'
 
@@ -59,7 +60,12 @@ const GOAL = {
 // The composer box is mocked, as the worker lifetime fixture does.
 function fixture(
   state: Partial<AgentSessionMcpPanelState>,
-  options: { runtime?: 'local' | 'remote'; underGoal?: boolean } = {}
+  options: {
+    runtime?: 'local' | 'remote'
+    underGoal?: boolean
+    codemodeErrors?: Record<string, string>
+    codemode?: CodemodeSessionConnectorView[]
+  } = {}
 ) {
   return defineFixture({
     width: 640,
@@ -89,6 +95,15 @@ function fixture(
           run={() => {}}
           retry={() => {}}
           retrying={false}
+          codemode={
+            options.codemode
+              ? {
+                  connectors: options.codemode,
+                  errors: options.codemodeErrors ?? {},
+                  toggle: () => {}
+                }
+              : undefined
+          }
           dismissSignIn={() => {}}
           openUrl={() => {}}
           onClose={() => {}}
@@ -146,3 +161,15 @@ export const notRunning = fixture({ result: { status: 'not-running' } })
 export const readFailed = fixture({ result: { status: 'failed', message: null } })
 
 export const underGoal = fixture({ servers: SIGN_IN_SERVERS }, { underGoal: true })
+
+export const codemodeConnectors = fixture(
+  { servers: SIGN_IN_SERVERS },
+  {
+    codemode: [
+      { id: 'a1', name: 'linear', on: true, enabled: true, status: 'connected' },
+      { id: 'b2', name: 'notion', on: false, enabled: true, status: 'sign-in-needed' },
+      { id: 'c3', name: 'sentry', on: false, enabled: false, status: 'connected' }
+    ],
+    codemodeErrors: { b2: 'connectors unavailable' }
+  }
+)

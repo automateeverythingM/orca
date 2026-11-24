@@ -22,6 +22,11 @@ import { useStructuredAgentSessionHostExecutionPhase } from '../session/status/s
 import { mcpSourceLabel, mcpTraySummary } from './native-chat-mcp-server-text'
 import { NativeChatMcpServerRow, type McpServerAction } from './NativeChatMcpServerRow'
 import { useDeferredPending } from './use-deferred-pending'
+import { NativeChatCodemodeConnectors } from './NativeChatCodemodeConnectors'
+import {
+  useCodemodeSessionConnectors,
+  type CodemodeSessionConnectorsState
+} from './use-codemode-session-connectors'
 
 const useAgentSessionMcpPanel = createAgentSessionMcpPanelHook({
   useCallback,
@@ -58,6 +63,7 @@ export function NativeChatMcpTray({
   // An agent at rest has no servers to list; re-read once it starts or stops.
   const phase = useStructuredAgentSessionHostExecutionPhase(sessionId, target)
   const panel = useAgentSessionMcpPanel(call, openSignInPage, `${opens}:${phase}`)
+  const codemode = useCodemodeSessionConnectors(sessionId, opens)
   const readAgain = panel.retry
   const [retrying, setRetrying] = useState(false)
   const retry = useCallback(() => {
@@ -71,6 +77,7 @@ export function NativeChatMcpTray({
       run={(operation) => void panel.run(operation)}
       retry={retry}
       retrying={retrying}
+      codemode={codemode}
       dismissSignIn={panel.dismissSignIn}
       openUrl={openSignInPage}
       onClose={onClose}
@@ -84,6 +91,8 @@ type McpTrayViewProps = {
   run: (operation: McpServerAction) => void
   retry: () => void
   retrying: boolean
+  /** This chat's code mode connectors; absent or empty shows no section. */
+  codemode?: CodemodeSessionConnectorsState
   dismissSignIn: () => void
   openUrl: (url: string) => void
   onClose: () => void
@@ -141,6 +150,7 @@ export function NativeChatMcpTrayView(props: McpTrayViewProps): React.JSX.Elemen
           </Tooltip>
         </div>
         {listed ? <McpTrayList {...props} /> : null}
+        {props.codemode ? <NativeChatCodemodeConnectors {...props.codemode} /> : null}
       </section>
     </NativeChatComposerTabStrip>
   )

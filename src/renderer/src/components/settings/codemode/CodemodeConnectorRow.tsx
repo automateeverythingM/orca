@@ -34,7 +34,7 @@ function statusTone(status: CodemodeConnectorStatus): string {
   }
 }
 
-function statusLabel(status: CodemodeConnectorStatus, t: Translate): string {
+export function statusLabel(status: CodemodeConnectorStatus, t: Translate): string {
   switch (status) {
     case 'connected':
       return t('settings.codemode.connectors.status.connected', 'Connected')

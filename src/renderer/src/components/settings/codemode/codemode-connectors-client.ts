@@ -3,7 +3,10 @@ import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 import { RuntimeRpcCallError } from '@/runtime/rpc/calls/runtime-rpc-result'
 import { translate } from '@/i18n/i18n'
 import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
-import type { CodemodeConnectorView } from '../../../../../shared/codemode/codemode-connector-types'
+import type {
+  CodemodeConnectorView,
+  CodemodeSessionConnectorView
+} from '../../../../../shared/codemode/codemode-connector-types'
 import {
   botToolSignInFailureWords,
   type BotToolSignInProgress
@@ -46,6 +49,25 @@ export async function listCodemodeConnectors(): Promise<CodemodeConnectorView[]>
     'codemode.connectors.list'
   )
   return connectors
+}
+
+export async function listCodemodeSessionConnectors(
+  sessionId: string
+): Promise<CodemodeSessionConnectorView[]> {
+  const { connectors } = await callRuntimeRpc<{ connectors: CodemodeSessionConnectorView[] }>(
+    LOCAL,
+    'codemode.connectors.session.list',
+    { sessionId }
+  )
+  return connectors
+}
+
+export async function toggleCodemodeSessionConnector(
+  sessionId: string,
+  id: string,
+  on: boolean
+): Promise<void> {
+  await callRuntimeRpc(LOCAL, 'codemode.connectors.session.toggle', { sessionId, id, on })
 }
 
 export async function addCodemodeConnector(
