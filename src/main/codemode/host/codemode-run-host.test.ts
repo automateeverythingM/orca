@@ -17,7 +17,7 @@ import {
 } from './codemode-run-host'
 
 const UNSUPPORTED =
-  'approval needed but this agent cannot show approval cards; switch the chat to full access or call the tool directly'
+  'approval needed but this agent cannot show approval cards; call the tool directly instead'
 
 let bundleRoot: string
 let workerPath: string

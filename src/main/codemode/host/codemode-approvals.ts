@@ -25,7 +25,7 @@ export function deniedCallText(label: string): string {
   return `${label}: ${DENIED_TEXT}`
 }
 export const UNSUPPORTED_TEXT =
-  'approval needed but this agent cannot show approval cards; switch the chat to full access or call the tool directly'
+  'approval needed but this agent cannot show approval cards; call the tool directly instead'
 export const REFUSED_TEXT = 'not allowed in this chat mode'
 export const INTERRUPTED_TEXT = 'Interrupted by user'
 
