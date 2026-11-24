@@ -1,59 +1,14 @@
 import { lookAroundOrchestrationAllowed } from '../../bots/bot-look-around-policy'
 import { isOrchestrationMutation } from '../../../shared/orchestration/orchestration-rpc-contract'
+import {
+  CODEMODE_ORCA_AGENT_LAUNCH_METHODS,
+  CODEMODE_ORCA_OUTWARD_METHODS,
+  CODEMODE_ORCA_PRIVATE_READ_METHODS,
+  CODEMODE_ORCA_PROMPT_METHODS,
+  CODEMODE_ORCA_SHELL_INPUT_METHODS,
+  CODEMODE_ORCA_WAKE_METHODS
+} from './codemode-orca-method-label-sets'
 import type { OrcaMethodLabel } from './codemode-orca-method-policy'
-
-/** Methods whose handler starts or dispatches an agent session or worker: always ask. */
-export const CODEMODE_ORCA_AGENT_LAUNCH_METHODS: ReadonlySet<string> = new Set([
-  'agentSession.create',
-  'agentSession.ensure',
-  'agentSession.restartContinue',
-  'agentSession.continueInterrupted',
-  'agent.launch',
-  'agent.launchReplay',
-  'terminal.createAgentSession',
-  'terminal.ensureAgentSession',
-  // `launchAgent` / `startupAgent` params start an agent with the terminal or workspace.
-  'terminal.create',
-  'session.tabs.createTerminal',
-  'worktree.create',
-  'folderWorkspace.create',
-  'orchestration.dispatch',
-  'orchestration.workerStart',
-  'orchestration.run',
-  'automation.runNow'
-])
-
-/** Methods that send a prompt or start a turn in an existing chat or worker: always ask. */
-export const CODEMODE_ORCA_PROMPT_METHODS: ReadonlySet<string> = new Set([
-  'agentSession.send',
-  'agentSession.sendRecorded',
-  'agentSession.queuedMessageSend',
-  'agentSession.queuedMessageUpdate',
-  'agentSession.queuedMessagesResume',
-  'orchestration.send',
-  'orchestration.ask',
-  'orchestration.reply',
-  'orchestration.peerMailDeliver'
-])
-
-/** Methods that type raw input into a PTY or run a shell command: shell-equivalent, always ask. */
-export const CODEMODE_ORCA_SHELL_INPUT_METHODS: ReadonlySet<string> = new Set([
-  'terminal.send',
-  'terminal.split',
-  'terminal.inferCodexQuestionSkip',
-  'emulator.exec',
-  // `customAgentCommand` / `agentCmdOverrides` run a caller-chosen command on the host.
-  'git.generateCommitMessage',
-  'git.generatePullRequestFields',
-  'git.discoverCommitMessageModels'
-])
-
-/** Methods that deliver mail or set work that wakes a worker or chat: always ask. */
-export const CODEMODE_ORCA_WAKE_METHODS: ReadonlySet<string> = new Set([
-  'agentSession.threadGoal',
-  'orchestration.peerMailReturn',
-  'webhooks.pause'
-])
 
 const READ_VERBS: ReadonlySet<string> = new Set([
   'list',
@@ -109,6 +64,8 @@ export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel>
   ...labelled('destructive', [...CODEMODE_ORCA_PROMPT_METHODS]),
   ...labelled('destructive', [...CODEMODE_ORCA_SHELL_INPUT_METHODS]),
   ...labelled('destructive', [...CODEMODE_ORCA_WAKE_METHODS]),
+  ...labelled('destructive', [...CODEMODE_ORCA_OUTWARD_METHODS]),
+  ...labelled('write', [...CODEMODE_ORCA_PRIVATE_READ_METHODS]),
   ...labelled('destructive', [
     'worktree.rm',
     'repo.rm',
@@ -133,14 +90,7 @@ export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel>
     // Reads with side effects: PTY input, page actions, find highlighting.
     'terminal.viewClaudeAgent',
     'browser.find',
-    'browser.findInPage',
-    // Private history and outbound fetches stay out of read-only mode.
-    'aiVault.searchSessions',
-    'aiVault.searchStatus',
-    'aiVault.resolveSessionTitles',
-    'aiVault.listSessions',
-    'nativeChat.readSession',
-    'linkPreview.get'
+    'browser.findInPage'
   ]),
   ...labelled('read', [
     'repo.sparsePresets',
@@ -213,9 +163,6 @@ export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel>
     'files.stat',
     'files.pathsExist',
     'files.statTerminalArtifact',
-    'agentSession.history',
-    'agentSession.conversationOutline',
-    'agentSession.item',
     'agentSession.handoffStatus',
     'agentSession.commands',
     'agentSession.options',
