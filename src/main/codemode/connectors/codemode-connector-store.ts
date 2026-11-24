@@ -90,8 +90,13 @@ export class CodemodeConnectorStore {
     let text: string
     try {
       text = await readFile(path, 'utf8')
-    } catch {
-      return new CodemodeConnectorStore(path, [])
+    } catch (error) {
+      // Why: only a missing file means no connectors; opening empty on any other error would let
+      // the next write wipe the list.
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        return new CodemodeConnectorStore(path, [])
+      }
+      throw error
     }
     const connectors = parseConnectors(text)
     if (connectors) {

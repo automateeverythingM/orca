@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -87,6 +87,22 @@ describe('CodemodeConnectorStore', () => {
     expect(readFileSync(`${path}.corrupt`, 'utf8')).toBe('{not json')
     expect(existsSync(path)).toBe(true)
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses to open a file it cannot read, leaving it untouched',
+    async () => {
+      const saved = JSON.stringify({ version: 1, connectors: [] })
+      writeFileSync(path, saved)
+      chmodSync(path, 0o000)
+      try {
+        await expect(CodemodeConnectorStore.open(path)).rejects.toMatchObject({ code: 'EACCES' })
+      } finally {
+        chmodSync(path, 0o600)
+      }
+      expect(readFileSync(path, 'utf8')).toBe(saved)
+      expect(existsSync(`${path}.corrupt`)).toBe(false)
+    }
+  )
 
   it('notifies on add, update and remove', async () => {
     const store = await CodemodeConnectorStore.open(path)
