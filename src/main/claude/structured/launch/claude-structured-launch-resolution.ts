@@ -99,6 +99,8 @@ export type ClaudeStructuredLaunch = {
   configuredProgram?: string
   /** Chain head replaced by this rewind fork. */
   forkedFromKey?: string
+  /** Code mode's `orca` server is in this launch's MCP config. */
+  codemode?: boolean
 }
 
 export type ClaudeStructuredLaunchPartDeps = {
@@ -299,7 +301,8 @@ export function claudeStructuredLaunchPart(
         ...(sources.configuredProgram ? { configuredProgram: sources.configuredProgram } : {}),
         ...(fork && head && !continuesChain
           ? { forkedFromKey: agentSessionProviderHandleKey(head) }
-          : {})
+          : {}),
+        ...(tools.orcaServerNames.length > 0 && !refused.mcpConfig ? { codemode: true } : {})
       },
       env,
       inheritedEnvToDelete: refused.envToDelete,

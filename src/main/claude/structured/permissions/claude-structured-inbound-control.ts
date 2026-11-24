@@ -29,7 +29,12 @@ export type ClaudePermissionCallbackDeps = {
   emit: (event: ClaudeStructuredSessionEvent) => void
   /** Read once per request: whether this process's Full access applied where the request arrived. */
   fullAccessAt: (requestId: string) => boolean
+  /** This process was launched with code mode's `orca` server, whose approvals arrive as forms. */
+  codemode?: boolean
 }
+
+/** The launch config name of code mode's server, as Claude reports it on an elicitation. */
+const CODEMODE_SERVER_NAME = 'orca'
 
 /** Questions and plan approval need the user's answer, not a permission; Full access never answers them. */
 const USER_ANSWERED_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
@@ -131,8 +136,12 @@ export function buildClaudePermissionCallbacks(deps: ClaudePermissionCallbackDep
 
   const onUserDialog: OnUserDialog = () => Promise.resolve({ behavior: 'cancelled' })
 
-  // An MCP server's question is the person's to answer: Full access never answers it.
+  // An MCP server's question is the person's to answer: Full access never answers it. Only code
+  // mode's own approvals are shown; any other server's question is declined as before, unasked.
   const onElicitation: OnElicitation = (request, options) => {
+    if (deps.codemode !== true || request.serverName !== CODEMODE_SERVER_NAME) {
+      return Promise.resolve(CLAUDE_ELICITATION_DECLINE)
+    }
     const form = claudeElicitationPresentation(request)
     if (!form) {
       return Promise.resolve(CLAUDE_ELICITATION_DECLINE)
@@ -165,8 +174,8 @@ type ClaudeExitHandler = NonNullable<ClaudeStreamJsonConnectionHandlers['onExit'
 /** One process's permission handlers. Only Orca's Full access launch grants auto-allow; Own settings
  *  never does, whatever Claude reports, and no other process's launch or reports carry over. */
 export function claudeLaunchPermissions(
-  deps: Omit<ClaudePermissionCallbackDeps, 'fullAccessAt'>,
-  launch: Pick<ClaudeStructuredLaunch, 'options' | 'providerSessionId'>
+  deps: Omit<ClaudePermissionCallbackDeps, 'fullAccessAt' | 'codemode'>,
+  launch: Pick<ClaudeStructuredLaunch, 'options' | 'providerSessionId' | 'codemode'>
 ): {
   handlers: Pick<
     ClaudeStreamJsonConnectionHandlers,
@@ -182,7 +191,8 @@ export function claudeLaunchPermissions(
     : null
   const callbacks = buildClaudePermissionCallbacks({
     ...deps,
-    fullAccessAt: (requestId) => policy?.allows(requestId) ?? false
+    fullAccessAt: (requestId) => policy?.allows(requestId) ?? false,
+    codemode: launch.codemode === true
   })
   return {
     handlers: { ...callbacks, ...(policy ? { onStdout: policy.observe } : {}) },

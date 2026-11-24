@@ -8,10 +8,13 @@ import {
 } from '../journal/claude-structured-prompt-replies'
 import { claudeElicitationPresentation } from './claude-elicitation-prompt'
 import { ClaudePromptRegistry } from './claude-prompt-registry'
-import { buildClaudePermissionCallbacks } from './claude-structured-inbound-control'
+import {
+  buildClaudePermissionCallbacks,
+  claudeLaunchPermissions
+} from './claude-structured-inbound-control'
 
 const CODE_MODE_REQUEST: ElicitationRequest = {
-  serverName: 'orca-codemode',
+  serverName: 'orca',
   message: 'Run git push?\n\nPushes main to origin',
   mode: 'form',
   requestedSchema: {
@@ -31,7 +34,7 @@ const CODE_MODE_REQUEST: ElicitationRequest = {
   description: 'Pushes main to origin'
 }
 
-function harness() {
+function harness(codemode = true) {
   const prompts = new ClaudePromptRegistry()
   const events: ClaudeStructuredSessionEvent[] = []
   // Full access must not answer an MCP server's question for the person.
@@ -39,7 +42,8 @@ function harness() {
     sessionId: 'session-1',
     prompts,
     emit: (event) => events.push(event),
-    fullAccessAt: () => true
+    fullAccessAt: () => true,
+    codemode
   })
   const opened = () => {
     const event = events.at(-1)
@@ -107,6 +111,48 @@ describe('Claude MCP form elicitations', () => {
     abort.abort()
     await expect(aborted).resolves.toEqual({ action: 'decline' })
     expect(events.map((event) => event.type)).toEqual(['prompt', 'prompt', 'prompt-cancelled'])
+  })
+
+  it('declines without a card when this process was launched without code mode', async () => {
+    const { events, onElicitation } = harness(false)
+    const reply = onElicitation(CODE_MODE_REQUEST, {
+      signal: new AbortController().signal,
+      requestId: 'request-1'
+    })
+    await expect(reply).resolves.toEqual({ action: 'decline' })
+    expect(events).toEqual([])
+  })
+
+  it("declines another MCP server's form without a card even with code mode on", async () => {
+    const { events, onElicitation } = harness(true)
+    const reply = onElicitation(
+      { ...CODE_MODE_REQUEST, serverName: 'crm' },
+      { signal: new AbortController().signal, requestId: 'request-1' }
+    )
+    await expect(reply).resolves.toEqual({ action: 'decline' })
+    expect(events).toEqual([])
+  })
+
+  it("asks the person only for a launch whose MCP config carries code mode's server", async () => {
+    const opened = async (codemode: boolean | undefined) => {
+      const events: ClaudeStructuredSessionEvent[] = []
+      const { handlers } = claudeLaunchPermissions(
+        {
+          sessionId: 'session-1',
+          prompts: new ClaudePromptRegistry(),
+          emit: (e) => events.push(e)
+        },
+        { options: {}, providerSessionId: 'provider-1', ...(codemode ? { codemode } : {}) }
+      )
+      void handlers.onElicitation?.(CODE_MODE_REQUEST, {
+        signal: new AbortController().signal,
+        requestId: 'request-1'
+      })
+      await Promise.resolve()
+      return events.map((event) => event.type)
+    }
+    expect(await opened(true)).toEqual(['prompt'])
+    expect(await opened(undefined)).toEqual([])
   })
 
   it('declines URL elicitations without opening a card', async () => {
