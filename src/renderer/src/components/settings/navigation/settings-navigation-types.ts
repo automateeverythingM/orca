@@ -27,6 +27,7 @@ const SETTINGS_NAV_TARGETS = [
   'tasks',
   'appearance',
   'chat',
+  'code-mode',
   'input',
   'floating-workspace',
   'terminal',

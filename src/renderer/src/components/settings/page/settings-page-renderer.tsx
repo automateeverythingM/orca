@@ -61,6 +61,7 @@ import {
 } from './settings-advanced-section-renderers'
 import { renderProjectSettingsSections } from './settings-project-section-renderer'
 import { renderBotsSettingsSections } from '../bots/settings-bots-section-renderer'
+import { CodemodeSettingsPage } from '../codemode/CodemodeSettingsPage'
 import { botIdFromSettingsSectionId, isBotsSettingsSection } from '../bots/bot-settings-section-ids'
 import {
   SettingsHostScopePicker,
@@ -173,6 +174,13 @@ export function renderSettingsPage(
                   {renderOrchestrationSettingsSection(context, t)}
                   {renderLinearSettingsSection(context, t)}
                   {renderDesktopCapabilitySettingsSections(context, t)}
+                  {model.showDesktopOnlySettings ? (
+                    <CodemodeSettingsPage
+                      settings={model.settings}
+                      updateSettings={model.updateSettings}
+                      searchEntries={navigation.getSectionSearchEntries('code-mode')}
+                    />
+                  ) : null}
                   {renderOrcaAccountSettingsSection(context, t)}
                   {renderSetupGuideSettingsSection(context, t)}
                   {renderGeneralSettingsSection(context, t)}

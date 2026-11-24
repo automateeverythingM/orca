@@ -1989,6 +1989,84 @@
     },
     "artifacts": {
       "teamDisabled": "Artifact sharing is turned off by your team."
+    },
+    "codemode": {
+      "title": "Code mode",
+      "description": "Let agents run JavaScript that calls your MCP servers and connectors in one step.",
+      "connectors": {
+        "title": "MCP connectors",
+        "description": "Remote MCP servers agents can call from code mode, added by URL or from the MCP Registry.",
+        "genericError": "Something went wrong. Try again.",
+        "signInRemoved": "This connector was removed.",
+        "status": {
+          "connected": "Connected",
+          "signInNeeded": "Sign in needed",
+          "tokenNeeded": "Token needed",
+          "error": "Error"
+        },
+        "trusted": "Trusted",
+        "trustedLabel": "Trust {{name}}",
+        "enabled": "Enabled",
+        "enabledLabel": "Enable {{name}}",
+        "signIn": "Sign in",
+        "setToken": "Set token",
+        "remove": "Remove",
+        "finishInBrowser": "Finish signing in in your browser.",
+        "cancel": "Cancel",
+        "tokenLabel": "Token for {{name}}",
+        "tokenPlaceholder": "Paste a token",
+        "save": "Save",
+        "removeConfirm": "Remove {{name}}? Its sign-in is deleted and chats lose its tools.",
+        "add": "Add connector",
+        "reading": "Reading connectors…",
+        "retry": "Try again",
+        "empty": "No connectors yet. Add one by URL or find one in the MCP Registry."
+      },
+      "trusted": {
+        "title": "Trusted local servers",
+        "description": "Code mode runs these local MCP servers’ tools without asking first.",
+        "empty": "None yet. Unless a chat has full access, code mode asks before each call to a local server.",
+        "removeNamed": "Stop trusting {{name}}",
+        "remove": "Remove",
+        "inputLabel": "Local server name",
+        "placeholder": "Server name from .mcp.json",
+        "add": "Trust"
+      },
+      "add": {
+        "title": "Add MCP connector",
+        "description": "A remote MCP server whose tools agents can call from code mode.",
+        "urlTab": "URL",
+        "registryTab": "Search registry",
+        "urlLabel": "Server URL",
+        "nameLabel": "Name",
+        "optional": "(optional)",
+        "namePlaceholder": "Taken from the URL",
+        "nameHint": "Agents call it by this name. Lowercase letters, digits, - and _.",
+        "cancel": "Cancel",
+        "submit": "Add",
+        "urlPlaceholder": "https://mcp.example.com/mcp"
+      },
+      "registry": {
+        "searching": "Searching the MCP Registry…",
+        "hint": "Search by name, such as “github” or “notion”.",
+        "none": "No remote servers match “{{query}}”.",
+        "searchLabel": "Search the MCP Registry",
+        "placeholder": "Search the MCP Registry",
+        "authSignIn": "Sign in",
+        "authToken": "Token",
+        "addNamed": "Add {{name}}",
+        "add": "Add",
+        "more": "More results"
+      },
+      "search": {
+        "mcp": "MCP",
+        "registry": "registry",
+        "remote": "remote server",
+        "signIn": "sign in",
+        "token": "token",
+        "approval": "approval",
+        "mcpJson": ".mcp.json"
+      }
     }
   },
   "menu": {

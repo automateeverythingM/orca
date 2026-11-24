@@ -31,6 +31,7 @@ import {
   buildSetupSettingsSections
 } from './settings-navigation-capability-sections'
 import { buildInterfaceSettingsSections } from './settings-navigation-interface-sections'
+import { buildCodemodeSettingsSections } from './settings-navigation-codemode-sections'
 import {
   buildBotSettingsSections,
   buildBotsPageSettingsSections
@@ -128,6 +129,7 @@ export function buildSettingsNavigationMetadata(
   // Match SETTINGS_NAV_GROUPS order so Settings and Cmd+J keep siblings together.
   return [
     ...buildCapabilitySettingsSections(options, t),
+    ...buildCodemodeSettingsSections(options, t),
     ...buildSetupSettingsSections(options, t),
     ...buildBotsPageSettingsSections(options),
     ...buildWorkflowSettingsSections(options, terminalPaneSearchEntries, t),
