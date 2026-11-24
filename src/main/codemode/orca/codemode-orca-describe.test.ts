@@ -55,13 +55,8 @@ describe('describeOrca', () => {
   })
 
   it('yields a placeholder when a schema cannot be converted', () => {
-    const broken = new Proxy(z.string(), {
-      get(target, prop, receiver) {
-        if (prop === '_zod') {
-          throw new Error('boom')
-        }
-        return Reflect.get(target, prop, receiver)
-      }
+    const broken = z.lazy(() => {
+      throw new Error('boom')
     })
     const custom = OrcaMethodIndex.from([
       { name: 'worktree.broken', permission: 'workspace', params: broken }
