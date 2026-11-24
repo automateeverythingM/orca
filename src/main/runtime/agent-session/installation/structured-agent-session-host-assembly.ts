@@ -29,6 +29,7 @@ import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-sessi
 import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecycle/agent-session-record'
 import { observePRWatchCommittedRows } from '../lifecycle/pr-watch-runtime'
 import { processCodemodeService } from '../../../codemode/codemode-service'
+import { codemodeRecordOptions } from '../launch/structured-agent-codemode-launch'
 import { CodemodeAcquisitionRouter } from './structured-agent-codemode-router'
 
 export async function installOnJournal(
@@ -52,7 +53,9 @@ export async function installOnJournal(
     ? {
         enabled: deps.codemodeEnabled,
         service: processCodemodeService({
-          log: (message, error) => deps.logger.warn(message, { scope: 'codemode', error })
+          log: (message, error) => deps.logger.warn(message, { scope: 'codemode', error }),
+          ...(deps.codemodeTrustedServers ? { trustedServers: deps.codemodeTrustedServers } : {}),
+          sessionOptions: codemodeRecordOptions(store)
         })
       }
     : undefined

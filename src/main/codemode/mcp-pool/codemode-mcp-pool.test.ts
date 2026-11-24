@@ -1,6 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { renderMcpContent } from './codemode-mcp-content'
-import { CodemodeMcpPool, type CodemodeServerSpec } from './codemode-mcp-pool'
+import {
+  type CodemodeConnectorAccess,
+  CodemodeMcpPool,
+  type CodemodeServerSpec
+} from './codemode-mcp-pool'
 import { fakeCrmServerSpec } from './testing/fake-crm-command'
 
 let spec: CodemodeServerSpec
@@ -128,6 +132,43 @@ describe('CodemodeMcpPool', () => {
     )
     await expect(pool.describe('fake-crm')).rejects.toThrow('MCP pool is closed')
     expect(pool.startedCount()).toBeLessThanOrEqual(1)
+  })
+
+  it('routes a name to the connector over a local server of the same name, without a start', async () => {
+    const calls: string[] = []
+    const connectors: CodemodeConnectorAccess = {
+      names: () => ['crm', 'docs'],
+      describe: async (name) => [{ name: `${name}_tool`, input_schema: {} }],
+      call: async (name, tool, args) => {
+        calls.push(`${name}.${tool}`)
+        return { text: JSON.stringify(args), structured: { from: name } }
+      }
+    }
+    let asked = 0
+    const pool = new CodemodeMcpPool([{ ...spec, name: 'crm' }, spec], {
+      cwd: process.cwd(),
+      env: process.env,
+      approveStart: async () => {
+        asked++
+        return true
+      },
+      connectors
+    })
+    pools.push(pool)
+    expect(pool.names()).toEqual(['crm', 'docs', 'fake-crm'])
+    expect(await pool.call('crm', 'get_state', { a: 1 }, signal())).toEqual({
+      text: '{"a":1}',
+      structured: { from: 'crm' }
+    })
+    expect((await pool.describe('crm')).map((tool) => tool.name)).toEqual(['crm_tool'])
+    expect(pool.list()).toEqual([
+      { server: 'crm', tools: ['crm_tool'] },
+      { server: 'docs', tools: null },
+      { server: 'fake-crm', tools: null }
+    ])
+    expect(calls).toEqual(['crm.get_state'])
+    expect(asked).toBe(0)
+    expect(pool.startedCount()).toBe(0)
   })
 
   it('close() leaves no child processes', async () => {

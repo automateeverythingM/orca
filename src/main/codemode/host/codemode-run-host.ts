@@ -2,7 +2,11 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import type { CodemodeLimits } from '../codemode-limits'
 import type { GateMode } from '../gate/codemode-gate'
-import { CodemodeMcpPool, type CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
+import {
+  type CodemodeConnectorAccess,
+  CodemodeMcpPool,
+  type CodemodeServerSpec
+} from '../mcp-pool/codemode-mcp-pool'
 import { formatScriptResult, type InnerCallLine, trimOutput } from '../sandbox/codemode-output-trim'
 import type { HostCall, HostReply } from '../sandbox/codemode-script-runner'
 import { runScriptInWorker } from '../sandbox/codemode-worker-run'
@@ -44,6 +48,8 @@ export type CodemodeSessionOptions = {
   mode: () => GateMode
   trusted: (server: string) => boolean
   specs: CodemodeServerSpec[]
+  /** Remote connectors this chat may call; they win over a local server of the same name. */
+  connectors?: CodemodeConnectorAccess
   limits: CodemodeLimits
   onEvent: (event: InnerCallEvent) => void
   onRun?: (event: CodemodeRunEvent) => void
@@ -106,7 +112,8 @@ export class CodemodeSession {
     this.pool = new CodemodeMcpPool(opts.specs, {
       cwd: opts.root,
       env: opts.env,
-      approveStart: (spec) => this.approveStart(spec)
+      approveStart: (spec) => this.approveStart(spec),
+      ...(opts.connectors ? { connectors: opts.connectors } : {})
     })
   }
 

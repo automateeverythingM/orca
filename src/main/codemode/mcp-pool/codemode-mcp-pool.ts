@@ -10,10 +10,24 @@ export type CodemodeToolInfo = { name: string; description?: string; input_schem
 /** `structured` is the tool's `structuredContent` when it sent one; `text` is the rendered content. */
 export type CodemodeToolResult = { text: string; structured?: unknown }
 
+/** Connectors this chat may call, by name; `names()` is read live, so a switch applies to the next call. */
+export type CodemodeConnectorAccess = {
+  names(): string[]
+  describe(name: string, signal?: AbortSignal): Promise<CodemodeToolInfo[]>
+  call(
+    name: string,
+    tool: string,
+    args: Record<string, unknown>,
+    signal: AbortSignal
+  ): Promise<CodemodeToolResult>
+}
+
 type PoolOptions = {
   cwd: string
   env: NodeJS.ProcessEnv
   approveStart: (spec: CodemodeServerSpec) => Promise<boolean>
+  /** Win over a local server of the same name and need no start approval. */
+  connectors?: CodemodeConnectorAccess
 }
 
 type Live = { client: Client; transport: StdioClientTransport; alive: boolean }
@@ -46,6 +60,7 @@ function cleanEnv(env: NodeJS.ProcessEnv): Record<string, string> {
 
 export class CodemodeMcpPool {
   private readonly entries = new Map<string, Entry>()
+  private readonly connectorTools = new Map<string, string[]>()
   private readonly allPids: number[] = []
   private started = 0
   private closed = false
@@ -69,14 +84,19 @@ export class CodemodeMcpPool {
   }
 
   names(): string[] {
-    return [...this.entries.keys()]
+    const connectors = this.connectorNames()
+    return [...connectors, ...this.localNames(connectors)]
   }
 
   list(): { server: string; tools: string[] | null }[] {
-    return [...this.entries.values()].map((entry) => ({
-      server: entry.spec.name,
-      tools: entry.tools ? entry.tools.map((tool) => tool.name) : null
-    }))
+    const connectors = this.connectorNames()
+    return [
+      ...connectors.map((name) => ({ server: name, tools: this.connectorTools.get(name) ?? null })),
+      ...this.localNames(connectors).map((name) => {
+        const tools = this.entries.get(name)?.tools
+        return { server: name, tools: tools ? tools.map((tool) => tool.name) : null }
+      })
+    ]
   }
 
   /** Number of server processes spawned so far (restarts included). */
@@ -96,6 +116,15 @@ export class CodemodeMcpPool {
   }
 
   async describe(server: string): Promise<CodemodeToolInfo[]> {
+    const connectors = this.connectorsServing(server)
+    if (connectors) {
+      const tools = await connectors.describe(server)
+      this.connectorTools.set(
+        server,
+        tools.map((tool) => tool.name)
+      )
+      return tools
+    }
     const entry = this.entry(server)
     if (entry.tools && entry.live?.alive) {
       return entry.tools
@@ -121,6 +150,10 @@ export class CodemodeMcpPool {
     args: Record<string, unknown>,
     signal: AbortSignal
   ): Promise<CodemodeToolResult> {
+    const connectors = this.connectorsServing(server)
+    if (connectors) {
+      return connectors.call(server, tool, args, signal)
+    }
     const entry = this.entry(server)
     const live = await this.ensure(entry)
     let result: Awaited<ReturnType<Client['callTool']>>
@@ -155,6 +188,22 @@ export class CodemodeMcpPool {
       entry.live = null
     }
     await Promise.all(lives.map((live) => live.client.close().catch(() => {})))
+  }
+
+  private connectorNames(): string[] {
+    return this.options.connectors?.names() ?? []
+  }
+
+  private localNames(connectors: readonly string[]): string[] {
+    return [...this.entries.keys()].filter((name) => !connectors.includes(name))
+  }
+
+  private connectorsServing(server: string): CodemodeConnectorAccess | null {
+    if (this.closed) {
+      throw new Error(POOL_CLOSED)
+    }
+    const { connectors } = this.options
+    return connectors?.names().includes(server) ? connectors : null
   }
 
   private entry(server: string): Entry {

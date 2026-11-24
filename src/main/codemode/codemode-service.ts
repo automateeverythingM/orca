@@ -1,5 +1,17 @@
 import type { BotToolServer } from '../../shared/bot-tools'
+import type { CodemodeConnector } from '../../shared/codemode/codemode-connector-types'
 import { CODEMODE_LIMITS } from './codemode-limits'
+import { CodemodeConnectorAuth, type ConnectorStatus } from './connectors/codemode-connector-auth'
+import { CodemodeConnectorPool } from './connectors/codemode-connector-pool'
+import {
+  codemodeServerTrust,
+  type CodemodeSessionOptionsAccess,
+  connectorAccess,
+  memorySessionOptions,
+  readConnectorsOff,
+  writeConnectorsOff
+} from './connectors/codemode-connector-session-switch'
+import { CodemodeConnectorStore } from './connectors/codemode-connector-store'
 import type { GateMode } from './gate/codemode-gate'
 import { CodemodeSession, type InnerCallEvent } from './host/codemode-run-host'
 import { readCodemodeServerSpecs } from './mcp-pool/codemode-mcp-config'
@@ -39,6 +51,25 @@ export type CodemodeServiceOptions = {
   workerPath?: string
   /** Where runs are kept for the chat to show; default is the process's store. */
   runs?: CodemodeRunStore
+  /** Opened on the first launch; absent: chats get no connectors. */
+  connectors?: () => Promise<CodemodeConnectorWiring>
+  /** Local MCP server names whose calls need no approval; read on every call. */
+  trustedServers?: () => readonly string[]
+  /** Where each chat's connector switches are kept; default is memory. */
+  sessionOptions?: CodemodeSessionOptionsAccess
+}
+
+export type CodemodeConnectorWiring = {
+  store: CodemodeConnectorStore
+  auth: CodemodeConnectorAuth
+  pool: CodemodeConnectorPool
+}
+
+export type CodemodeSessionConnector = {
+  connector: CodemodeConnector
+  /** This chat's switch; a connector off globally stays `on` here but is still unusable. */
+  on: boolean
+  status: ConnectorStatus
 }
 
 /** One per process: the loopback run_js server and each structured session's code-mode session. */
@@ -48,11 +79,16 @@ export class CodemodeService {
   private readonly listeners = new Set<CodemodeInnerCallListener>()
   private readonly log: (message: string, error?: unknown) => void
   private readonly runs: CodemodeRunStore
+  private readonly sessionOptions: CodemodeSessionOptionsAccess
+  private readonly switchWrites = new Map<string, Promise<void>>()
+  private connectorWiring: CodemodeConnectorWiring | null = null
+  private connectorOpening: Promise<CodemodeConnectorWiring | null> | null = null
   private startFailureLogged = false
 
   constructor(private readonly opts: CodemodeServiceOptions = {}) {
     this.server = opts.server ?? new CodemodeHttpServer()
     this.runs = opts.runs ?? processCodemodeRunStore()
+    this.sessionOptions = opts.sessionOptions ?? memorySessionOptions()
     this.log = opts.log ?? ((message, error) => console.warn(`[codemode] ${message}`, error ?? ''))
   }
 
@@ -80,13 +116,26 @@ export class CodemodeService {
       if (problems.length > 0) {
         this.log(`MCP config problems for session ${sessionId}: ${problems.join('; ')}`)
       }
+      const wiring = await this.openConnectors()
+      const connectors = wiring
+        ? connectorAccess({
+            store: wiring.store,
+            pool: wiring.pool,
+            off: () => this.connectorsOff(sessionId)
+          })
+        : undefined
       const session = new CodemodeSession({
         sessionId,
         root: input.root,
         env: input.env,
         mode: input.mode,
-        trusted: () => false,
+        trusted: codemodeServerTrust({
+          connectors,
+          connectorTrusted: (name) => wiring?.store.byName(name)?.trusted === true,
+          trustedServers: this.opts.trustedServers ?? (() => [])
+        }),
         specs,
+        ...(connectors ? { connectors } : {}),
         limits: CODEMODE_LIMITS,
         onEvent: (event) => this.emit(sessionId, event),
         onRun: (event) => this.runs.run(sessionId, event),
@@ -108,6 +157,50 @@ export class CodemodeService {
       this.log(`code mode could not open for session ${sessionId}`, error)
       return null
     }
+  }
+
+  /** Switches a connector off or on for one chat; the chat's next inner call sees it. */
+  async setConnectorOff(sessionId: string, connectorId: string, off: boolean): Promise<void> {
+    const wiring = await this.openConnectors()
+    if (off && !wiring?.store.get(connectorId)) {
+      throw new Error(`unknown connector: ${connectorId}`)
+    }
+    // Why: each write rewrites the whole option, so one chat's switches must not interleave.
+    const previous = this.switchWrites.get(sessionId) ?? Promise.resolve()
+    const next = previous
+      .catch(() => {})
+      .then(async () => {
+        const options = this.sessionOptions.read(sessionId)
+        const ids = [...readConnectorsOff({ options })].filter(
+          (id) => id !== connectorId && wiring?.store.get(id)
+        )
+        await this.sessionOptions.write(
+          sessionId,
+          writeConnectorsOff(options, off ? [...ids, connectorId] : ids)
+        )
+      })
+    this.switchWrites.set(sessionId, next)
+    try {
+      await next
+    } finally {
+      if (this.switchWrites.get(sessionId) === next) {
+        this.switchWrites.delete(sessionId)
+      }
+    }
+  }
+
+  /** Every connector with this chat's switch and its sign-in state; empty until connectors open. */
+  connectorsForSession(sessionId: string): CodemodeSessionConnector[] {
+    const wiring = this.connectorWiring
+    if (!wiring) {
+      return []
+    }
+    const off = this.connectorsOff(sessionId)
+    return wiring.store.list().map((connector) => ({
+      connector,
+      on: !off.has(connector.id),
+      status: wiring.auth.status(connector.id)
+    }))
   }
 
   /**
@@ -158,6 +251,28 @@ export class CodemodeService {
   async stop(): Promise<void> {
     await Promise.all([...this.sessions.keys()].map((sessionId) => this.endSession(sessionId)))
     await this.server.stop()
+    await this.connectorWiring?.pool.closeAll()
+  }
+
+  private connectorsOff(sessionId: string): Set<string> {
+    return readConnectorsOff({ options: this.sessionOptions.read(sessionId) })
+  }
+
+  private openConnectors(): Promise<CodemodeConnectorWiring | null> {
+    const open = this.opts.connectors
+    if (!open) {
+      return Promise.resolve(null)
+    }
+    this.connectorOpening ??= open().then(
+      (wiring) => (this.connectorWiring = wiring),
+      (error: unknown) => {
+        // A later launch tries again.
+        this.connectorOpening = null
+        this.log('MCP connectors could not be opened; chats launch without them', error)
+        return null
+      }
+    )
+    return this.connectorOpening
   }
 
   private emit(sessionId: string, event: InnerCallEvent): void {
@@ -174,7 +289,13 @@ export class CodemodeService {
 
 let processService: CodemodeService | null = null
 
-/** The process's one service; the first caller's options win. */
+async function openDefaultConnectors(): Promise<CodemodeConnectorWiring> {
+  const store = await CodemodeConnectorStore.open()
+  const auth = new CodemodeConnectorAuth(store)
+  return { store, auth, pool: new CodemodeConnectorPool(store, auth) }
+}
+
+/** The process's one service, with the user's connector list; the first caller's options win. */
 export function processCodemodeService(opts?: CodemodeServiceOptions): CodemodeService {
-  return (processService ??= new CodemodeService(opts))
+  return (processService ??= new CodemodeService({ connectors: openDefaultConnectors, ...opts }))
 }

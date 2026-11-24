@@ -89,6 +89,8 @@ export type StructuredAgentSessionRuntimeDeps = StructuredAgentSessionTransportO
   reportSessionLinkedSkills?: (sessionId: string, linkedSkills: string | null) => void
   /** This host's code-mode setting, read per launch; absent: chats never get run_js. */
   codemodeEnabled?: () => boolean
+  /** Local MCP server names whose code-mode calls need no approval, read per call. */
+  codemodeTrustedServers?: () => readonly string[]
   /** See `StructuredAgentSessionHostDeps.quietTurnEnd`. */
   quietTurnEnd?: StructuredAgentSessionHostDeps['quietTurnEnd']
   /** See `StructuredAgentSessionHostDeps.isBotHome`. */

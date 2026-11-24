@@ -15,6 +15,7 @@ export function structuredAgentSettingGates(
   | 'nativeChatPromptSuggestions'
   | 'sharedCodexServers'
   | 'codemodeEnabled'
+  | 'codemodeTrustedServers'
 > {
   return {
     resolveAgentFullAccess: (agent) =>
@@ -27,6 +28,10 @@ export function structuredAgentSettingGates(
       getSettings().experimentalSharedCodexServers === true,
     // Same: the run_js worker and its WASM ship only with the desktop app, not with orcad.
     codemodeEnabled: () =>
-      process.versions.electron !== undefined && getSettings().codemodeEnabled === true
+      process.versions.electron !== undefined && getSettings().codemodeEnabled === true,
+    codemodeTrustedServers: () => {
+      const names = getSettings().codemodeTrustedServers
+      return Array.isArray(names) ? names.filter((name) => typeof name === 'string') : []
+    }
   }
 }

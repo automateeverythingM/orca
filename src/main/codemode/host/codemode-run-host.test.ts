@@ -6,7 +6,8 @@ import { join, resolve } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CODEMODE_LIMITS, type CodemodeLimits } from '../codemode-limits'
 import type { GateMode } from '../gate/codemode-gate'
-import type { CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
+import { codemodeServerTrust } from '../connectors/codemode-connector-session-switch'
+import type { CodemodeConnectorAccess, CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
 import { fakeCrmServerSpec } from '../mcp-pool/testing/fake-crm-command'
 import {
   type ApprovalDecision,
@@ -71,7 +72,8 @@ const CALLS_LIST = /\nInner calls:\n[\s\S]*$/
 function makeSession(opts: {
   mode: () => GateMode
   answer?: (request: ApprovalRequest) => Promise<ApprovalDecision>
-  trusted?: boolean
+  trusted?: boolean | ((server: string) => boolean)
+  connectors?: CodemodeConnectorAccess
   limits?: CodemodeLimits
   onEvent?: (event: InnerCallEvent) => void
 }): Harness {
@@ -83,8 +85,10 @@ function makeSession(opts: {
     root,
     env: process.env,
     mode: opts.mode,
-    trusted: () => opts.trusted ?? false,
+    trusted: (server) =>
+      typeof opts.trusted === 'function' ? opts.trusted(server) : (opts.trusted ?? false),
     specs: [crmSpec],
+    ...(opts.connectors ? { connectors: opts.connectors } : {}),
     limits: opts.limits ?? CODEMODE_LIMITS,
     onEvent: (event) => {
       events.push(event)
@@ -231,6 +235,33 @@ describe('CodemodeSession', () => {
     expect(h.requests).toHaveLength(1)
     expect(h.requests[0]).toMatchObject({ personOnly: true })
     expect(h.requests[0].title).toContain('fake-crm')
+  })
+
+  it('asks for untrusted connector calls only and trusts listed local servers', async () => {
+    const connectors: CodemodeConnectorAccess = {
+      names: () => ['crm', 'docs'],
+      describe: async () => [],
+      call: async (name, tool) => ({ text: `${name}.${tool}` })
+    }
+    const h = makeSession({
+      mode: () => 'ask',
+      connectors,
+      trusted: codemodeServerTrust({
+        connectors,
+        connectorTrusted: (name) => name === 'docs',
+        trustedServers: () => ['fake-crm', 'crm']
+      })
+    })
+    const result = await h.run(`return [
+      await mcp.crm.lookup({}),
+      await mcp.docs.search({}),
+      JSON.parse(await ${crm('get_state', '')})[0].credits
+    ]`)
+    expect(result).toEqual({ text: '=> ["crm.lookup","docs.search",0]', isError: false })
+    expect(h.requests.map((request) => [request.title, request.personOnly])).toEqual([
+      ['Call crm.lookup', false],
+      ['Start MCP server fake-crm', true]
+    ])
   })
 
   it('does not ask again for a refused server start within one run', async () => {

@@ -1,6 +1,7 @@
 import type { ReadOnlySessionMode } from '../../../bots/bot-look-around-policy'
 import { type BotLaunchTools, withCodemodeServer } from '../../../bots/bot-launch-tools'
 import type { CodemodeLaunchInput, CodemodeService } from '../../../codemode/codemode-service'
+import type { CodemodeSessionOptionsAccess } from '../../../codemode/connectors/codemode-connector-session-switch'
 import type { GateMode } from '../../../codemode/gate/codemode-gate'
 import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecycle/agent-session-record'
 import type { AgentSessionRecordStore } from '../records/agent-session-record-store'
@@ -14,6 +15,28 @@ import {
 export type StructuredCodemodeLaunch = {
   enabled: () => boolean
   service: Pick<CodemodeService, 'launchServer' | 'endSession'>
+}
+
+/** A chat's code-mode options kept on its session record, so a switch outlives the launch. */
+export function codemodeRecordOptions(
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'replaceSessionOptions'>
+): CodemodeSessionOptionsAccess {
+  return {
+    read: (sessionId) => store.getRecord(sessionId)?.options,
+    write: async (sessionId, options) => {
+      const record = store.getRecord(sessionId)
+      if (!record) {
+        throw new Error(`unknown session ${sessionId}`)
+      }
+      // Why: a host-side write like an option pick, so it goes under the lease the record holds now.
+      await store.replaceSessionOptions({
+        sessionId,
+        fence: record.lease.runtimeFence,
+        options,
+        now: Date.now()
+      })
+    }
+  }
 }
 
 /** The session's gate mode as its record says now, so a mode change applies to the next call. */
