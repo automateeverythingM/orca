@@ -40,7 +40,7 @@ const CLIENT_PROTOCOL_PREFIXES = [
 ]
 const CLIENT_PROTOCOL_LAST_SEGMENT =
   /^(commandResult|commandResultChunk|requestResult)$|unsubscribe/i
-const CLIENT_PROTOCOL_METHODS: ReadonlySet<string> = new Set([
+export const CODEMODE_ORCA_CLIENT_PROTOCOL_METHODS: ReadonlySet<string> = new Set([
   'host.declareClient',
   'runtime.clientCapabilities.update',
   'notifications.reportDesktopPresence',
@@ -58,7 +58,7 @@ export function isClientProtocolMethod(name: string): boolean {
     CLIENT_PROTOCOL_AREAS.has(orcaMethodArea(name)) ||
     CLIENT_PROTOCOL_PREFIXES.some((prefix) => name.startsWith(prefix)) ||
     CLIENT_PROTOCOL_LAST_SEGMENT.test(name.slice(name.lastIndexOf('.') + 1)) ||
-    CLIENT_PROTOCOL_METHODS.has(name)
+    CODEMODE_ORCA_CLIENT_PROTOCOL_METHODS.has(name)
   )
 }
 
@@ -94,7 +94,16 @@ export const CODEMODE_ORCA_DENIED_METHODS: ReadonlySet<string> = new Set([
   'bots.composio.connect',
   'bots.composio.cancelConnect',
   'bots.composio.disconnect',
-  'speech.openAiKey.status'
+  'speech.openAiKey.status',
+  'browser.profileImportFromBrowser',
+  'agentSession.toolCaller',
+  // Host-side commands and remote-host control: proxyCommand, setup/archive scripts, setup approval.
+  'ssh.addTarget',
+  'ssh.updateTarget',
+  'worktree.runApprovedSetup',
+  'repo.update',
+  'projectGroup.update',
+  'repo.issueCommandWrite'
 ])
 
 export function orcaMethodArea(name: string): string {

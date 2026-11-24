@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { ALL_RPC_METHODS } from '../../runtime/rpc/methods/rpc-method-registry'
 import { OrcaMethodIndex } from './codemode-orca-method-index'
-import { labelOrcaMethod } from './codemode-orca-method-labels'
-import { CODEMODE_ORCA_DENIED_METHODS, isExposedOrcaMethod } from './codemode-orca-method-policy'
+import { CODEMODE_ORCA_LABEL_OVERRIDES, labelOrcaMethod } from './codemode-orca-method-labels'
+import {
+  CODEMODE_ORCA_CLIENT_PROTOCOL_METHODS,
+  CODEMODE_ORCA_DENIED_METHODS,
+  isExposedOrcaMethod
+} from './codemode-orca-method-policy'
 
 const SECRET_NAME =
   /(auth|token|credential|secret|password|apikey|api-key|oauth|signin|signout|login|logout|pairing|cookie)/i
@@ -38,6 +42,8 @@ const AGENT_LAUNCHES = [
   'orchestration.workerStart',
   'orchestration.run',
   'automation.runNow',
+  'automation.create',
+  'automation.update',
   'bots.create',
   'bots.session.start',
   'bots.kickoff.retry',
@@ -47,6 +53,21 @@ const AGENT_LAUNCHES = [
   'bots.lookAround.lookNow',
   'bots.suggestions.start',
   'bots.tidyUp.now'
+]
+const PROMPTS_AND_SHELL_INPUT = [
+  'agentSession.send',
+  'agentSession.sendRecorded',
+  'agentSession.queuedMessageSend',
+  'agentSession.queuedMessageUpdate',
+  'agentSession.queuedMessagesResume',
+  'orchestration.send',
+  'orchestration.ask',
+  'orchestration.reply',
+  'orchestration.peerMailDeliver',
+  'terminal.send',
+  'terminal.split',
+  'terminal.inferCodexQuestionSkip',
+  'emulator.exec'
 ]
 const CLIENT_PROTOCOL = [
   'browser.clientHost.commandResult',
@@ -101,7 +122,15 @@ describe('Orca method exposure for code mode', () => {
       'bots.tools.signIn.start',
       'agentSession.respondToApproval',
       'agentSession.setOption',
-      'orchestration.approvalAnswer'
+      'orchestration.approvalAnswer',
+      'ssh.addTarget',
+      'ssh.updateTarget',
+      'worktree.runApprovedSetup',
+      'repo.update',
+      'projectGroup.update',
+      'repo.issueCommandWrite',
+      'browser.profileImportFromBrowser',
+      'agentSession.toolCaller'
     ]) {
       expect(exposedNames.has(name), name).toBe(false)
     }
@@ -125,17 +154,23 @@ describe('Orca method exposure for code mode', () => {
     expect(plumbing).toEqual([])
   })
 
-  it('labels every method that starts an agent or worker destructive', () => {
-    for (const name of AGENT_LAUNCHES) {
+  it('names only methods that exist, so an upstream rename fails here', () => {
+    const named = [
+      ...CODEMODE_ORCA_DENIED_METHODS,
+      ...CODEMODE_ORCA_CLIENT_PROTOCOL_METHODS,
+      ...CODEMODE_ORCA_LABEL_OVERRIDES.keys()
+    ]
+    expect(named.filter((name) => !registryNames.has(name))).toEqual([])
+  })
+
+  it('labels agent launches, prompts and shell input destructive', () => {
+    for (const name of [...AGENT_LAUNCHES, ...PROMPTS_AND_SHELL_INPUT]) {
       expect(exposedNames.has(name), name).toBe(true)
       expect(labelOrcaMethod(name), name).toBe('destructive')
     }
   })
 
-  it('labels every exposed method and sorts verbs into read, write and destructive', () => {
-    for (const method of exposed) {
-      expect(['read', 'write', 'destructive']).toContain(labelOrcaMethod(method.name))
-    }
+  it('sorts verbs into read, write and destructive', () => {
     const expected: Record<string, string> = {
       'worktree.list': 'read',
       'worktree.set': 'write',
@@ -150,7 +185,14 @@ describe('Orca method exposure for code mode', () => {
       'repo.sparsePresets': 'read',
       'files.read': 'read',
       'orchestration.runList': 'read',
-      'orchestration.check': 'write'
+      'orchestration.check': 'write',
+      'terminal.viewClaudeAgent': 'write',
+      'browser.find': 'write',
+      'browser.findInPage': 'write',
+      'aiVault.searchSessions': 'write',
+      'aiVault.listSessions': 'write',
+      'nativeChat.readSession': 'write',
+      'linkPreview.get': 'write'
     }
     for (const [name, label] of Object.entries(expected)) {
       expect(labelOrcaMethod(name), name).toBe(label)
@@ -173,11 +215,12 @@ describe('Orca method exposure for code mode', () => {
     expect(index.inArea('nope')).toEqual([])
     expect(index.inArea('worktree').every((entry) => entry.area === 'worktree')).toBe(true)
 
+    const entries = areas.flatMap((area) => index.inArea(area))
+    expect(entries.map((entry) => entry.name).sort()).toEqual([...exposedNames].sort())
     const counts = { read: 0, write: 0, destructive: 0 }
-    for (const area of areas) {
-      for (const entry of index.inArea(area)) {
-        counts[entry.label] += 1
-      }
+    for (const entry of entries) {
+      expect(index.get(entry.name)).toBe(entry)
+      counts[entry.label] += 1
     }
     console.log(`orca.* exposed ${exposed.length} of ${ALL_RPC_METHODS.length}`, counts)
   })

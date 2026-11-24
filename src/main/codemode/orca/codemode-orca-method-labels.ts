@@ -21,6 +21,9 @@ export const CODEMODE_ORCA_AGENT_LAUNCH_METHODS: ReadonlySet<string> = new Set([
   'orchestration.workerStart',
   'orchestration.run',
   'automation.runNow',
+  // A saved prompt, agent and permission mode that the schedule later launches.
+  'automation.create',
+  'automation.update',
   'bots.create',
   'bots.session.start',
   'bots.kickoff.retry',
@@ -30,6 +33,27 @@ export const CODEMODE_ORCA_AGENT_LAUNCH_METHODS: ReadonlySet<string> = new Set([
   'bots.lookAround.lookNow',
   'bots.suggestions.start',
   'bots.tidyUp.now'
+])
+
+/** Methods that send a prompt or start a turn in an existing chat or worker: always ask. */
+export const CODEMODE_ORCA_PROMPT_METHODS: ReadonlySet<string> = new Set([
+  'agentSession.send',
+  'agentSession.sendRecorded',
+  'agentSession.queuedMessageSend',
+  'agentSession.queuedMessageUpdate',
+  'agentSession.queuedMessagesResume',
+  'orchestration.send',
+  'orchestration.ask',
+  'orchestration.reply',
+  'orchestration.peerMailDeliver'
+])
+
+/** Methods that type raw input into a PTY or run a shell command: shell-equivalent, always ask. */
+export const CODEMODE_ORCA_SHELL_INPUT_METHODS: ReadonlySet<string> = new Set([
+  'terminal.send',
+  'terminal.split',
+  'terminal.inferCodexQuestionSkip',
+  'emulator.exec'
 ])
 
 const READ_VERBS: ReadonlySet<string> = new Set([
@@ -81,8 +105,10 @@ const DESTRUCTIVE_WORDS = [
 ]
 
 // Names the verb heuristic gets wrong: noun-first reads, short verbs, substring false hits.
-const LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel> = new Map([
+export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel> = new Map([
   ...labelled('destructive', [...CODEMODE_ORCA_AGENT_LAUNCH_METHODS]),
+  ...labelled('destructive', [...CODEMODE_ORCA_PROMPT_METHODS]),
+  ...labelled('destructive', [...CODEMODE_ORCA_SHELL_INPUT_METHODS]),
   ...labelled('destructive', [
     'worktree.rm',
     'repo.rm',
@@ -98,7 +124,18 @@ const LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel> = new Map([
     'gitlab.resolveMRDiscussion',
     'repo.saveSparsePreset',
     'terminal.resetInputModes',
-    'browser.dropFiles'
+    'browser.dropFiles',
+    // Reads with side effects: PTY input, page actions, find highlighting.
+    'terminal.viewClaudeAgent',
+    'browser.find',
+    'browser.findInPage',
+    // Private history and outbound fetches stay out of read-only mode.
+    'aiVault.searchSessions',
+    'aiVault.searchStatus',
+    'aiVault.resolveSessionTitles',
+    'aiVault.listSessions',
+    'nativeChat.readSession',
+    'linkPreview.get'
   ]),
   ...labelled('read', [
     'repo.sparsePresets',
@@ -204,7 +241,7 @@ function lastSegmentWords(name: string): { segment: string; words: string[] } {
 
 /** Override table, then existing orchestration classifications, then the last segment's verb. */
 export function labelOrcaMethod(name: string): OrcaMethodLabel {
-  const override = LABEL_OVERRIDES.get(name)
+  const override = CODEMODE_ORCA_LABEL_OVERRIDES.get(name)
   if (override) {
     return override
   }
