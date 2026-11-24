@@ -298,9 +298,8 @@ export function acpStructuredLaunchPart(
           : {}),
         ...(instructions?.release ? { release: instructions.release } : {}),
         ...(mcpServers.length > 0 ? { mcpServers } : {}),
-        ...(botServers.length > 0 && tools.orcaServerNames.length > 0
-          ? { orcaMcpServerNames: tools.orcaServerNames }
-          : {}),
+        // Named even when no server goes out, so the chat can say code mode didn't reach this agent.
+        ...(tools.orcaServerNames.length > 0 ? { orcaMcpServerNames: tools.orcaServerNames } : {}),
         ...(model ? { launchModel: model } : {}),
         ...(launchedVersion ? { version: launchedVersion } : {}),
         resume: head

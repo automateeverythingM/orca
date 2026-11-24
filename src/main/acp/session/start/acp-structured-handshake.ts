@@ -29,7 +29,7 @@ import type { AcpStructuredLaunch } from '../../launch/acp-structured-launch-res
 import type { AcpStructuredOptions } from '../../options/acp-structured-options'
 import type { AcpStructuredPrompts } from '../../requests/acp-structured-prompts'
 import { acpSessionStartMeta } from '../../launch/acp-session-meta'
-import { acpSessionMcpServers } from '../../launch/acp-mcp-server'
+import { acpSessionMcpServers, applyAcpCodemodeNote } from '../../launch/acp-mcp-server'
 import type { AcpStructuredSessionAdapterDeps } from '../acp-structured-session-adapter-deps'
 import { AcpStructuredTurns } from '../../turns/acp-structured-turns'
 import type { AcpStructuredTurnsDeps } from '../../turns/acp-turn-dispatch-contract'
@@ -285,13 +285,13 @@ export async function initializeAcpStructuredSession(
     throw new Error(connection.stderrTail() || `${spec.command} exited while starting`)
   }
   // Include warning rows missed by earlier failed starts.
-  const lost = [
+  for (const key of [
     ...(launch.resume?.lossKeys ?? []),
     ...(takeover?.replaces ? [takeover.replaces.key] : [])
-  ]
-  for (const key of lost) {
+  ]) {
     liveLane.apply(acpSessionNotRestoredRow(key, started.sessionId, agentName))
   }
+  applyAcpCodemodeNote(liveLane, launch, setup.mcpServers, started.sessionId)
   assertStarting()
   Object.assign(child, {
     childStops,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BotToolServer } from '../../../../shared/bot-tools'
-import { acpSessionMcpServers } from '../../../acp/launch/acp-mcp-server'
+import { acpCodemodeUnavailableRow, acpSessionMcpServers } from '../../../acp/launch/acp-mcp-server'
 import { acpBotMcpServers } from '../../../bots/bot-tools-acp'
 import {
   BotLaunchTools,
@@ -120,6 +120,14 @@ describe('code mode in a structured launch', () => {
       agentCapabilities: { mcpCapabilities: { http: true } }
     })
     expect(withoutHttp).toEqual([])
+    expect(acpCodemodeUnavailableRow(launch, withoutHttp, 'p1')).toEqual([
+      expect.objectContaining({
+        item: 'codemode-unavailable:p1',
+        body: expect.objectContaining({ kind: 'status', tone: 'warning' })
+      })
+    ])
+    expect(acpCodemodeUnavailableRow(launch, withHttp, 'p1')).toEqual([])
+    expect(acpCodemodeUnavailableRow({}, [], 'p1')).toEqual([])
     expect(withHttp).toEqual([
       {
         type: 'http',
