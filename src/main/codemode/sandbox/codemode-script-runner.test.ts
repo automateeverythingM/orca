@@ -180,12 +180,11 @@ describe('runScript', () => {
     ],
     ['return { toJSON() { while(true){} } }', 'script exceeded 0.2s JS time']
   ])('reading the outcome of %s cannot outrun the JS time limit', async (code, error) => {
-    let settled = false
-    const running = run(code, undefined, { jsTimeMs: 200 }).finally(() => {
-      settled = true
-    })
-    await vi.waitFor(() => expect(settled).toBe(true), { timeout: 3_000 })
-    expect(await running).toEqual({ ok: false, printed: [], error })
+    // QuickJS runs on this thread and blocks the event loop, so only a clock delta can bound it.
+    const startedAt = performance.now()
+    const result = await run(code, undefined, { jsTimeMs: 200 })
+    expect(performance.now() - startedAt).toBeLessThan(3_000)
+    expect(result).toEqual({ ok: false, printed: [], error })
   })
 
   it('reports thrown values without running their getters', async () => {
