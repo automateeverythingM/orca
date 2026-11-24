@@ -25,7 +25,9 @@ const EXCLUDED_AREAS: ReadonlySet<string> = new Set([
   'skills',
   'updater',
   'managedRuntime',
-  'orcad'
+  'orcad',
+  // prepareLaunch hands out auth env for any pane; tmuxCompat sends keys and runs shell commands.
+  'agentTeams'
 ])
 
 // Why: a script must never answer or change its own chat's approvals, questions or mode.
@@ -97,13 +99,23 @@ export const CODEMODE_ORCA_DENIED_METHODS: ReadonlySet<string> = new Set([
   'speech.openAiKey.status',
   'browser.profileImportFromBrowser',
   'agentSession.toolCaller',
+  // MCP sign-in for the chat's agent.
+  'agentSession.mcp',
   // Host-side commands and remote-host control: proxyCommand, setup/archive scripts, setup approval.
   'ssh.addTarget',
   'ssh.updateTarget',
   'worktree.runApprovedSetup',
   'repo.update',
   'projectGroup.update',
-  'repo.issueCommandWrite'
+  'projectGroup.updateMany',
+  'repo.issueCommandWrite',
+  // Stored commands the host runs later: MCP stdio servers, automation prechecks.
+  'bots.tools.add',
+  'bots.tools.update',
+  'automation.create',
+  'automation.update',
+  // Its trustedOrcaHooks field marks repo hook scripts trusted.
+  'ui.set'
 ])
 
 export function orcaMethodArea(name: string): string {

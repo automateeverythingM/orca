@@ -21,9 +21,6 @@ export const CODEMODE_ORCA_AGENT_LAUNCH_METHODS: ReadonlySet<string> = new Set([
   'orchestration.workerStart',
   'orchestration.run',
   'automation.runNow',
-  // A saved prompt, agent and permission mode that the schedule later launches.
-  'automation.create',
-  'automation.update',
   'bots.create',
   'bots.session.start',
   'bots.kickoff.retry',
@@ -53,7 +50,28 @@ export const CODEMODE_ORCA_SHELL_INPUT_METHODS: ReadonlySet<string> = new Set([
   'terminal.send',
   'terminal.split',
   'terminal.inferCodexQuestionSkip',
-  'emulator.exec'
+  'emulator.exec',
+  // `customAgentCommand` / `agentCmdOverrides` run a caller-chosen command on the host.
+  'git.generateCommitMessage',
+  'git.generatePullRequestFields',
+  'git.discoverCommitMessageModels'
+])
+
+/** Methods that deliver mail or set work that wakes a bot, worker or chat: always ask. */
+export const CODEMODE_ORCA_WAKE_METHODS: ReadonlySet<string> = new Set([
+  'agentSession.threadGoal',
+  'bots.chat.open',
+  'bots.items.add',
+  'bots.items.set',
+  'bots.items.comment',
+  'bots.items.done',
+  'bots.items.cancel',
+  'bots.items.link',
+  'bots.items.owner.comment',
+  'bots.items.owner.snooze',
+  'bots.items.owner.opened',
+  'orchestration.peerMailReturn',
+  'webhooks.pause'
 ])
 
 const READ_VERBS: ReadonlySet<string> = new Set([
@@ -109,6 +127,7 @@ export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel>
   ...labelled('destructive', [...CODEMODE_ORCA_AGENT_LAUNCH_METHODS]),
   ...labelled('destructive', [...CODEMODE_ORCA_PROMPT_METHODS]),
   ...labelled('destructive', [...CODEMODE_ORCA_SHELL_INPUT_METHODS]),
+  ...labelled('destructive', [...CODEMODE_ORCA_WAKE_METHODS]),
   ...labelled('destructive', [
     'worktree.rm',
     'repo.rm',
@@ -125,6 +144,8 @@ export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel>
     'repo.saveSparsePreset',
     'terminal.resetInputModes',
     'browser.dropFiles',
+    // Sends owed mail to the bot.
+    'bots.items.owner.status',
     // Reads with side effects: PTY input, page actions, find highlighting.
     'terminal.viewClaudeAgent',
     'browser.find',

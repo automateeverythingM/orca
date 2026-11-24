@@ -22,7 +22,8 @@ const EXCLUDED_AREAS = [
   'skills',
   'updater',
   'managedRuntime',
-  'orcad'
+  'orcad',
+  'agentTeams'
 ]
 
 const AGENT_LAUNCHES = [
@@ -42,8 +43,6 @@ const AGENT_LAUNCHES = [
   'orchestration.workerStart',
   'orchestration.run',
   'automation.runNow',
-  'automation.create',
-  'automation.update',
   'bots.create',
   'bots.session.start',
   'bots.kickoff.retry',
@@ -67,7 +66,23 @@ const PROMPTS_AND_SHELL_INPUT = [
   'terminal.send',
   'terminal.split',
   'terminal.inferCodexQuestionSkip',
-  'emulator.exec'
+  'emulator.exec',
+  'git.generateCommitMessage',
+  'git.generatePullRequestFields',
+  'git.discoverCommitMessageModels',
+  'agentSession.threadGoal',
+  'bots.chat.open',
+  'bots.items.add',
+  'bots.items.set',
+  'bots.items.comment',
+  'bots.items.done',
+  'bots.items.cancel',
+  'bots.items.link',
+  'bots.items.owner.comment',
+  'bots.items.owner.snooze',
+  'bots.items.owner.opened',
+  'orchestration.peerMailReturn',
+  'webhooks.pause'
 ]
 const CLIENT_PROTOCOL = [
   'browser.clientHost.commandResult',
@@ -130,7 +145,16 @@ describe('Orca method exposure for code mode', () => {
       'projectGroup.update',
       'repo.issueCommandWrite',
       'browser.profileImportFromBrowser',
-      'agentSession.toolCaller'
+      'agentSession.toolCaller',
+      'agentSession.mcp',
+      'agentTeams.prepareLaunch',
+      'agentTeams.tmuxCompat',
+      'projectGroup.updateMany',
+      'bots.tools.add',
+      'bots.tools.update',
+      'automation.create',
+      'automation.update',
+      'ui.set'
     ]) {
       expect(exposedNames.has(name), name).toBe(false)
     }
@@ -192,7 +216,9 @@ describe('Orca method exposure for code mode', () => {
       'aiVault.searchSessions': 'write',
       'aiVault.listSessions': 'write',
       'nativeChat.readSession': 'write',
-      'linkPreview.get': 'write'
+      'linkPreview.get': 'write',
+      'bots.items.owner.status': 'write',
+      'bots.items.list': 'read'
     }
     for (const [name, label] of Object.entries(expected)) {
       expect(labelOrcaMethod(name), name).toBe(label)
@@ -212,6 +238,7 @@ describe('Orca method exposure for code mode', () => {
       label: 'destructive'
     })
     expect(index.get('codemode.connectors.setToken')).toBeNull()
+    expect(areas).not.toContain('agentTeams')
     expect(index.inArea('nope')).toEqual([])
     expect(index.inArea('worktree').every((entry) => entry.area === 'worktree')).toBe(true)
 
