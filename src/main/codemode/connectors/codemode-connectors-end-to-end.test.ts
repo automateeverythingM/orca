@@ -2,7 +2,10 @@ import { build } from 'esbuild'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import {
+  StreamableHTTPClientTransport,
+  StreamableHTTPError
+} from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { BotToolServer } from '../../../shared/bot-tools'
 import { settleBotToolRevocations } from '../../bots/tool-oauth/bot-tool-oauth-revoke'
@@ -203,9 +206,18 @@ describe('connectors end to end', () => {
     const gone = await runJs(chat, ECHO_OK)
     expect(gone.isError).toBe(true)
     expect(gone.text).toContain('unknown MCP server fake')
-    await expect(
-      direct.callTool({ name: 'echo', arguments: { text: 'ok' } }, undefined, { timeout: 2000 })
-    ).rejects.toThrow()
+    const refusal = await direct
+      .callTool({ name: 'echo', arguments: { text: 'ok' } }, undefined, { timeout: 2000 })
+      .then(
+        () => null,
+        (error: unknown) => error
+      )
+    // Why: the timeout is only a guard; a hang would reject as a timeout, not as the relay's 404.
+    expect(refusal).toBeInstanceOf(StreamableHTTPError)
+    expect(refusal).toMatchObject({
+      code: 404,
+      message: expect.stringContaining('{"error":"unknown connector"}')
+    })
     const answer = await initialize(chat)
     expect(answer.status).toBe(404)
     expect(JSON.parse(answer.body)).toEqual({ error: 'unknown connector' })
