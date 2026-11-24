@@ -29,6 +29,7 @@ import {
   connectBotToolSignIn
 } from '../../bots/tool-oauth/bot-tool-sign-in-flows'
 import {
+  assertConnectorUrl,
   CODEMODE_CONNECTOR_CREDENTIAL_FOLDER,
   type CodemodeConnectorStore
 } from './codemode-connector-store'
@@ -91,10 +92,10 @@ export class CodemodeConnectorAuth {
   }
 
   async add(input: { url: string; name?: string }): Promise<CodemodeConnector> {
-    try {
-      new URL(input.url)
-    } catch {
-      throw new Error(`invalid url: ${input.url}`)
+    // Why: checked before discovery, so a refused url or name never reaches the network.
+    assertConnectorUrl(input.url)
+    if (input.name !== undefined) {
+      this.store.assertNewName(input.name)
     }
     this.assertNotAdded(input.url)
     const need = await discoverBotToolAuth(input.url, discoveryOptions())

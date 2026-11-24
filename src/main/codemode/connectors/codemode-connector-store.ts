@@ -58,19 +58,23 @@ function parseConnectors(text: string): CodemodeConnector[] | null {
   }
 }
 
-function assertUrl(url: string): void {
+/** https only (loopback http in tests), without a username or password; errors never echo the url. */
+export function assertConnectorUrl(url: string): void {
   let parsed: URL
   try {
     parsed = new URL(url)
   } catch {
-    throw new Error(`invalid url: ${url}`)
+    throw new Error('invalid connector url')
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('connector url must not contain a username or password')
   }
   const localAllowed =
     process.env.NODE_ENV === 'test' &&
     parsed.protocol === 'http:' &&
     LOCAL_HOSTS.has(parsed.hostname)
   if (parsed.protocol !== 'https:' && !localAllowed) {
-    throw new Error(`connector url must use https: ${url}`)
+    throw new Error('connector url must use https')
   }
 }
 
@@ -121,8 +125,8 @@ export class CodemodeConnectorStore {
   }
 
   add(input: { name: string; url: string; auth: CodemodeConnectorAuth }): CodemodeConnector {
-    this.assertName(input.name)
-    assertUrl(input.url)
+    this.assertNewName(input.name)
+    assertConnectorUrl(input.url)
     if (!AUTH_KINDS.includes(input.auth)) {
       throw new Error(`invalid auth: ${String(input.auth)}`)
     }
@@ -147,7 +151,7 @@ export class CodemodeConnectorStore {
       throw new Error(`unknown connector: ${id}`)
     }
     if (patch.name !== undefined && patch.name !== current.name) {
-      this.assertName(patch.name)
+      this.assertNewName(patch.name)
     }
     const next: CodemodeConnector = {
       ...current,
@@ -175,7 +179,8 @@ export class CodemodeConnectorStore {
     }
   }
 
-  private assertName(name: string): void {
+  /** Throws unless `name` is valid, not reserved and not taken. */
+  assertNewName(name: string): void {
     if (!CODEMODE_CONNECTOR_NAME.test(name)) {
       throw new Error(`invalid connector name: ${name}`)
     }

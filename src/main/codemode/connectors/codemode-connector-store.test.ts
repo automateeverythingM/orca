@@ -42,6 +42,9 @@ describe('CodemodeConnectorStore', () => {
     const store = await CodemodeConnectorStore.open(path)
     expect(() => store.add({ name: 'a', url: 'http://example.com/mcp', auth: 'none' })).toThrow()
     expect(() => store.add({ name: 'a', url: 'not a url', auth: 'none' })).toThrow()
+    expect(() =>
+      store.add({ name: 'a', url: 'https://u:p@mcp.example.com/mcp', auth: 'none' })
+    ).toThrow('connector url must not contain a username or password')
     expect(store.add({ name: 'a', url: 'http://127.0.0.1:9/mcp', auth: 'none' }).name).toBe('a')
     expect(store.add({ name: 'b', url: 'http://localhost:9/mcp', auth: 'none' }).name).toBe('b')
   })

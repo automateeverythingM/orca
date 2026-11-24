@@ -10,6 +10,7 @@ import { signInConnector, setUpConnectorTestEnv } from './testing/codemode-conne
 
 let fake: FakeOAuthMcpServer | null = null
 let plain: Server | null = null
+let plainRequests = 0
 
 const env = setUpConnectorTestEnv(async () => {
   await fake?.stop()
@@ -21,7 +22,9 @@ const env = setUpConnectorTestEnv(async () => {
 
 /** An MCP address that refuses without naming any sign-in Orca can run: a pasted token. */
 async function startTokenServer(): Promise<string> {
+  plainRequests = 0
   plain = createServer((req, res) => {
+    plainRequests += 1
     res.writeHead(req.url?.startsWith('/mcp') ? 401 : 404, { 'content-type': 'text/plain' })
     res.end('no')
   })
@@ -121,6 +124,26 @@ describe('CodemodeConnectorAuth', () => {
     const dead = 'http://127.0.0.1:9/mcp'
     await expect(env.current().auth.add({ url: dead })).rejects.toThrow(`could not reach ${dead}`)
     expect(env.current().store.list()).toHaveLength(1)
+  })
+
+  it('refuses a url with a username or password, or a bad name, before any request', async () => {
+    const url = await startTokenServer()
+    const { auth } = env.current()
+    const withSecret = url.replace('http://', 'http://alice:s3cret@')
+    const refused = await auth.add({ url: withSecret }).then(
+      () => 'added',
+      (error: Error) => error.message
+    )
+    expect(refused).toBe('connector url must not contain a username or password')
+    await expect(auth.add({ url: url.replace('http://', 'http://alice@') })).rejects.toThrow(
+      'connector url must not contain a username or password'
+    )
+    await expect(auth.add({ url, name: 'Bad Name' })).rejects.toThrow(
+      'invalid connector name: Bad Name'
+    )
+    await expect(auth.add({ url, name: 'orca' })).rejects.toThrow('reserved connector name: orca')
+    expect(plainRequests).toBe(0)
+    expect(env.current().store.list()).toEqual([])
   })
 })
 
