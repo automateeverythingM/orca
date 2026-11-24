@@ -10,7 +10,7 @@ let entryPath: string
 let crashPath: string
 
 beforeAll(async () => {
-  // quickjs-emscripten locates its WASM beside itself, so the bundle stays external and resolves from the repo.
+  // The QuickJS variant locates its WASM beside itself, so the bundle stays external and resolves from the repo.
   const cacheRoot = resolve('node_modules/.cache')
   mkdirSync(cacheRoot, { recursive: true })
   bundleRoot = mkdtempSync(join(cacheRoot, 'orca-codemode-worker-'))
@@ -21,7 +21,7 @@ beforeAll(async () => {
     bundle: true,
     platform: 'node',
     format: 'cjs',
-    external: ['quickjs-emscripten'],
+    external: ['quickjs-emscripten-core', '@jitl/quickjs-wasmfile-release-sync'],
     logLevel: 'silent'
   })
   crashPath = join(bundleRoot, 'crash-entry.js')

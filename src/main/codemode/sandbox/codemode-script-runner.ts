@@ -1,12 +1,13 @@
+import RELEASE_SYNC from '@jitl/quickjs-wasmfile-release-sync'
 import {
-  newQuickJSWASMModule,
+  newQuickJSWASMModuleFromVariant,
   type QuickJSContext,
   type QuickJSDeferredPromise,
   type QuickJSHandle,
   type QuickJSRuntime,
   type QuickJSWASMModule,
   type VmCallResult
-} from 'quickjs-emscripten'
+} from 'quickjs-emscripten-core'
 import type { CodemodeLimits } from '../codemode-limits'
 import { CODEMODE_PRELUDE } from './codemode-prelude'
 import {
@@ -307,7 +308,7 @@ export async function runScript(
   let module: QuickJSWASMModule
   try {
     // A fresh WebAssembly module per run so a corrupted or exhausted heap never leaks into the next.
-    module = await newQuickJSWASMModule()
+    module = await newQuickJSWASMModuleFromVariant(RELEASE_SYNC)
   } catch (error) {
     return { ok: false, printed: [], error: hostErrorText(error) }
   }

@@ -26,9 +26,14 @@ const requireFromProject = createRequire(join(projectDir, 'package.json'))
 
 const PACKAGED_RUNTIME_PACKAGE_ROOTS = [
   '@anthropic-ai/claude-agent-sdk',
+  // Code mode's QuickJS loads its .wasm beside its own module, so it cannot be bundled.
+  '@jitl/quickjs-wasmfile-release-sync',
   '@linear/sdk',
   '@orca/process-host',
   '@parcel/watcher',
+  // The bundled MCP SDK validates with ajv; its codegen embeds require("ajv/...") strings the verifier scans.
+  'ajv',
+  'ajv-formats',
   'electron-updater',
   'i18next',
   'jsonc-parser',
@@ -36,6 +41,7 @@ const PACKAGED_RUNTIME_PACKAGE_ROOTS = [
   'posthog-node',
   'proper-lockfile',
   'qrcode',
+  'quickjs-emscripten-core',
   'smol-toml',
   'ssh2',
   'tweetnacl',

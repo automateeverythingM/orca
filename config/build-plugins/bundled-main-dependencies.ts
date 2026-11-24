@@ -19,5 +19,7 @@ export const BUNDLED_MAIN_DEPENDENCIES = new Set([
   'hast-util-from-html-isomorphic',
   // Windows NSIS copies app.asar before external resources; bootstrap must not race resources/node_modules.
   'zod',
-  'semver'
+  'semver',
+  // Code mode server and bot OAuth; was bundled as a devDependency, so packaging ships no copy.
+  '@modelcontextprotocol/sdk'
 ])

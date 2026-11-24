@@ -34,7 +34,7 @@ beforeAll(async () => {
     bundle: true,
     platform: 'node',
     format: 'cjs',
-    external: ['quickjs-emscripten'],
+    external: ['quickjs-emscripten-core', '@jitl/quickjs-wasmfile-release-sync'],
     logLevel: 'silent'
   })
   crmSpec = { name: 'fake-crm', ...(await fakeCrmServerSpec()), source: 'orca' }
