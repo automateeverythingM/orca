@@ -6,11 +6,11 @@ import {
   type CodemodeRunRecord,
   type CodemodeRunsEvent
 } from '../../../../../shared/codemode/codemode-run-wire'
-import { matchRunToCall } from '../../../../../shared/codemode/codemode-run-match'
+import { type CodemodeWatchedCall, pairCodemodeRuns } from './codemode-run-pairing'
 
 const RESUBSCRIBE_MS = 2000
 
-export type CodemodeWatchedCall = { callId: string; code: string | null; running: boolean }
+export type { CodemodeWatchedCall }
 
 type Entry = {
   target: RuntimeClientTarget
@@ -52,54 +52,8 @@ function entryFor(target: RuntimeClientTarget, sessionId: string): Entry {
   return entry
 }
 
-function candidates(entry: Entry, running: boolean) {
-  return [...entry.calls.values()]
-    .filter((call) => call.running === running && call.code !== null)
-    .map((call) => ({ callId: call.callId, name: 'orca/run_js', input: { code: call.code } }))
-}
-
-/** Live runs pair with running calls oldest first; settled runs with settled calls newest first. */
-function rematch(entry: Entry): void {
-  const runIds = new Set(entry.runs.map((run) => run.runId))
-  for (const [callId, runId] of entry.matches) {
-    if (!runIds.has(runId)) {
-      entry.matches.delete(callId)
-    }
-  }
-  const taken = (): { calls: Set<string>; runs: Set<string> } => ({
-    calls: new Set(entry.matches.keys()),
-    runs: new Set(entry.matches.values())
-  })
-  const running = candidates(entry, true)
-  for (const run of entry.runs) {
-    if (run.state !== 'running' || run.codeTruncated || taken().runs.has(run.runId)) {
-      continue
-    }
-    const callId = matchRunToCall(
-      { runningToolCalls: running, matchedCallIds: taken().calls },
-      run.code
-    )
-    if (callId !== null) {
-      entry.matches.set(callId, run.runId)
-    }
-  }
-  const settled = candidates(entry, false).toReversed()
-  for (const run of entry.runs.toReversed()) {
-    if (run.codeTruncated || taken().runs.has(run.runId)) {
-      continue
-    }
-    const callId = matchRunToCall(
-      { runningToolCalls: settled, matchedCallIds: taken().calls },
-      run.code
-    )
-    if (callId !== null) {
-      entry.matches.set(callId, run.runId)
-    }
-  }
-}
-
 function changed(entry: Entry): void {
-  rematch(entry)
+  pairCodemodeRuns(entry.runs, entry.calls.values(), entry.matches)
   entry.version += 1
   for (const listener of entry.listeners) {
     listener()
