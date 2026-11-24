@@ -31,6 +31,15 @@ describe('describeOrca', () => {
     )
   })
 
+  it.each(['codemode', 'codemode.connectors.setToken'])(
+    'does not describe code mode itself: %s',
+    (target) => {
+      const registered = ALL_RPC_METHODS.map((method) => method.name)
+      expect(registered.some((name) => name === target || name.startsWith(`${target}.`))).toBe(true)
+      expect(() => describeOrca(index, target)).toThrow(`unknown Orca area or method: ${target}`)
+    }
+  )
+
   it('caches converted schemas per method', () => {
     const first = describeOrca(index, 'worktree.create')[0]
     const second = describeOrca(index, 'worktree.create')[0]
