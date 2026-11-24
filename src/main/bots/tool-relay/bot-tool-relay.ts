@@ -20,7 +20,16 @@ import {
   type BotToolHeaderSource
 } from '../tool-oauth/bot-tool-credential-source'
 import { RelayAdmission, type RelayCall } from './bot-tool-relay-admission'
-import { header, readBody, RelayRefusal } from './bot-tool-relay-requests'
+import { readBody, RelayRefusal } from './bot-tool-relay-requests'
+import {
+  admittedCaller,
+  botCallerKey,
+  botRoute,
+  RelayRoutes,
+  type RelayCaller,
+  type RelayRoute
+} from './bot-tool-relay-routes'
+import { RelaySessions, SESSION_ENDED, sessionScope } from './bot-tool-relay-sessions'
 import { answerSignInNeeded, answerUnavailable } from './bot-tool-relay-sign-in-answer'
 import {
   sendUpstream,
@@ -33,7 +42,6 @@ import {
 type Grant = { botId: string; folder: string }
 
 const PATH = /^\/bot-tools\/([A-Za-z0-9_-]{8,64})\/mcp(?:\?.*)?$/
-const MAX_TRACKED_SESSIONS = 1_000
 const MAX_TRACKED_PROBLEMS = 1_000
 /** Why a call was aborted: the agent hung up, or the tool, its sign-in or the bot went. */
 const AGENT_LEFT = Symbol('agent left')
@@ -41,7 +49,6 @@ const CREDENTIAL_ENDED = Symbol('credential ended')
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex')
 const credentialKey = (folder: string, credentialId: string) => `${folder}\0${credentialId}`
-const SESSION_ENDED = 'This tool’s session ended. Start a new one.'
 
 export class BotToolRelay {
   private server: Server | null = null
@@ -50,15 +57,27 @@ export class BotToolRelay {
   private stopListeningForEnds: (() => void) | null = null
   private readonly grants = new Map<string, Grant>()
   private readonly tokens = new Map<string, string>()
-  /** Which upstream session identity an MCP session was made under, so a changed one starts over. */
-  private readonly sessions = new BoundedMap<string, string>({ maxEntries: MAX_TRACKED_SESSIONS })
+  private readonly sessions = new RelaySessions()
   private readonly problems = new BoundedMap<string, string>({ maxEntries: MAX_TRACKED_PROBLEMS })
   private readonly admission = new RelayAdmission()
+  private readonly routes = new RelayRoutes()
 
   constructor(
     private readonly fetchUpstream: RelayFetch,
     private readonly source: BotToolCredentialSource = botToolCredentialSource()
-  ) {}
+  ) {
+    this.routes.add(botRoute(PATH, (token) => this.grants.get(hashToken(token))))
+  }
+
+  /** Another route family on this relay; the returned function removes it. */
+  addRoute(route: RelayRoute): () => void {
+    return this.routes.add(route)
+  }
+
+  /** The relay's address for this run of Orca; starts listening on first use. */
+  async origin(): Promise<string> {
+    return `http://127.0.0.1:${await this.listen()}`
+  }
 
   /** The relay's address and the bot's token for this run of Orca; starts listening on first use. */
   async grant(botId: string, folder: string): Promise<{ origin: string; token: string }> {
@@ -84,7 +103,13 @@ export class BotToolRelay {
       this.grants.delete(hashToken(token))
       this.tokens.delete(botId)
     }
-    this.admission.abortWhere((call) => call.botId === botId, CREDENTIAL_ENDED)
+    this.admission.abortWhere((call) => call.callerKey === botCallerKey(botId), CREDENTIAL_ENDED)
+  }
+
+  /** A caller whose token ended: its open calls are cut and its upstream sessions forgotten. */
+  endCaller(callerKey: string): void {
+    this.admission.abortWhere((call) => call.callerKey === callerKey, CREDENTIAL_ENDED)
+    this.sessions.dropCaller(callerKey)
   }
 
   /** Why the tool's server last refused, for the Tools row; null when it hasn't. */
@@ -136,11 +161,7 @@ export class BotToolRelay {
   private ended({ folder, credentialId }: BotToolCredentialEnded): void {
     const key = credentialKey(folder, credentialId)
     this.admission.abortWhere((call) => call.credentialKey === key, CREDENTIAL_ENDED)
-    for (const session of this.sessions.keys()) {
-      if (session.startsWith(`${key}\0`)) {
-        this.sessions.delete(session)
-      }
-    }
+    this.sessions.dropCredential(key)
     this.problems.delete(key)
   }
 
@@ -157,7 +178,7 @@ export class BotToolRelay {
       ) {
         throw new RelayRefusal(403, 'Not allowed.')
       }
-      const match = PATH.exec(req.url ?? '')
+      const match = this.routes.match(req.url ?? '')
       if (!match) {
         throw new RelayRefusal(404, 'Not found.')
       }
@@ -165,15 +186,12 @@ export class BotToolRelay {
       if (!['POST', 'GET', 'DELETE'].includes(method)) {
         throw new RelayRefusal(405, 'Method not allowed.')
       }
-      const auth = /^Bearer (\S+)$/.exec(req.headers.authorization ?? '')
-      const grant = auth?.[1] ? this.grants.get(hashToken(auth[1])) : undefined
-      if (!grant) {
-        throw new RelayRefusal(401, 'This tool needs the bot’s Orca token.')
-      }
-      const credentialId = match[1]!
-      label = `${grant.botId} ${credentialId} ${method}`
+      const { route, targetId: credentialId } = match
+      const caller = admittedCaller(route, credentialId, req.headers.authorization)
+      const key = credentialKey(caller.folder, credentialId)
+      label = `${caller.callerKey} ${credentialId} ${method}`
       // Counted before any wait for a token, so slow refreshes can't pile up calls.
-      call = this.admission.admit(grant.botId, method, credentialKey(grant.folder, credentialId))
+      call = this.admission.admit(caller.callerKey, method, key)
       if (!call) {
         throw new RelayRefusal(429, 'Too many tool calls at once.')
       }
@@ -183,7 +201,7 @@ export class BotToolRelay {
           abort.abort(AGENT_LEFT)
         }
       })
-      await this.forward(req, res, grant, credentialId, abort.signal)
+      await this.forward(req, res, caller, route, credentialId, abort.signal)
     } catch (error) {
       this.fail(res, call?.abort.signal, error, label)
     } finally {
@@ -221,14 +239,17 @@ export class BotToolRelay {
   private async forward(
     req: IncomingMessage,
     res: ServerResponse,
-    grant: Grant,
+    caller: RelayCaller,
+    route: RelayRoute,
     credentialId: string,
     signal: AbortSignal
   ): Promise<void> {
     const body = req.method === 'POST' ? await readBody(req) : undefined
-    const key = credentialKey(grant.folder, credentialId)
-    const request = { host: 'local', folder: grant.folder, credentialId, signal } as const
-    let answer = await this.ask(request)
+    const key = credentialKey(caller.folder, credentialId)
+    const scope = sessionScope(key, caller.callerKey)
+    const source = route.source ?? this.source
+    const request = { host: 'local', folder: caller.folder, credentialId, signal } as const
+    let answer = await this.ask(source, request)
     let upstream: Response
     for (let tries = 1; ; tries += 1) {
       if (answer.kind === 'sign-in-needed') {
@@ -242,7 +263,7 @@ export class BotToolRelay {
       if (answer.kind === 'missing') {
         throw new RelayRefusal(404, 'This bot has no such tool.')
       }
-      this.checkSession(req, key, answer)
+      this.sessions.check(req, scope, answer, route.adoptsUnknownSessions === true)
       upstream = await sendUpstream(this.fetchUpstream, req, answer, body, signal)
       // Only Orca's own sign-in can renew a refused token; saved headers are passed on as refused.
       if (upstream.status !== 401 || answer.bearer === undefined) {
@@ -254,20 +275,23 @@ export class BotToolRelay {
         answerSignInNeeded(req, res, body)
         return
       }
-      answer = await this.ask({ ...request, rejected: answer.bearer })
+      answer = await this.ask(source, { ...request, rejected: answer.bearer })
     }
-    const label = `${grant.botId} ${credentialId} ${req.method}`
-    await this.relayResponse(req, res, key, label, answer, upstream, signal)
+    const label = `${caller.callerKey} ${credentialId} ${req.method}`
+    await this.relayResponse(req, res, { key, scope }, label, answer, upstream, signal)
   }
 
   /**
    * The source's answer; one that fails outright is a call that can't go through now. A call cut
    * while it waited (agent gone, tool removed) answers as cut, whatever the source said.
    */
-  private async ask(request: BotToolCredentialRequest): Promise<BotToolCredentialAnswer> {
+  private async ask(
+    source: BotToolCredentialSource,
+    request: BotToolCredentialRequest
+  ): Promise<BotToolCredentialAnswer> {
     let answer: BotToolCredentialAnswer
     try {
-      answer = await this.source(request)
+      answer = await source(request)
     } catch {
       answer = { kind: 'unavailable' }
     }
@@ -275,25 +299,10 @@ export class BotToolRelay {
     return answer
   }
 
-  /** A session the relay never saw under this upstream identity has to start over. */
-  private checkSession(req: IncomingMessage, key: string, answer: ReadyAnswer): void {
-    const sessionId = header(req, 'mcp-session-id')
-    if (!sessionId) {
-      return
-    }
-    const known = this.sessions.get(`${key}\0${sessionId}`)
-    // Saved headers adopt an unknown session as today; a sign-in never does, so one made under an
-    // ended sign-in can't come back under the next. MCP clients start a new session on 404.
-    const stale = known === undefined ? answer.bearer !== undefined : known !== answer.session
-    if (stale) {
-      throw new RelayRefusal(404, SESSION_ENDED)
-    }
-  }
-
   private async relayResponse(
     req: IncomingMessage,
     res: ServerResponse,
-    key: string,
+    { key, scope }: { key: string; scope: string },
     label: string,
     answer: ReadyAnswer,
     upstream: Response,
@@ -312,14 +321,7 @@ export class BotToolRelay {
     } else if (upstream.ok) {
       this.problems.delete(key)
     }
-    const sessionId = header(req, 'mcp-session-id')
-    const returned = upstream.headers.get('mcp-session-id')
-    if (returned) {
-      this.sessions.set(`${key}\0${returned}`, answer.session)
-    }
-    if (req.method === 'DELETE' && sessionId && upstream.ok) {
-      this.sessions.delete(`${key}\0${sessionId}`)
-    }
+    this.sessions.record(req, scope, answer, upstream)
     await streamUpstreamResponse(res, upstream, signal)
   }
 }

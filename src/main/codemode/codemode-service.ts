@@ -1,8 +1,13 @@
 import type { BotToolServer } from '../../shared/bot-tools'
 import type { CodemodeConnector } from '../../shared/codemode/codemode-connector-types'
+import { botToolRelay, type BotToolRelay } from '../bots/tool-relay/bot-tool-relay'
 import { CODEMODE_LIMITS } from './codemode-limits'
 import { CodemodeConnectorAuth, type ConnectorStatus } from './connectors/codemode-connector-auth'
 import { CodemodeConnectorPool } from './connectors/codemode-connector-pool'
+import {
+  codemodeCallerKey,
+  createConnectorRelayRoute
+} from './connectors/codemode-connector-relay-route'
 import {
   codemodeServerTrust,
   type CodemodeSessionOptionsAccess,
@@ -33,7 +38,11 @@ export type CodemodeLaunchInput = {
 
 export type CodemodeInnerCallListener = (sessionId: string, event: InnerCallEvent) => void
 
-type CodemodeServerHost = Pick<CodemodeHttpServer, 'start' | 'register' | 'unregister' | 'stop'>
+type CodemodeServerHost = Pick<
+  CodemodeHttpServer,
+  'start' | 'register' | 'unregister' | 'stop' | 'resolveToken'
+>
+type ConnectorRelay = Pick<BotToolRelay, 'addRoute' | 'origin' | 'endCaller'>
 
 type LiveLaunch = {
   launchId: string
@@ -58,6 +67,8 @@ export type CodemodeServiceOptions = {
   trustedServers?: () => readonly string[]
   /** Where each chat's connector switches are kept; default is memory. */
   sessionOptions?: CodemodeSessionOptionsAccess
+  /** Serves connectors to agents directly; default is the process's tool relay. */
+  relay?: ConnectorRelay
 }
 
 export type CodemodeConnectorWiring = {
@@ -85,11 +96,14 @@ export class CodemodeService {
   private connectorWiring: CodemodeConnectorWiring | null = null
   private connectorOpening: Promise<CodemodeConnectorWiring | null> | null = null
   private startFailureLogged = false
+  private readonly relay: ConnectorRelay
+  private removeRelayRoute: (() => void) | null = null
 
   constructor(private readonly opts: CodemodeServiceOptions = {}) {
     this.server = opts.server ?? new CodemodeHttpServer()
     this.runs = opts.runs ?? processCodemodeRunStore()
     this.sessionOptions = opts.sessionOptions ?? memorySessionOptions()
+    this.relay = opts.relay ?? botToolRelay
     this.log = opts.log ?? ((message, error) => console.warn(`[codemode] ${message}`, error ?? ''))
   }
 
@@ -205,6 +219,23 @@ export class CodemodeService {
     }))
   }
 
+  /** The tool relay's origin, serving connectors at `/c/<id>/mcp`; starts it if needed. */
+  async relayOrigin(): Promise<string> {
+    this.removeRelayRoute ??= this.relay.addRoute(createConnectorRelayRoute(this))
+    await this.openConnectors()
+    return this.relay.origin()
+  }
+
+  /** The live session a code-mode token belongs to; null once its session ended. */
+  resolveToken(token: string): string | null {
+    return this.server.resolveToken(token)
+  }
+
+  /** The connector list and sign-ins once opened; null before or when they couldn't be. */
+  openedConnectors(): CodemodeConnectorWiring | null {
+    return this.connectorWiring
+  }
+
   /**
    * Revokes the session's token before closing its MCP servers. With `launchId`, only while that
    * launch is still the session's current one: a superseded launch's teardown must not end a newer one.
@@ -218,6 +249,9 @@ export class CodemodeService {
     this.runs.dropSession(sessionId)
     // Why: unregister revokes synchronously, so a relaunch registering after this keeps its token.
     const unregistered = this.server.unregister(sessionId)
+    if (this.removeRelayRoute) {
+      this.relay.endCaller(codemodeCallerKey(sessionId))
+    }
     return unregistered.then(() => live?.session.close())
   }
 
@@ -253,10 +287,12 @@ export class CodemodeService {
   async stop(): Promise<void> {
     await Promise.all([...this.sessions.keys()].map((sessionId) => this.endSession(sessionId)))
     await this.server.stop()
+    this.removeRelayRoute?.()
+    this.removeRelayRoute = null
     await this.connectorWiring?.pool.closeAll()
   }
 
-  private connectorsOff(sessionId: string): Set<string> {
+  connectorsOff(sessionId: string): Set<string> {
     return readConnectorsOff({ options: this.sessionOptions.read(sessionId) })
   }
 

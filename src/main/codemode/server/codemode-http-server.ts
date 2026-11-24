@@ -94,6 +94,11 @@ export class CodemodeHttpServer {
     return this.tokens.issue(sessionId)
   }
 
+  /** The registered session a token belongs to; null once unregistered. */
+  resolveToken(token: string): string | null {
+    return this.tokens.resolve(token)
+  }
+
   /** Revokes the token and closes the session's connections, aborting their runs. */
   async unregister(sessionId: string): Promise<void> {
     this.tokens.revoke(sessionId)

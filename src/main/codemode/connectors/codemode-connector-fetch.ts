@@ -23,7 +23,7 @@ function requestUrl(input: string | URL | Request): URL {
 }
 
 /** The address a credential may go to: the connector's own https origin, nothing else. */
-function assertTarget(connector: CodemodeConnector, target: URL): void {
+export function assertTarget(connector: CodemodeConnector, target: URL): void {
   const own = new URL(connector.url)
   const localTest =
     process.env.NODE_ENV === 'test' && own.protocol === 'http:' && LOCAL_HOSTS.has(own.hostname)
@@ -51,7 +51,10 @@ async function bearerFor(
   return grant.token
 }
 
-function savedHeaders(connector: CodemodeConnector, key: BotToolOAuthKey): Record<string, string> {
+export function savedHeaders(
+  connector: CodemodeConnector,
+  key: BotToolOAuthKey
+): Record<string, string> {
   const credential = readBotToolCredential(key.folder, key.credentialId)
   return credential && credential.url === connector.url ? credential.headers : {}
 }
