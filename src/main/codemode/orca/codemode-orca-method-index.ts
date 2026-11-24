@@ -1,7 +1,7 @@
 import type { ZodType } from 'zod'
+import { labelOrcaMethod } from './codemode-orca-method-labels'
 import {
   isExposedOrcaMethod,
-  labelOrcaMethod,
   orcaMethodArea,
   type OrcaMethodLabel,
   type OrcaMethodSource

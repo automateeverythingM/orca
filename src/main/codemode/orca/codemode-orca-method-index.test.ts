@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { ALL_RPC_METHODS } from '../../runtime/rpc/methods/rpc-method-registry'
 import { OrcaMethodIndex } from './codemode-orca-method-index'
-import {
-  CODEMODE_ORCA_DENIED_METHODS,
-  isExposedOrcaMethod,
-  labelOrcaMethod
-} from './codemode-orca-method-policy'
+import { labelOrcaMethod } from './codemode-orca-method-labels'
+import { CODEMODE_ORCA_DENIED_METHODS, isExposedOrcaMethod } from './codemode-orca-method-policy'
 
 const SECRET_NAME =
   /(auth|token|credential|secret|password|apikey|api-key|oauth|signin|signout|login|logout|pairing|cookie)/i
@@ -24,6 +21,61 @@ const EXCLUDED_AREAS = [
   'orcad'
 ]
 
+const AGENT_LAUNCHES = [
+  'agentSession.create',
+  'agentSession.ensure',
+  'agentSession.restartContinue',
+  'agentSession.continueInterrupted',
+  'agent.launch',
+  'agent.launchReplay',
+  'terminal.createAgentSession',
+  'terminal.ensureAgentSession',
+  'terminal.create',
+  'session.tabs.createTerminal',
+  'worktree.create',
+  'folderWorkspace.create',
+  'orchestration.dispatch',
+  'orchestration.workerStart',
+  'orchestration.run',
+  'automation.runNow',
+  'bots.create',
+  'bots.session.start',
+  'bots.kickoff.retry',
+  'bots.sendRunAgain',
+  'bots.takeOver',
+  'bots.groups.send',
+  'bots.lookAround.lookNow',
+  'bots.suggestions.start',
+  'bots.tidyUp.now'
+]
+const CLIENT_PROTOCOL = [
+  'browser.clientHost.commandResult',
+  'browser.clientHost.commandResultChunk',
+  'browser.clientHost.requestResult',
+  'browser.clientHost.pageMetadata',
+  'browser.clientHost.fileChannel.write',
+  'browser.clientPage.initializationAction',
+  'browser.screencast.ack',
+  'browser.screencast.reclaimForDesktop',
+  'browser.grab.viewportBridge',
+  'desktopBrowserBridge.result',
+  'desktopBrowserBridge.fileRead',
+  'mobileWeb.bundle.manifest',
+  'host.declareClient',
+  'runtime.clientCapabilities.update',
+  'notifications.reportDesktopPresence',
+  'notifications.pushCoverage',
+  'terminal.ackOutput',
+  'terminal.resizeForClient',
+  'terminal.updateViewport',
+  'terminal.setViewerColors',
+  'terminal.unsubscribe',
+  'session.tabs.unsubscribeAll',
+  'orchestration.workerApprovalsUnsubscribe',
+  'sidebarInputs.repoIcons'
+]
+
+const registryNames = new Set<string>(ALL_RPC_METHODS.map((m) => m.name))
 const exposed = ALL_RPC_METHODS.filter(isExposedOrcaMethod)
 const exposedNames = new Set<string>(exposed.map((m) => m.name))
 
@@ -59,13 +111,34 @@ describe('Orca method exposure for code mode', () => {
     expect(accountOrSettings).toEqual([])
   })
 
+  it('never exposes host-client protocol plumbing', () => {
+    for (const name of CLIENT_PROTOCOL) {
+      expect(registryNames.has(name), name).toBe(true)
+      expect(exposedNames.has(name), name).toBe(false)
+    }
+    const plumbing = [...exposedNames].filter(
+      (name) =>
+        /^(browser\.clientHost|browser\.clientPage|desktopBrowserBridge|mobileWeb)\./.test(name) ||
+        /\.(commandResult|commandResultChunk)$/.test(name) ||
+        /unsubscribe/i.test(name)
+    )
+    expect(plumbing).toEqual([])
+  })
+
+  it('labels every method that starts an agent or worker destructive', () => {
+    for (const name of AGENT_LAUNCHES) {
+      expect(exposedNames.has(name), name).toBe(true)
+      expect(labelOrcaMethod(name), name).toBe('destructive')
+    }
+  })
+
   it('labels every exposed method and sorts verbs into read, write and destructive', () => {
     for (const method of exposed) {
       expect(['read', 'write', 'destructive']).toContain(labelOrcaMethod(method.name))
     }
     const expected: Record<string, string> = {
       'worktree.list': 'read',
-      'worktree.create': 'write',
+      'worktree.set': 'write',
       'worktree.remove': 'destructive',
       'worktree.rm': 'destructive',
       'repo.remove': 'destructive',
@@ -94,7 +167,7 @@ describe('Orca method exposure for code mode', () => {
     expect(index.get('worktree.create')).toMatchObject({
       name: 'worktree.create',
       area: 'worktree',
-      label: 'write'
+      label: 'destructive'
     })
     expect(index.get('codemode.connectors.setToken')).toBeNull()
     expect(index.inArea('nope')).toEqual([])
