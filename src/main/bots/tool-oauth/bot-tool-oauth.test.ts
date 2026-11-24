@@ -1,10 +1,7 @@
-import { createHash } from 'node:crypto'
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { z } from 'zod'
 import {
   _resetSecretStoreForTests,
   setSecretStore
@@ -26,128 +23,7 @@ import {
 import { settleBotToolRevocations, signOutBotTool } from './bot-tool-oauth-revoke'
 import { discoverBotToolAuth } from './bot-tool-oauth-discovery'
 import { OAuthFetchRefused, secureOAuthFetch } from './secure-oauth-fetch'
-
-type Hit = { method: string; path: string; body: URLSearchParams | Record<string, unknown> | null }
-
-/** An MCP app on 127.0.0.1 that is also its own authorization server. */
-class FakeApp {
-  server!: Server
-  base = ''
-  hits: Hit[] = []
-  metadata: Record<string, unknown> = {}
-  challenges = new Map<string, string>()
-  /** Answers the next token request instead of the normal flow. */
-  tokenAnswer: ((params: URLSearchParams) => Promise<[number, unknown]>) | null = null
-  issued = 0
-  rotate = true
-
-  async start(): Promise<void> {
-    this.server = createServer((req, res) => void this.handle(req, res))
-    await new Promise<void>((resolve) => this.server.listen(0, '127.0.0.1', resolve))
-    const address = this.server.address()
-    this.base = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`
-    this.metadata = {
-      issuer: this.base,
-      authorization_endpoint: `${this.base}/authorize`,
-      token_endpoint: `${this.base}/token`,
-      registration_endpoint: `${this.base}/register`,
-      revocation_endpoint: `${this.base}/revoke`,
-      response_types_supported: ['code'],
-      code_challenge_methods_supported: ['S256'],
-      token_endpoint_auth_methods_supported: ['none'],
-      scopes_supported: ['read', 'offline_access'],
-      authorization_response_iss_parameter_supported: true
-    }
-  }
-
-  get url(): string {
-    return `${this.base}/mcp`
-  }
-
-  /** What the user's browser does after approving: the code for this authorization URL. */
-  approve(authorizationUrl: string): string {
-    const url = new URL(authorizationUrl)
-    const code = `code-${this.challenges.size + 1}`
-    this.challenges.set(code, url.searchParams.get('code_challenge') ?? '')
-    return code
-  }
-
-  hitsTo(path: string): Hit[] {
-    return this.hits.filter((hit) => hit.path === path)
-  }
-
-  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const chunks: Buffer[] = []
-    for await (const chunk of req) {
-      chunks.push(Buffer.from(chunk))
-    }
-    const text = Buffer.concat(chunks).toString('utf8')
-    const path = (req.url ?? '').split('?')[0]!
-    const body = !text
-      ? null
-      : req.headers['content-type']?.includes('json')
-        ? z.record(z.string(), z.unknown()).parse(JSON.parse(text))
-        : new URLSearchParams(text)
-    this.hits.push({ method: req.method ?? '', path, body })
-    const json = (status: number, value: unknown, headers: Record<string, string> = {}) => {
-      res.writeHead(status, { 'content-type': 'application/json', ...headers })
-      res.end(JSON.stringify(value))
-    }
-    if (path === '/mcp') {
-      json(
-        401,
-        { error: 'unauthorized' },
-        {
-          'www-authenticate': `Bearer resource_metadata="${this.base}/.well-known/oauth-protected-resource/mcp", scope="read"`
-        }
-      )
-    } else if (path === '/.well-known/oauth-protected-resource/mcp') {
-      json(200, {
-        resource: this.url,
-        authorization_servers: [this.base],
-        scopes_supported: ['read']
-      })
-    } else if (path === '/.well-known/oauth-authorization-server') {
-      json(200, this.metadata)
-    } else if (path === '/register') {
-      json(201, { ...body, client_id: 'orca-client' })
-    } else if (path === '/token') {
-      const params = form(body)
-      if (this.tokenAnswer) {
-        const answer = this.tokenAnswer
-        this.tokenAnswer = null
-        const [status, value] = await answer(params)
-        json(status, value)
-        return
-      }
-      if (params.get('grant_type') === 'authorization_code') {
-        const challenge = this.challenges.get(params.get('code') ?? '')
-        const verifier = createHash('sha256')
-          .update(params.get('code_verifier') ?? '')
-          .digest('base64url')
-        if (!challenge || challenge !== verifier) {
-          json(400, { error: 'invalid_grant' })
-          return
-        }
-        this.challenges.delete(params.get('code')!)
-      }
-      this.issued += 1
-      json(200, {
-        access_token: `access-${this.issued}`,
-        token_type: 'Bearer',
-        expires_in: 3600,
-        ...(this.rotate || params.get('grant_type') === 'authorization_code'
-          ? { refresh_token: `refresh-${this.issued}` }
-          : {})
-      })
-    } else if (path === '/revoke') {
-      res.writeHead(200)
-      res.end()
-    } else {
-      json(404, {})
-    }
-  }
-}
+import { FakeOAuthApp, type Hit } from './testing/fake-oauth-app'
 
 const dirs: string[] = []
 const tempDir = (prefix: string): string => {
@@ -156,7 +32,7 @@ const tempDir = (prefix: string): string => {
   return dir
 }
 
-let app: FakeApp
+let app: FakeOAuthApp
 let clock = 1_000_000
 let key: BotToolOAuthKey
 const REDIRECT = 'http://127.0.0.1:43210/callback'
@@ -171,7 +47,7 @@ beforeEach(async () => {
   })
   clock = 1_000_000
   setBotToolOAuthDeps({ now: () => clock })
-  app = new FakeApp()
+  app = new FakeOAuthApp()
   await app.start()
   key = { folder: tempDir('bot-home-'), credentialId: 'cred-0001' }
   await createBotToolSignIn(key, app.url)
@@ -191,7 +67,7 @@ afterEach(async () => {
 
 async function signIn(): Promise<void> {
   const attempt = await beginBotToolSignIn(key, { redirectUri: REDIRECT })
-  await attempt.complete({ code: app.approve(attempt.authorizationUrl), iss: app.base })
+  await attempt.complete({ code: app.grantCode(attempt.authorizationUrl), iss: app.base })
 }
 
 const stored = () => readBotToolOAuth(key.folder, key.credentialId)
@@ -216,7 +92,7 @@ describe('Orca signing in to a bot’s app', () => {
     expect(url.searchParams.get('state')).toBe(attempt.state)
     expect(botToolSignInState(key)).toEqual({ state: 'signed-out' })
 
-    await attempt.complete({ code: app.approve(attempt.authorizationUrl), iss: app.base })
+    await attempt.complete({ code: app.grantCode(attempt.authorizationUrl), iss: app.base })
 
     const exchange = form(app.hitsTo('/token')[0]!.body)
     expect(exchange.get('resource')).toBe(app.url)
@@ -232,7 +108,7 @@ describe('Orca signing in to a bot’s app', () => {
     const wrongIssuer = await beginBotToolSignIn(key, { redirectUri: REDIRECT })
     await expect(
       wrongIssuer.complete({
-        code: app.approve(wrongIssuer.authorizationUrl),
+        code: app.grantCode(wrongIssuer.authorizationUrl),
         iss: 'https://evil.example'
       })
     ).rejects.toMatchObject({ code: 'issuer-mismatch' })
@@ -248,7 +124,7 @@ describe('Orca signing in to a bot’s app', () => {
     const late = await beginBotToolSignIn(key, { redirectUri: REDIRECT })
     clock += 5 * 60_000 + 1
     await expect(
-      late.complete({ code: app.approve(late.authorizationUrl), iss: app.base })
+      late.complete({ code: app.grantCode(late.authorizationUrl), iss: app.base })
     ).rejects.toMatchObject({ code: 'expired' })
     expect(app.hitsTo('/token')).toHaveLength(0)
     expect(botToolSignInState(key)).toEqual({ state: 'signed-out' })
@@ -256,7 +132,7 @@ describe('Orca signing in to a bot’s app', () => {
 
   it('ignores a return with another state, and ends on a denial read only after the state', async () => {
     const attempt = await beginBotToolSignIn(key, { redirectUri: REDIRECT })
-    const code = app.approve(attempt.authorizationUrl)
+    const code = app.grantCode(attempt.authorizationUrl)
     expect(attempt.owns(new URLSearchParams({ state: 'forged', error: 'access_denied' }))).toBe(
       false
     )
