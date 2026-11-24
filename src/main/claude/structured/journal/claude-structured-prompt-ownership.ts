@@ -9,9 +9,8 @@ import { leaveClaudePlanModeOnApproval } from '../permissions/claude-plan-approv
 import type { ClaudeLateDispatchSettlement } from '../turns/claude-replay-turn-resolution'
 import { buildClaudePromptReply, claudePromptDismissal } from './claude-structured-prompt-replies'
 import type { ClaudeSession } from '../claude-structured-session-state'
-import type { ClaudePendingPrompt } from '../permissions/claude-prompt-registry'
+import type { ClaudePendingPrompt, ClaudePromptReply } from '../permissions/claude-prompt-registry'
 import { CLAUDE_STOP_GRACE_MS } from '../turns/claude-request-end-wait'
-import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 
 type CancelInput = Parameters<StructuredAgentSessionAdapter['cancelTurn']>[0]
 type AnswerInput = Parameters<StructuredAgentSessionAdapter['answerPrompt']>[0]
@@ -127,7 +126,7 @@ export async function cancelClaudeStructuredTurn(input: {
 function prepareClaudePromptReply(
   prompt: ClaudePendingPrompt,
   response: AnswerInput['response']
-): PermissionResult {
+): ClaudePromptReply {
   try {
     return buildClaudePromptReply(prompt, response)
   } catch (error) {

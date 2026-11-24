@@ -1,5 +1,14 @@
-import type { CanUseTool, OnUserDialog, PermissionResult } from '@anthropic-ai/claude-agent-sdk'
-import type { ClaudePromptRegistry } from './claude-prompt-registry'
+import type {
+  CanUseTool,
+  OnElicitation,
+  OnUserDialog,
+  PermissionResult
+} from '@anthropic-ai/claude-agent-sdk'
+import type {
+  ClaudePromptRegistration,
+  ClaudePromptRegistry,
+  ClaudePromptReply
+} from './claude-prompt-registry'
 import type { ClaudeStructuredSessionEvent } from '../lifecycle/claude-structured-session-event'
 import type { ClaudeStreamJsonConnectionHandlers } from '../../claude-stream-json-connection'
 import type { ClaudeStructuredLaunch } from '../launch/claude-structured-launch-resolution'
@@ -9,6 +18,10 @@ import {
   claudePermissionPresentation,
   claudePermissionSubject
 } from './claude-permission-presentation'
+import {
+  CLAUDE_ELICITATION_DECLINE,
+  claudeElicitationPresentation
+} from './claude-elicitation-prompt'
 
 export type ClaudePermissionCallbackDeps = {
   sessionId: string
@@ -29,6 +42,10 @@ function needsUserAnswer(toolName: string, options: Parameters<CanUseTool>[2]): 
   )
 }
 
+function isPermissionResult(reply: ClaudePromptReply): reply is PermissionResult {
+  return 'behavior' in reply
+}
+
 function denySafeResult(toolUseId: string | undefined): PermissionResult {
   return {
     behavior: 'deny',
@@ -37,10 +54,50 @@ function denySafeResult(toolUseId: string | undefined): PermissionResult {
   }
 }
 
+/** Opens a card and waits for the person; provider cancellation withdraws it. */
+function awaitClaudePromptAnswer<R>(
+  deps: ClaudePermissionCallbackDeps,
+  registration: Omit<ClaudePromptRegistration, 'settle'>,
+  signal: AbortSignal,
+  answer: (reply: ClaudePromptReply | null) => R,
+  unregistered: R
+): Promise<R> {
+  return new Promise<R>((resolve) => {
+    let cancel = (): void => {}
+    const settle = (reply: ClaudePromptReply | null): void => {
+      signal.removeEventListener('abort', cancel)
+      resolve(answer(reply))
+    }
+    const prompt = deps.prompts.register({ ...registration, settle })
+    if (!prompt) {
+      resolve(unregistered)
+      return
+    }
+    cancel = (): void => {
+      if (deps.prompts.forgetIfPending(prompt)) {
+        deps.emit({
+          type: 'prompt-cancelled',
+          sessionId: deps.sessionId,
+          promptKey: prompt.promptKey
+        })
+        settle(null)
+      }
+    }
+    if (signal.aborted) {
+      // Abort events are not replayed for listeners added after cancellation.
+      cancel()
+      return
+    }
+    signal.addEventListener('abort', cancel, { once: true })
+    deps.emit({ type: 'prompt', sessionId: deps.sessionId, prompt })
+  })
+}
+
 /** Malformed requests are denied; provider cancellation forgets the callback without replying. */
 export function buildClaudePermissionCallbacks(deps: ClaudePermissionCallbackDeps): {
   canUseTool: CanUseTool
   onUserDialog: OnUserDialog
+  onElicitation: OnElicitation
 } {
   const canUseTool: CanUseTool = (toolName, input, options) => {
     const fullAccess = deps.fullAccessAt(options.requestId)
@@ -52,14 +109,10 @@ export function buildClaudePermissionCallbacks(deps: ClaudePermissionCallbackDep
         ...(options.toolUseID ? { toolUseID: options.toolUseID } : {})
       })
     }
-    return new Promise<PermissionResult | null>((resolve) => {
-      let cancel = (): void => {}
-      const settle = (response: PermissionResult | null): void => {
-        options.signal.removeEventListener('abort', cancel)
-        resolve(response)
-      }
-      const subject = claudePermissionSubject(toolName, input)
-      const prompt = deps.prompts.register({
+    const subject = claudePermissionSubject(toolName, input)
+    return awaitClaudePromptAnswer<PermissionResult | null>(
+      deps,
+      {
         ...claudePermissionPresentation(options),
         ...(subject ? { subject } : {}),
         requestId: options.requestId,
@@ -67,37 +120,44 @@ export function buildClaudePermissionCallbacks(deps: ClaudePermissionCallbackDep
         toolUseId: options.toolUseID,
         input,
         suggestions: options.suggestions ?? [],
-        settle,
         ...(options.agentID ? { agentId: options.agentID } : {})
-      })
-      if (!prompt) {
-        settle(denySafeResult(options.toolUseID))
-        return
-      }
-      cancel = (): void => {
-        if (deps.prompts.forgetIfPending(prompt)) {
-          deps.emit({
-            type: 'prompt-cancelled',
-            sessionId: deps.sessionId,
-            promptKey: prompt.promptKey
-          })
-          // Null tells the SDK to write no response to the cancelled request.
-          settle(null)
-        }
-      }
-      if (options.signal.aborted) {
-        // Abort events are not replayed for listeners added after cancellation.
-        cancel()
-        return
-      }
-      options.signal.addEventListener('abort', cancel, { once: true })
-      deps.emit({ type: 'prompt', sessionId: deps.sessionId, prompt })
-    })
+      },
+      options.signal,
+      // Null tells the SDK to write no response to the cancelled request.
+      (reply) => (reply && isPermissionResult(reply) ? reply : null),
+      denySafeResult(options.toolUseID)
+    )
   }
 
   const onUserDialog: OnUserDialog = () => Promise.resolve({ behavior: 'cancelled' })
 
-  return { canUseTool, onUserDialog }
+  // An MCP server's question is the person's to answer: Full access never answers it.
+  const onElicitation: OnElicitation = (request, options) => {
+    const form = claudeElicitationPresentation(request)
+    if (!form) {
+      return Promise.resolve(CLAUDE_ELICITATION_DECLINE)
+    }
+    return awaitClaudePromptAnswer(
+      deps,
+      {
+        ...(request.title ? { title: request.title } : {}),
+        ...(request.displayName ? { displayName: request.displayName } : {}),
+        ...(request.description ? { description: request.description } : {}),
+        requestId: options.requestId,
+        toolName: request.serverName,
+        // No tool call carries an elicitation; the request id keys it alone.
+        toolUseId: `elicitation:${options.requestId}`,
+        input: {},
+        suggestions: [],
+        form
+      },
+      options.signal,
+      (reply) => (reply && !isPermissionResult(reply) ? reply : CLAUDE_ELICITATION_DECLINE),
+      CLAUDE_ELICITATION_DECLINE
+    )
+  }
+
+  return { canUseTool, onUserDialog, onElicitation }
 }
 
 type ClaudeExitHandler = NonNullable<ClaudeStreamJsonConnectionHandlers['onExit']>
@@ -108,7 +168,10 @@ export function claudeLaunchPermissions(
   deps: Omit<ClaudePermissionCallbackDeps, 'fullAccessAt'>,
   launch: Pick<ClaudeStructuredLaunch, 'options' | 'providerSessionId'>
 ): {
-  handlers: Pick<ClaudeStreamJsonConnectionHandlers, 'canUseTool' | 'onUserDialog' | 'onStdout'>
+  handlers: Pick<
+    ClaudeStreamJsonConnectionHandlers,
+    'canUseTool' | 'onUserDialog' | 'onElicitation' | 'onStdout'
+  >
   /** Claude's mode in wire order; null without Full access, whose launches read no stdout. */
   orderedMode: (() => string | null | undefined) | null
   /** Wraps the connection's exit handler: this process's permission state ends first. */

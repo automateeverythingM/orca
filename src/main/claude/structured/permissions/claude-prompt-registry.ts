@@ -1,11 +1,19 @@
-import type { PermissionResult, PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
+import type {
+  ElicitationResult,
+  PermissionResult,
+  PermissionUpdate
+} from '@anthropic-ai/claude-agent-sdk'
 import type {
   AgentJournalApprovalMatchedAskRule,
   AgentJournalApprovalSubject
 } from '../../../../shared/agent-session/journal/agent-session-journal-approval-subject'
+import type { ClaudeElicitationForm } from './claude-elicitation-prompt'
 
-/** Settles the SDK's `canUseTool` promise; `null` writes no provider response. */
-export type ClaudePromptSettle = (response: PermissionResult | null) => void
+/** A tool permission's answer, or an MCP form's when the prompt carries `form`. */
+export type ClaudePromptReply = PermissionResult | ElicitationResult
+
+/** Settles the SDK callback's promise; `null` means the request ended unanswered. */
+export type ClaudePromptSettle = (response: ClaudePromptReply | null) => void
 
 export type ClaudePromptPresentation = {
   title?: string
@@ -16,6 +24,8 @@ export type ClaudePromptPresentation = {
   matchedAskRule?: AgentJournalApprovalMatchedAskRule
   subject?: AgentJournalApprovalSubject
   personOnly?: true
+  /** Set for an MCP server's form elicitation, which no tool call carries. */
+  form?: ClaudeElicitationForm
 }
 
 export type ClaudePendingPrompt = ClaudePromptPresentation & {
@@ -87,7 +97,7 @@ export class ClaudePromptRegistry {
       promptKey: registration.requestId,
       toolUseId,
       toolName,
-      kind: questions.length > 0 ? 'question' : 'approval',
+      kind: registration.form || questions.length > 0 ? 'question' : 'approval',
       input,
       suggestions: Array.isArray(registration.suggestions) ? registration.suggestions : [],
       ...(registration.title ? { title: registration.title } : {}),
@@ -98,6 +108,7 @@ export class ClaudePromptRegistry {
       ...(registration.matchedAskRule ? { matchedAskRule: registration.matchedAskRule } : {}),
       ...(registration.subject ? { subject: registration.subject } : {}),
       ...(registration.personOnly ? { personOnly: true } : {}),
+      ...(registration.form ? { form: registration.form } : {}),
       questionIds: questions.map(questionId),
       settle: registration.settle,
       ...(agentId ? { agentId } : {})

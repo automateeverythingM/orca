@@ -104,6 +104,13 @@ export function claudeQuestionItems(input: {
   sessionId: string
   prompt: ClaudePendingPrompt
 }): ClaudeQuestionItem[] {
+  const identity = claudePromptIdentity({
+    sessionId: input.sessionId,
+    promptKey: input.prompt.promptKey
+  })
+  if (input.prompt.form) {
+    return [{ identity, body: boundJournalPromptBody(input.prompt.form.body) }]
+  }
   const values = Array.isArray(input.prompt.input.questions) ? input.prompt.input.questions : []
   const questions = values.flatMap((value, index): AgentJournalQuestion[] => {
     const question = claudeRecord(value)
@@ -132,10 +139,7 @@ export function claudeQuestionItems(input: {
   const first = questions[0]!
   return [
     {
-      identity: claudePromptIdentity({
-        sessionId: input.sessionId,
-        promptKey: input.prompt.promptKey
-      }),
+      identity,
       body: boundJournalPromptBody({
         kind: 'question',
         question: legacyCompatible

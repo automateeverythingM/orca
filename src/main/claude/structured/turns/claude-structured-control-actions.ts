@@ -1,6 +1,5 @@
-import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentChildWorkStopAcknowledgement } from '../../../../shared/agent-status/child-work/agent-child-work-stop-targets'
-import type { ClaudePromptClaim } from '../permissions/claude-prompt-registry'
+import type { ClaudePromptClaim, ClaudePromptReply } from '../permissions/claude-prompt-registry'
 import {
   ClaudeControlRequestError,
   ClaudeControlRequestTimeoutError
@@ -131,7 +130,7 @@ export async function stopCurrentClaudeBackgroundTasks(input: {
 export async function answerClaudePrompt(
   session: ClaudeSession,
   claim: ClaudePromptClaim,
-  reply: PermissionResult
+  reply: ClaudePromptReply
 ): Promise<void> {
   if (!session.prompts.ownsClaim(claim)) {
     throw new Error(`claude is no longer waiting on ${claim.itemId}`)

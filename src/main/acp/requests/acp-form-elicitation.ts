@@ -28,6 +28,8 @@ const propertySchema = z.looseObject({
   default: z.unknown().optional(),
   minLength: z.number().optional(),
   enum: z.array(z.string()).optional(),
+  // Older MCP schemas title enum values positionally.
+  enumNames: z.array(z.string()).optional(),
   oneOf: z.array(choiceSchema).optional(),
   items: z
     .looseObject({ enum: z.array(z.string()).optional(), anyOf: z.array(choiceSchema).optional() })
@@ -63,12 +65,13 @@ function fieldChoices(
   const listed = choiceList(property)
   const oneOf = otherChoice ? listed?.filter((choice) => choice.const !== OTHER_CHOICE) : listed
   const values = property.type === 'array' ? property.items?.enum : property.enum
+  const names = property.type === 'array' ? undefined : property.enumNames
   const choices =
     oneOf?.map((choice) => ({
       value: choice.const,
       label: choice.title || choice.const,
       ...(choice.description ? { description: choice.description } : {})
-    })) ?? values?.map((value) => ({ value, label: value }))
+    })) ?? values?.map((value, index) => ({ value, label: names?.[index] || value }))
   if ((choices?.length === 0 && !hasOther) || (property.type === 'array' && !choices)) {
     throw unsupportedForm()
   }
@@ -234,4 +237,34 @@ export function acpFormElicitationPresentation(params: unknown): AcpRequestPrese
       return { action: 'accept', content }
     }
   }
+}
+
+const requiredFieldsSchema = z.object({
+  requestedSchema: z.looseObject({
+    properties: z.record(z.string(), z.unknown()),
+    required: z.array(z.unknown()).optional()
+  })
+})
+
+/** A form the card shows whole; null when Orca can't show it or would cut off a required field. */
+export function wholeFormElicitationPresentation(params: unknown): AcpRequestPresentation | null {
+  let presentation: AcpRequestPresentation
+  try {
+    presentation = acpFormElicitationPresentation(params)
+  } catch {
+    return null
+  }
+  const schema = requiredFieldsSchema.safeParse(params).data?.requestedSchema
+  const properties = schema?.properties ?? {}
+  const requiredCount = new Set(
+    (schema?.required ?? []).filter(
+      (key): key is string => typeof key === 'string' && Object.hasOwn(properties, key)
+    )
+  ).size
+  // Each shown required field is one question that can't be skipped.
+  const shown =
+    presentation.body.kind === 'question'
+      ? (presentation.body.questions ?? []).filter((question) => !question.skippable).length
+      : 0
+  return shown === requiredCount ? presentation : null
 }

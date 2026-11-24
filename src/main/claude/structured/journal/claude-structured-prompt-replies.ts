@@ -8,8 +8,13 @@ import {
   claudePromptQuestions,
   isClaudePromptRecord,
   readClaudePromptString,
-  type ClaudePendingPrompt
+  type ClaudePendingPrompt,
+  type ClaudePromptReply
 } from '../permissions/claude-prompt-registry'
+import {
+  CLAUDE_ELICITATION_DECLINE,
+  claudeElicitationResult
+} from '../permissions/claude-elicitation-prompt'
 
 /** Keep `cancel` for older cards; it now means dismissal. */
 export const CLAUDE_APPROVAL_DECISIONS = ['allow', 'allowForSession', 'deny', 'cancel'] as const
@@ -21,7 +26,11 @@ export const claudePromptCancelRoute: NonNullable<
 > = ({ prompt }) => (prompt.kind === 'question' ? { kind: 'stop' } : { kind: 'dismiss' })
 
 /** Dismissed plans and questions ask Claude to wait rather than revise or ask again. */
-export function claudePromptDismissal(prompt: ClaudePendingPrompt): PermissionResult {
+export function claudePromptDismissal(prompt: ClaudePendingPrompt): ClaudePromptReply {
+  return prompt.form ? CLAUDE_ELICITATION_DECLINE : toolPromptDismissal(prompt)
+}
+
+function toolPromptDismissal(prompt: ClaudePendingPrompt): PermissionResult {
   return {
     behavior: 'deny',
     message:
@@ -112,7 +121,7 @@ function approvalResponse(prompt: ClaudePendingPrompt, optionId: string): Permis
     }
   }
   if (decision === 'cancel') {
-    return claudePromptDismissal(prompt)
+    return toolPromptDismissal(prompt)
   }
   return {
     behavior: 'deny',
@@ -174,7 +183,10 @@ function questionResponse(
 export function buildClaudePromptReply(
   prompt: ClaudePendingPrompt,
   response: AgentSessionPromptResponse
-): PermissionResult {
+): ClaudePromptReply {
+  if (prompt.form) {
+    return claudeElicitationResult(prompt.form, response)
+  }
   if (prompt.kind === 'approval') {
     if (response.kind !== 'option') {
       throw new Error(`Claude prompt ${prompt.promptKey} takes a decision, not answers`)

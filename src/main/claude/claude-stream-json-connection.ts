@@ -39,10 +39,6 @@ export function loadClaudeAgentSdk(): Promise<typeof ClaudeAgentSdk> {
   return claudeAgentSdk
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
 export type ClaudeStreamJsonLaunch = {
   /** Orca's resolved user CLI; the SDK falls back to a bundled binary that is not installed. */
   pathToClaudeCodeExecutable: string
@@ -62,6 +58,8 @@ export type ClaudeStreamJsonConnectionHandlers = {
   canUseTool?: CanUseTool
   /** `request_user_dialog` control; the CLI only emits kinds declared in `supportedDialogKinds`. */
   onUserDialog?: OnUserDialog
+  /** MCP `elicitation/create`; without it the SDK declines every server's form. */
+  onElicitation?: ClaudeAgentSdk.OnElicitation
   /** A transport/process fault; a physical root exit arrives marked observed and is followed by onExit. */
   onFault?: (error: Error) => void
   /** Report observed root exit once; expected stays true even after an unproven close attempt. */
@@ -119,7 +117,8 @@ export async function openClaudeStreamJsonConnection(
       pathToClaudeCodeExecutable: launch.pathToClaudeCodeExecutable,
       spawnClaudeCodeProcess: spawner.spawn,
       ...(handlers.canUseTool ? { canUseTool: handlers.canUseTool } : {}),
-      ...(handlers.onUserDialog ? { onUserDialog: handlers.onUserDialog } : {})
+      ...(handlers.onUserDialog ? { onUserDialog: handlers.onUserDialog } : {}),
+      ...(handlers.onElicitation ? { onElicitation: handlers.onElicitation } : {})
     }
   })
   const managed = spawner.managed
@@ -222,7 +221,7 @@ export async function openClaudeStreamJsonConnection(
             break
           }
           await waitUntilReadable()
-          if (!isRecord(next.value)) {
+          if (typeof next.value !== 'object' || next.value === null) {
             throw new Error('claude stream-json yielded a non-object message')
           }
           handlers.onMessage?.(next.value)

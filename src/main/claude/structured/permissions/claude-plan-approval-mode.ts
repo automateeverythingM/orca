@@ -1,5 +1,5 @@
-import type { PermissionMode, PermissionResult } from '@anthropic-ai/claude-agent-sdk'
-import type { ClaudePendingPrompt } from './claude-prompt-registry'
+import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
+import type { ClaudePendingPrompt, ClaudePromptReply } from './claude-prompt-registry'
 import type { ClaudeSession } from '../claude-structured-session-state'
 import { claudeBypassRefused } from './claude-full-access-refusal'
 import {
@@ -66,12 +66,17 @@ export function leaveClaudePlanModeOnApproval(
       connection: Pick<ClaudeSession['connection'], 'setPermissionMode'>
     },
   prompt: Pick<ClaudePendingPrompt, 'toolName'>,
-  reply: PermissionResult
+  reply: ClaudePromptReply
 ): void {
   const mode = session.orderedPermissionMode
     ? session.orderedPermissionMode()
     : session.reportedOptions.reportedPermissionMode
-  if (prompt.toolName !== 'ExitPlanMode' || reply.behavior !== 'allow' || mode !== 'plan') {
+  if (
+    prompt.toolName !== 'ExitPlanMode' ||
+    !('behavior' in reply) ||
+    reply.behavior !== 'allow' ||
+    mode !== 'plan'
+  ) {
     return
   }
   try {
