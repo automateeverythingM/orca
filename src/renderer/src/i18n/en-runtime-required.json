@@ -2723,6 +2723,12 @@
         "notSentTo": "Not sent to",
         "paused": "{{bot}} is paused."
       },
+      "codemode": {
+        "callCount_one": "{{count}} call",
+        "callCount_other": "{{count}} calls",
+        "omitted_one": "{{count}} more call not shown",
+        "omitted_other": "{{count}} more calls not shown"
+      },
       "composer": {
         "botCount_one": "{{count}} bot",
         "botCount_other": "{{count}} bots",

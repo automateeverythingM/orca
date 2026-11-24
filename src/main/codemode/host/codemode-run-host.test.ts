@@ -11,6 +11,7 @@ import { fakeCrmServerSpec } from '../mcp-pool/testing/fake-crm-command'
 import {
   type ApprovalDecision,
   type ApprovalRequest,
+  type CodemodeRunEvent,
   CodemodeSession,
   type InnerCallEvent
 } from './codemode-run-host'
@@ -57,6 +58,7 @@ afterEach(async () => {
 type Harness = {
   session: CodemodeSession
   events: InnerCallEvent[]
+  runs: CodemodeRunEvent[]
   requests: ApprovalRequest[]
   run: (code: string, signal?: AbortSignal) => Promise<{ text: string; isError: boolean }>
 }
@@ -69,6 +71,7 @@ function makeSession(opts: {
   onEvent?: (event: InnerCallEvent) => void
 }): Harness {
   const events: InnerCallEvent[] = []
+  const runs: CodemodeRunEvent[] = []
   const requests: ApprovalRequest[] = []
   const session = new CodemodeSession({
     sessionId: 's1',
@@ -82,6 +85,7 @@ function makeSession(opts: {
       events.push(event)
       opts.onEvent?.(event)
     },
+    onRun: (event) => runs.push(event),
     workerPath
   })
   sessions.push(session)
@@ -92,6 +96,7 @@ function makeSession(opts: {
   return {
     session,
     events,
+    runs,
     requests,
     run: (code, signal = new AbortController().signal) => session.run(code, { signal, approver })
   }
@@ -126,6 +131,20 @@ describe('CodemodeSession', () => {
     expect(new Set(h.events.map((e) => e.runId)).size).toBe(1)
     expect(h.events[1]).toMatchObject({ input: { email: 'x@y.com' }, ms: expect.any(Number) })
     expect(h.events[1].output).toContain('"id":"u1"')
+  })
+
+  it("reports a run's start and end under the run id its inner calls carry", async () => {
+    const h = makeSession({ mode: () => 'full-access' })
+    await h.run(creditsScript)
+    await h.run('throw new Error("boom")')
+    expect(h.runs.map((e) => [e.code, e.state])).toEqual([
+      [creditsScript, 'running'],
+      [creditsScript, 'ok'],
+      ['throw new Error("boom")', 'running'],
+      ['throw new Error("boom")', 'error']
+    ])
+    expect(h.runs[0].runId).toBe(h.events[0].runId)
+    expect(h.runs[1].ms).toEqual(expect.any(Number))
   })
 
   it('asks once for an untrusted call in ask mode and leaves state unchanged on deny', async () => {

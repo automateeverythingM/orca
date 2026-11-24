@@ -22829,6 +22829,19 @@
         "sampleCall": "Sample call",
         "sampleNote": "Starts a real run",
         "send": "Send"
+      },
+      "codemode": {
+        "script": "Script",
+        "callCount_one": "{{count}} call",
+        "callCount_other": "{{count}} calls",
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "input": "Input",
+        "output": "Output",
+        "error": "Error",
+        "omitted_one": "{{count}} more call not shown",
+        "omitted_other": "{{count}} more calls not shown"
       }
     },
     "tab": {

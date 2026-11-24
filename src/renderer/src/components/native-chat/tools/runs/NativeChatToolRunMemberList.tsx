@@ -10,6 +10,7 @@ import type { NativeChatDiffReveal } from '../../../../../../shared/native-chat/
 import type { NativeChatToolRunAsides } from './NativeChatToolRun'
 import { buildNativeChatToolRunRows, type NativeChatToolRunRow } from './native-chat-tool-run-rows'
 import { NativeChatToolRunMembers } from './NativeChatToolRunMembers'
+import { CodemodeRunLine } from '../codemode/CodemodeRunView'
 
 /** Mount only while expanded so collapsed runs avoid member pairing and diff work. */
 export function NativeChatToolRunMemberList({
@@ -91,6 +92,19 @@ export function NativeChatToolRunMemberList({
               result={row.result}
               disclosureKey={
                 disclosureId === undefined ? undefined : `line:${disclosureId}:${row.lineIdentity}`
+              }
+            />
+          )
+        case 'codemode':
+          return (
+            <CodemodeRunLine
+              block={row.block}
+              result={row.result}
+              lineIdentity={row.lineIdentity}
+              disclosureKey={
+                disclosureId === undefined
+                  ? undefined
+                  : `codemode:${disclosureId}:${row.lineIdentity}`
               }
             />
           )

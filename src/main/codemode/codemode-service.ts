@@ -3,6 +3,7 @@ import { CODEMODE_LIMITS } from './codemode-limits'
 import type { GateMode } from './gate/codemode-gate'
 import { CodemodeSession, type InnerCallEvent } from './host/codemode-run-host'
 import { readCodemodeServerSpecs } from './mcp-pool/codemode-mcp-config'
+import { type CodemodeRunStore, processCodemodeRunStore } from './runs/codemode-run-store'
 import { CodemodeHttpServer } from './server/codemode-http-server'
 
 export type CodemodeLaunchInput = {
@@ -25,6 +26,8 @@ export type CodemodeServiceOptions = {
   server?: CodemodeServerHost
   /** Tests only; default is the bundled worker entry. */
   workerPath?: string
+  /** Where runs are kept for the chat to show; default is the process's store. */
+  runs?: CodemodeRunStore
 }
 
 /** One per process: the loopback run_js server and each structured session's code-mode session. */
@@ -33,10 +36,12 @@ export class CodemodeService {
   private readonly sessions = new Map<string, CodemodeSession>()
   private readonly listeners = new Set<CodemodeInnerCallListener>()
   private readonly log: (message: string, error?: unknown) => void
+  private readonly runs: CodemodeRunStore
   private startFailureLogged = false
 
   constructor(private readonly opts: CodemodeServiceOptions = {}) {
     this.server = opts.server ?? new CodemodeHttpServer()
+    this.runs = opts.runs ?? processCodemodeRunStore()
     this.log = opts.log ?? ((message, error) => console.warn(`[codemode] ${message}`, error ?? ''))
   }
 
@@ -73,6 +78,7 @@ export class CodemodeService {
         specs,
         limits: CODEMODE_LIMITS,
         onEvent: (event) => this.emit(sessionId, event),
+        onRun: (event) => this.runs.run(sessionId, event),
         ...(this.opts.workerPath ? { workerPath: this.opts.workerPath } : {})
       })
       const previous = this.sessions.get(sessionId)
@@ -97,6 +103,7 @@ export class CodemodeService {
   endSession(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId)
     this.sessions.delete(sessionId)
+    this.runs.dropSession(sessionId)
     // Why: unregister revokes synchronously, so a relaunch registering after this keeps its token.
     const unregistered = this.server.unregister(sessionId)
     return unregistered.then(() => session?.close())
@@ -108,6 +115,7 @@ export class CodemodeService {
   }
 
   private emit(sessionId: string, event: InnerCallEvent): void {
+    this.runs.innerCall(sessionId, event)
     for (const listener of this.listeners) {
       try {
         listener(sessionId, event)

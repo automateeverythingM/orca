@@ -32,3 +32,14 @@ export function structuredAgentSessionTurnCompletionSubscriptionId(ctx: RpcConte
 export function structuredAgentSessionAvailabilitySubscriptionId(ctx: RpcContext): string {
   return withFrameId(ctx, `${SUBSCRIPTION_PREFIX}.availability:${ctx.connectionId ?? 'local'}`)
 }
+
+/** One session's run_js runs; kept apart from the transcript base so its unsubscribe sweep spares it. */
+export function structuredAgentSessionCodemodeRunsSubscriptionId(
+  ctx: RpcContext,
+  sessionId: string
+): string {
+  return withFrameId(
+    ctx,
+    `${SUBSCRIPTION_PREFIX}.codemode-runs:${ctx.connectionId ?? 'local'}:${sessionId}`
+  )
+}

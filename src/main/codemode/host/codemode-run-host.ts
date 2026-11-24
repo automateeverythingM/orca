@@ -28,6 +28,14 @@ export type InnerCallEvent = {
   output?: string
 }
 
+/** A run's start (`running`) and its end, which carries the run's wall time. */
+export type CodemodeRunEvent = {
+  runId: string
+  code: string
+  state: 'running' | 'ok' | 'error'
+  ms?: number
+}
+
 export type CodemodeSessionOptions = {
   sessionId: string
   root: string
@@ -37,6 +45,7 @@ export type CodemodeSessionOptions = {
   specs: CodemodeServerSpec[]
   limits: CodemodeLimits
   onEvent: (event: InnerCallEvent) => void
+  onRun?: (event: CodemodeRunEvent) => void
   /** Bundled worker entry; tests pass their own build. */
   workerPath?: string
 }
@@ -122,6 +131,9 @@ export class CodemodeSession {
       refusedStarts: new Map()
     }
     this.pool.newTurn()
+    const started = performance.now()
+    this.reportRun({ runId: run.runId, code, state: 'running' })
+    let failed = true
     try {
       const result = await runScriptInWorker(
         code,
@@ -130,8 +142,12 @@ export class CodemodeSession {
         controller.signal,
         this.opts.workerPath
       )
-      return formatScriptResult(result, this.opts.limits.outputBytes)
+      const formatted = formatScriptResult(result, this.opts.limits.outputBytes)
+      failed = formatted.isError
+      return formatted
     } finally {
+      const ms = Math.round(performance.now() - started)
+      this.reportRun({ runId: run.runId, code, state: failed ? 'error' : 'ok', ms })
       opts.signal.removeEventListener('abort', forwardAbort)
       // Why: a script may return while host work it never awaited (bash, MCP, approval) is still running.
       controller.abort()
@@ -145,6 +161,14 @@ export class CodemodeSession {
       controller.abort()
     }
     await this.pool.close()
+  }
+
+  private reportRun(event: CodemodeRunEvent): void {
+    try {
+      this.opts.onRun?.(event)
+    } catch {
+      // A failing listener must not fail the script.
+    }
   }
 
   private async hostCall(run: RunState, call: HostCall): Promise<HostReply> {

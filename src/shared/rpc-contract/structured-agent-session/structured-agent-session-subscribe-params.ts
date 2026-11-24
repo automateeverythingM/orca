@@ -16,3 +16,5 @@ export const SubscribeParams = z
     capabilities: SubscribeCapabilities.optional()
   })
   .strict()
+
+export const SubscribeCodemodeRunsParams = z.object({ sessionId: SessionId }).strict()

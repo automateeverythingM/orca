@@ -12,6 +12,7 @@ import {
   type NativeChatTaskListRow
 } from '../../../../../../shared/native-chat/input/task-lists/native-chat-task-list-history'
 import type { NativeChatToolRunAsides } from './NativeChatToolRun'
+import { isCodemodeRunBlock } from '../codemode/codemode-run-rows'
 
 /** One drawn row of an opened run. `focusable`: it renders a control, so keyboard order can land on it. */
 export type NativeChatToolRunRow =
@@ -29,6 +30,14 @@ export type NativeChatToolRunRow =
       key: string
       focusable: true
       block: NativeChatBlock
+      result: NativeChatToolResultBlock | undefined
+      lineIdentity: string
+    }
+  | {
+      kind: 'codemode'
+      key: string
+      focusable: true
+      block: NativeChatToolCallBlock
       result: NativeChatToolResultBlock | undefined
       lineIdentity: string
     }
@@ -109,6 +118,17 @@ export function buildNativeChatToolRunRows({
       continue
     }
     const lineIdentity = nativeChatToolLineIdentity(block, seen)
+    if (block.type === 'tool-call' && isCodemodeRunBlock(block)) {
+      rows.push({
+        kind: 'codemode',
+        key: lineIdentity,
+        focusable: true,
+        block,
+        result: resultByCall.get(block),
+        lineIdentity
+      })
+      continue
+    }
     rows.push({
       kind: 'line',
       key: lineIdentity,
