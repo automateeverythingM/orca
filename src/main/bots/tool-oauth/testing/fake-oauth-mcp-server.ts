@@ -19,6 +19,7 @@ export class FakeOAuthMcpServer extends FakeOAuthApp {
   private sessions = new Map<string, Session>()
   private mcpSessions = 0
   private calls = 0
+  private held: Promise<void> | null = null
 
   static async start(opts: StartOptions = {}): Promise<FakeOAuthMcpServer> {
     const fake = new FakeOAuthMcpServer()
@@ -75,6 +76,18 @@ export class FakeOAuthMcpServer extends FakeOAuthApp {
     }
   }
 
+  /** Tool calls arriving from now on wait until the returned release is called. */
+  holdCalls(): () => void {
+    let release = () => {}
+    this.held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    return () => {
+      this.held = null
+      release()
+    }
+  }
+
   async stop(): Promise<void> {
     const open = [...this.sessions.values()]
     this.sessions.clear()
@@ -118,17 +131,21 @@ export class FakeOAuthMcpServer extends FakeOAuthApp {
   private openSession(): Session {
     const mcp = new McpServer({ name: 'fake-oauth-mcp', version: '1.0.0' })
     const text = (value: string) => ({ content: [{ type: 'text' as const, text: value }] })
+    const counted = async (): Promise<void> => {
+      this.calls += 1
+      await this.held
+    }
     const tools = [
-      mcp.registerTool('echo', { inputSchema: { text: z.string() } }, ({ text: input }) => {
-        this.calls += 1
+      mcp.registerTool('echo', { inputSchema: { text: z.string() } }, async ({ text: input }) => {
+        await counted()
         return text(input)
       }),
-      mcp.registerTool('whoami', { outputSchema: { user: z.string() } }, () => {
-        this.calls += 1
+      mcp.registerTool('whoami', { outputSchema: { user: z.string() } }, async () => {
+        await counted()
         return { ...text('fake'), structuredContent: { user: 'fake' } }
       }),
-      mcp.registerTool('count', {}, () => {
-        this.calls += 1
+      mcp.registerTool('count', {}, async () => {
+        await counted()
         return text(String(this.calls))
       })
     ]
