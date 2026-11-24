@@ -247,6 +247,12 @@
 1 src/main/cli/wsl/wsl-cli-registration-reconciliation.ts
 6 src/main/cli/wsl/wsl-cli-registration-registry.ts
 1 src/main/cli/wsl/wsl-managed-cli.ts
+7 src/main/codemode/connectors/codemode-connector-auth.ts # per add, sign-in, token paste, status and remove: sealed credential file reads and writes via the upstream bot credential store; same readers bot tools use; async would change upstream files
+5 src/main/codemode/connectors/codemode-connector-credential-source.ts # per relay request, like bots/tool-oauth/bot-tool-credential-source.ts: sealed credential file read via the upstream bot credential store; same readers bot tools use; async would change upstream files
+6 src/main/codemode/connectors/codemode-connector-fetch.ts # per upstream request from run_js: sealed credential file read via the upstream bot credential store; same readers bot tools use; async would change upstream files
+1 src/main/codemode/connectors/codemode-connector-pool.ts # connectorFetch handed to the upstream transport; its reads are counted in codemode-connector-fetch.ts
+1 src/main/codemode/connectors/codemode-connector-relay-route.ts # builds connectorCredentialSource for the relay route; its reads are counted in codemode-connector-credential-source.ts
+1 src/main/codemode/connectors/codemode-connector-store.ts # writeSecureJsonFile on a user add, edit or remove of a small list file; writeSecureFileAsync still renames synchronously and would make the store's sync API async
 1 src/main/codemode/host/codemode-file-tools.ts # spawnBundledRipgrep: the rg path lookup (existsSync) runs once per process and is cached, like the other rg callers
 2 src/main/codex-accounts/account-management/codex-account-registration.ts
 1 src/main/codex-accounts/credentials/codex-credential-absence-grace.ts

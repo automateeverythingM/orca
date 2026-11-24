@@ -38,7 +38,10 @@ function isConnector(value: unknown): value is CodemodeConnector {
 function parseConnectors(text: string): CodemodeConnector[] | null {
   try {
     const parsed: unknown = JSON.parse(text)
-    const list = (parsed as { connectors?: unknown } | null)?.connectors
+    const list =
+      typeof parsed === 'object' && parsed !== null && 'connectors' in parsed
+        ? parsed.connectors
+        : undefined
     if (!Array.isArray(list) || !list.every(isConnector)) {
       return null
     }

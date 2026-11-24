@@ -59,8 +59,22 @@ async function signIn(server: FakeOAuthMcpServer): Promise<{ access: string; ref
       redirect_uri: callback.redirect
     })
   })
-  const token = (await res.json()) as { access_token: string; refresh_token: string }
+  const token = tokenAnswer(await res.json())
   return { access: token.access_token, refresh: token.refresh_token }
+}
+
+function tokenAnswer(body: unknown): { access_token: string; refresh_token: string } {
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('access_token' in body) ||
+    typeof body.access_token !== 'string' ||
+    !('refresh_token' in body) ||
+    typeof body.refresh_token !== 'string'
+  ) {
+    throw new Error(`expected a token answer with a refresh token: ${JSON.stringify(body)}`)
+  }
+  return { access_token: body.access_token, refresh_token: body.refresh_token }
 }
 
 async function connect(server: FakeOAuthMcpServer, access: string): Promise<Client> {
@@ -142,7 +156,7 @@ describe('FakeOAuthMcpServer', () => {
     const reused = await refreshWith(fake, refresh)
     expect(reused.status).toBe(400)
     expect(await reused.json()).toEqual({ error: 'invalid_grant' })
-    const next = ((await first.json()) as { refresh_token: string }).refresh_token
+    const next = tokenAnswer(await first.json()).refresh_token
     expect((await refreshWith(fake, next)).status).toBe(200)
   })
 

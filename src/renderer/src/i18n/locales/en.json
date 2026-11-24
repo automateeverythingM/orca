@@ -22512,6 +22512,11 @@
           "addressLabel": "Sign-in page address",
           "unfinished": "Sign-in isn’t finished yet. Finish it on the page that opened, then press Done.",
           "pastePlaceholder": "http://localhost:…"
+        },
+        "codemode": {
+          "title": "Code mode connectors",
+          "disabled": "Disabled in Settings",
+          "caption": "Off stops use in this chat now; the agent's direct tool list updates next launch."
         }
       },
       "cardKindHidden": {

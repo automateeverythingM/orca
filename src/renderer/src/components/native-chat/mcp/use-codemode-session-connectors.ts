@@ -44,7 +44,9 @@ export function useCodemodeSessionConnectors(
     (id: string, on: boolean) => {
       const set = (value: boolean): void =>
         setConnectors((list) => list.map((c) => (c.id === id ? { ...c, on: value } : c)))
-      setErrors(({ [id]: _cleared, ...rest }) => rest)
+      setErrors((current) =>
+        Object.fromEntries(Object.entries(current).filter(([key]) => key !== id))
+      )
       set(on)
       toggleCodemodeSessionConnector(sessionId, id, on).catch((error: unknown) => {
         set(!on)
