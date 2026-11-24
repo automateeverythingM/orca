@@ -32,11 +32,15 @@ type Fields = Record<string, unknown>
 const DETAIL_BYTES = 2_000
 const NO_PROMPT = { title: '', detail: '' }
 
+function isFields(input: unknown): input is Fields {
+  return typeof input === 'object' && input !== null && !Array.isArray(input)
+}
+
 function fieldsOf(tool: string, input: unknown): Fields {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+  if (!isFields(input)) {
     throw new Error(`${tool}: expected an object argument`)
   }
-  return input as Fields
+  return input
 }
 
 function text(tool: string, fields: Fields, key: string): string {
@@ -76,8 +80,8 @@ function knownServer(pool: CodemodeMcpPool, server: string): string {
 
 /** Name and input shown for an inner call in the run view. */
 export function hostCallLabel(call: HostCall): { tool: string; input: unknown } {
-  if (call.tool === 'mcp.call' && typeof call.input === 'object' && call.input !== null) {
-    const { server, tool, args } = call.input as Fields
+  if (call.tool === 'mcp.call' && isFields(call.input)) {
+    const { server, tool, args } = call.input
     return { tool: `mcp.${String(server)}.${String(tool)}`, input: args }
   }
   return { tool: call.tool, input: call.input }

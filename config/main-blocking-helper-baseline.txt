@@ -247,6 +247,7 @@
 1 src/main/cli/wsl/wsl-cli-registration-reconciliation.ts
 6 src/main/cli/wsl/wsl-cli-registration-registry.ts
 1 src/main/cli/wsl/wsl-managed-cli.ts
+1 src/main/codemode/host/codemode-file-tools.ts # spawnBundledRipgrep: the rg path lookup (existsSync) runs once per process and is cached, like the other rg callers
 2 src/main/codex-accounts/account-management/codex-account-registration.ts
 1 src/main/codex-accounts/credentials/codex-credential-absence-grace.ts
 5 src/main/codex-accounts/credentials/managed-codex-auth-readiness.ts

@@ -1,11 +1,10 @@
 import { parentPort, workerData } from 'node:worker_threads'
-import type { CodemodeLimits } from '../codemode-limits'
 import { runScript, type HostCall, type HostReply } from './codemode-script-runner'
 import type { CodemodeWorkerInput, CodemodeWorkerMessage } from './codemode-worker-protocol'
 
 const port = parentPort
 if (port) {
-  const { code, limits } = workerData as CodemodeWorkerInput
+  const { code, limits }: CodemodeWorkerInput = workerData
   const waiting = new Map<number, (reply: HostReply) => void>()
   let nextId = 0
 
@@ -24,10 +23,8 @@ if (port) {
     })
 
   // Abort is handled by the parent terminating this thread; an in-thread signal cannot stop a pure CPU loop.
-  void runScript(code, host, limits as CodemodeLimits, new AbortController().signal).then(
-    (result) => {
-      port.postMessage({ type: 'done', result } satisfies CodemodeWorkerMessage)
-      port.close()
-    }
-  )
+  void runScript(code, host, limits, new AbortController().signal).then((result) => {
+    port.postMessage({ type: 'done', result } satisfies CodemodeWorkerMessage)
+    port.close()
+  })
 }

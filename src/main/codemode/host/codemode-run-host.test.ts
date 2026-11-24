@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CODEMODE_LIMITS, type CodemodeLimits } from '../codemode-limits'
 import type { GateMode } from '../gate/codemode-gate'
 import type { CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
@@ -255,12 +255,16 @@ describe('CodemodeSession', () => {
       }
     })
     const controller = new AbortController()
-    const running = h.run(`await write({ path: 'a.txt', content: 'x' })`, controller.signal)
+    let settled = false
+    const running = h
+      .run(`await write({ path: 'a.txt', content: 'x' })`, controller.signal)
+      .finally(() => {
+        settled = true
+      })
     await pendingAsk
-    const stoppedAt = Date.now()
     controller.abort()
+    await vi.waitFor(() => expect(settled).toBe(true), { timeout: 1_000 })
     const result = await running
-    expect(Date.now() - stoppedAt).toBeLessThan(1000)
     expect(result).toEqual({ text: 'Error: Interrupted by user', isError: true })
     expect(h.requests[0].signal.aborted).toBe(true)
     expect(existsSync(join(root, 'a.txt'))).toBe(false)
@@ -276,11 +280,14 @@ describe('CodemodeSession', () => {
 
   it.skipIf(process.platform === 'win32')('reads the bash timeout in seconds', async () => {
     const h = makeSession({ mode: () => 'full-access' })
-    const started = Date.now()
-    const result = await h.run(`return await bash('sleep 5', { timeout: 0.3 })`)
+    let settled = false
+    const running = h.run(`return await bash('sleep 5', { timeout: 0.3 })`).finally(() => {
+      settled = true
+    })
+    await vi.waitFor(() => expect(settled).toBe(true), { timeout: 4_000 })
+    const result = await running
     expect(result.text).toContain('"exit_code":124')
     expect(result.text).toContain('[timed out after 0.3s]')
-    expect(Date.now() - started).toBeLessThan(4000)
   })
 
   describe('paths outside the workspace', () => {

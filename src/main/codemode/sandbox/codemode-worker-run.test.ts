@@ -1,7 +1,7 @@
 import { build } from 'esbuild'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { CODEMODE_LIMITS } from '../codemode-limits'
 import { runScriptInWorker } from './codemode-worker-run'
 
@@ -64,18 +64,19 @@ describe('runScriptInWorker', () => {
 
   it('terminates a runaway loop on abort', async () => {
     const controller = new AbortController()
-    const started = Date.now()
+    let settled = false
     const pending = runScriptInWorker(
       'while (true) {}',
       async () => ({ ok: true, value: null }),
       CODEMODE_LIMITS,
       controller.signal,
       entryPath
-    )
+    ).finally(() => {
+      settled = true
+    })
     setTimeout(() => controller.abort(), 300)
-    const result = await pending
-    expect(result).toEqual({ ok: false, printed: [], error: 'Interrupted by user' })
-    expect(Date.now() - started).toBeLessThan(2000)
+    await vi.waitFor(() => expect(settled).toBe(true), { timeout: 2_000 })
+    expect(await pending).toEqual({ ok: false, printed: [], error: 'Interrupted by user' })
   })
 
   it('ignores a host reply that arrives after abort', async () => {

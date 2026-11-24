@@ -1,11 +1,21 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { errnoCodeOrUnknown } from '../../../shared/errors/errno-code'
 import { CODEMODE_LIMITS } from '../codemode-limits'
 import { runBash } from './codemode-bash'
 
 const posix = process.platform !== 'win32'
+
+function groupGone(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0)
+    return false
+  } catch (error) {
+    return errnoCodeOrUnknown(error) === 'ESRCH'
+  }
+}
 
 describe('runBash', () => {
   let cwd: string
@@ -66,16 +76,7 @@ describe('runBash', () => {
     expect(result.output).toMatch(/\[timed out after 0\.3s\]$/)
     const pgid = Number(result.output.split('\n')[0])
     expect(pgid).toBeGreaterThan(1)
-    let gone = false
-    for (let i = 0; i < 40 && !gone; i++) {
-      try {
-        process.kill(-pgid, 0)
-        await new Promise((r) => setTimeout(r, 50))
-      } catch (error) {
-        gone = (error as NodeJS.ErrnoException).code === 'ESRCH'
-      }
-    }
-    expect(gone).toBe(true)
+    await vi.waitFor(() => expect(groupGone(pgid)).toBe(true), { timeout: 2_000 })
   })
 
   it.skipIf(!posix)('kills the group and returns 130 on abort', async () => {

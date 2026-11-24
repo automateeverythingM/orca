@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { CODEMODE_LIMITS, type CodemodeLimits } from '../codemode-limits'
 import { runScript, type HostCall, type HostReply, type ScriptHost } from './codemode-script-runner'
 
@@ -70,14 +70,21 @@ describe('runScript', () => {
   })
 
   it('host time does not count', async () => {
-    const { host } = stubHost(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      return { ok: true, value: 1 }
-    })
-    const result = await run('return (await read("a")) + (await read("b"))', host, {
-      jsTimeMs: 200
-    })
-    expect(result).toEqual({ ok: true, printed: [], value: 2 })
+    vi.useFakeTimers({ toFake: ['performance'] })
+    try {
+      const { host } = stubHost(async () => {
+        await Promise.resolve()
+        vi.advanceTimersByTime(300)
+        return { ok: true, value: 1 }
+      })
+      // The loop after the host calls gives the interrupt check a chance to run.
+      const code =
+        'const sum = (await read("a")) + (await read("b")); for (let i = 0; i < 1e5; i++) {} return sum'
+      const result = await run(code, host, { jsTimeMs: 200 })
+      expect(result).toEqual({ ok: true, printed: [], value: 2 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('call limit', async () => {
@@ -173,10 +180,12 @@ describe('runScript', () => {
     ],
     ['return { toJSON() { while(true){} } }', 'script exceeded 0.2s JS time']
   ])('reading the outcome of %s cannot outrun the JS time limit', async (code, error) => {
-    const startedAt = Date.now()
-    const result = await run(code, undefined, { jsTimeMs: 200 })
-    expect(result).toEqual({ ok: false, printed: [], error })
-    expect(Date.now() - startedAt).toBeLessThan(3000)
+    let settled = false
+    const running = run(code, undefined, { jsTimeMs: 200 }).finally(() => {
+      settled = true
+    })
+    await vi.waitFor(() => expect(settled).toBe(true), { timeout: 3_000 })
+    expect(await running).toEqual({ ok: false, printed: [], error })
   })
 
   it('reports thrown values without running their getters', async () => {

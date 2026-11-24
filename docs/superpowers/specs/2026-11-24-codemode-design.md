@@ -30,32 +30,32 @@ and fixes the gaps found in its Learn feature.
 
 ## 2. Decisions
 
-| Topic | Decision |
-|---|---|
-| Sessions covered | Native/structured sessions only: Claude (Agent SDK), Codex (app-server), ACP agents with HTTP MCP support, Pi |
-| Not covered | Agents started in plain terminal tabs; ACP agents without `mcpCapabilities.http` |
+| Topic               | Decision                                                                                                                                                                                                                                                                                      |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sessions covered    | Native/structured sessions only: Claude (Agent SDK), Codex (app-server), ACP agents with HTTP MCP support, Pi                                                                                                                                                                                 |
+| Not covered         | Agents started in plain terminal tabs; ACP agents without `mcpCapabilities.http`                                                                                                                                                                                                              |
 | Wrapped MCP servers | Connectors and the project's `.mcp.json` servers also stay available as direct tools (harness behaviour; agents read `.mcp.json` themselves). Servers in `.orca/mcp.json` are code-mode-only: no agent loads them directly, so their schemas cost nothing until a script calls `mcp.describe` |
-| Permissions | Per-inner-call gate (harness behaviour), not one approval per script |
-| v1 contents | `mcp.*`, connectors, `orca.*`, file tools + `bash`, `lib.*` saved functions, Learn |
-| Default | Off. One global switch in Settings › Code mode |
+| Permissions         | Per-inner-call gate (harness behaviour), not one approval per script                                                                                                                                                                                                                          |
+| v1 contents         | `mcp.*`, connectors, `orca.*`, file tools + `bash`, `lib.*` saved functions, Learn                                                                                                                                                                                                            |
+| Default             | Off. One global switch in Settings › Code mode                                                                                                                                                                                                                                                |
 
 ## 3. Architecture
 
 New code lives under `src/main/codemode/`, one folder per unit:
 
-| Unit | Responsibility |
-|---|---|
-| `server/` | Loopback MCP server exposing `run_js` |
-| `sandbox/` | QuickJS worker that runs one script |
-| `host/` | Executes inner calls coming from the worker, after the gate |
-| `gate/` | Pure permission decision function |
-| `approvals/` | App-owned approval cards (`cm-` requests) |
-| `mcp-pool/` | Per-session lazy pool of MCP servers |
-| `connectors/` | Remote connector store, auth, shared upstream pool |
-| `orca-module/` | Generated `orca.*` area index and labels |
-| `lib/` | Saved function store and trust |
-| `learn/` | Run recording, signals, writer, replay tests, proposals |
-| `runs/` | Run store pushed to the renderer for display |
+| Unit           | Responsibility                                              |
+| -------------- | ----------------------------------------------------------- |
+| `server/`      | Loopback MCP server exposing `run_js`                       |
+| `sandbox/`     | QuickJS worker that runs one script                         |
+| `host/`        | Executes inner calls coming from the worker, after the gate |
+| `gate/`        | Pure permission decision function                           |
+| `approvals/`   | App-owned approval cards (`cm-` requests)                   |
+| `mcp-pool/`    | Per-session lazy pool of MCP servers                        |
+| `connectors/`  | Remote connector store, auth, shared upstream pool          |
+| `orca-module/` | Generated `orca.*` area index and labels                    |
+| `lib/`         | Saved function store and trust                              |
+| `learn/`       | Run recording, signals, writer, replay tests, proposals     |
+| `runs/`        | Run store pushed to the renderer for display                |
 
 Flow: agent → `run_js` (HTTP MCP) → `server` → new sandbox worker → script calls
 `mcp.fcu.add_credits()` → message to `host` → `gate` → `mcp-pool` / connector pool →
@@ -88,15 +88,15 @@ result back into the script → printed output and return value → agent.
 
 Limits (settings can change them):
 
-| Limit | Default |
-|---|---|
-| JS time (excluding time spent in host calls) | 30 s |
-| Memory | 64 MiB |
-| Stack | 512 KiB |
-| Inner calls per script | 500 |
-| Output returned to the agent | 30 KB, head and tail kept, marker for the cut |
-| One tool result inside the script | 4 MiB |
-| `lib` nesting depth | 8 |
+| Limit                                        | Default                                       |
+| -------------------------------------------- | --------------------------------------------- |
+| JS time (excluding time spent in host calls) | 30 s                                          |
+| Memory                                       | 64 MiB                                        |
+| Stack                                        | 512 KiB                                       |
+| Inner calls per script                       | 500                                           |
+| Output returned to the agent                 | 30 KB, head and tail kept, marker for the cut |
+| One tool result inside the script            | 4 MiB                                         |
+| `lib` nesting depth                          | 8                                             |
 
 A promise that never settles ends the run with an explicit error. A worker crash fails
 that run only.
@@ -125,18 +125,18 @@ that run only.
 function. `mode` is read from the session record on every call, so a mode change
 mid-script takes effect at the next call.
 
-| Call | `ask` / `own` | `accept-edits` / `auto` | `full-access` | read-only session |
-|---|---|---|---|---|
-| `read` / `grep` / `find`, `mcp.list` | allow | allow | allow | allow |
-| `write` / `edit` | ask | allow | allow | refuse |
-| `bash` | ask | ask | allow | refuse |
-| `mcp.*` on an untrusted server | ask | ask | allow | refuse |
-| `mcp.*` on a trusted server | allow | allow | allow | refuse |
-| `orca.*` read | allow | allow | allow | allow |
-| `orca.*` write | ask | allow | allow | refuse |
-| `orca.*` destructive | ask | ask | ask | refuse |
-| First start of a local stdio server | ask-person-only | ask-person-only | allow | refuse |
-| `lib.save`, `lib.trust` | ask-person-only | ask-person-only | ask-person-only | refuse |
+| Call                                 | `ask` / `own`   | `accept-edits` / `auto` | `full-access`   | read-only session |
+| ------------------------------------ | --------------- | ----------------------- | --------------- | ----------------- |
+| `read` / `grep` / `find`, `mcp.list` | allow           | allow                   | allow           | allow             |
+| `write` / `edit`                     | ask             | allow                   | allow           | refuse            |
+| `bash`                               | ask             | ask                     | allow           | refuse            |
+| `mcp.*` on an untrusted server       | ask             | ask                     | allow           | refuse            |
+| `mcp.*` on a trusted server          | allow           | allow                   | allow           | refuse            |
+| `orca.*` read                        | allow           | allow                   | allow           | allow             |
+| `orca.*` write                       | ask             | allow                   | allow           | refuse            |
+| `orca.*` destructive                 | ask             | ask                     | ask             | refuse            |
+| First start of a local stdio server  | ask-person-only | ask-person-only         | allow           | refuse            |
+| `lib.save`, `lib.trust`              | ask-person-only | ask-person-only         | ask-person-only | refuse            |
 
 - Trust is set per server in Settings. Connectors are untrusted by default.
 - `mcp.describe` on a local server that has not been approved triggers the
@@ -175,12 +175,12 @@ All agents get it through the single choke point `basis.toolServers()` in
 A new `codemodeToolServer()` factory produces one entry named `orca` whenever code mode
 is on (`BotLaunchTools` needs a new public factory because its constructor is private).
 
-| Agent | Mechanism |
-|---|---|
-| Claude | HTTP entry with an `Authorization` header and `alwaysLoad: true` |
-| Codex | `mcp_servers.orca.url` plus `bearer_token_env_var`; token only in the environment |
-| ACP | Only if the agent advertises `mcpCapabilities.http`; otherwise a chat notice "code mode unavailable for this agent" |
-| Pi | Existing `registerMcpServer` extension path |
+| Agent  | Mechanism                                                                                                           |
+| ------ | ------------------------------------------------------------------------------------------------------------------- |
+| Claude | HTTP entry with an `Authorization` header and `alwaysLoad: true`                                                    |
+| Codex  | `mcp_servers.orca.url` plus `bearer_token_env_var`; token only in the environment                                   |
+| ACP    | Only if the agent advertises `mcpCapabilities.http`; otherwise a chat notice "code mode unavailable for this agent" |
+| Pi     | Existing `registerMcpServer` extension path                                                                         |
 
 If the server cannot start, the session launches without code mode and shows a notice.
 
@@ -320,19 +320,19 @@ kept. Errors return `isError: true` with the JS stack mapped to script line numb
 
 ### 10.1 Unit and integration (Vitest, `pnpm test`)
 
-| Area | Tests |
-|---|---|
-| Gate | Every table row × every mode |
-| Orca labels | Every RPC method has a label; excluded-method name check (`auth|token|credential|secret|password`); area index matches the catalog |
-| Approvals | Broker → journal → answer → script continues; Stop with an open card |
-| Sandbox | Each limit; never-settling promise; worker crash isolation; top-level await |
-| Server | Token auth, Origin/Host refusal, progress keep-alive |
-| Description and results | Description builder; 30 KB trimming; row matching (match, no match, duplicate code) |
-| Injection | Each agent's launch config contains `orca` with a token; Claude has `alwaysLoad` |
-| Files and bash | Path scoping (`..`, escaping symlinks, absolute paths); `edit` with 0/1/2 matches; bash timeout and group kill |
-| Connectors | Fake OAuth MCP server: sign in, refresh, expired token, revoked; no secrets in `connectors.json`; relay routing; shared upstream; switched-off connector refused in both paths |
-| `lib` | Header parsing; project over global; history; trust hash states; recursion; save card flow; cloned-function trust card; gate applies inside functions |
-| Learn | Shape hash; both signals; writer JSON parsing; replay matching; state machine; macOS sandbox denies network and outside writes |
+| Area                    | Tests                                                                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Gate                    | Every table row × every mode                                                                                                                                                   |
+| Orca labels             | Every RPC method has a label; excluded-method name check (`auth                                                                                                                | token | credential | secret | password`); area index matches the catalog |
+| Approvals               | Broker → journal → answer → script continues; Stop with an open card                                                                                                           |
+| Sandbox                 | Each limit; never-settling promise; worker crash isolation; top-level await                                                                                                    |
+| Server                  | Token auth, Origin/Host refusal, progress keep-alive                                                                                                                           |
+| Description and results | Description builder; 30 KB trimming; row matching (match, no match, duplicate code)                                                                                            |
+| Injection               | Each agent's launch config contains `orca` with a token; Claude has `alwaysLoad`                                                                                               |
+| Files and bash          | Path scoping (`..`, escaping symlinks, absolute paths); `edit` with 0/1/2 matches; bash timeout and group kill                                                                 |
+| Connectors              | Fake OAuth MCP server: sign in, refresh, expired token, revoked; no secrets in `connectors.json`; relay routing; shared upstream; switched-off connector refused in both paths |
+| `lib`                   | Header parsing; project over global; history; trust hash states; recursion; save card flow; cloned-function trust card; gate applies inside functions                          |
+| Learn                   | Shape hash; both signals; writer JSON parsing; replay matching; state machine; macOS sandbox denies network and outside writes                                                 |
 
 Component fixtures: a `cm-` approval card; `CodemodeRunView` running, finished, failed.
 
@@ -365,13 +365,13 @@ same servers in `.orca/mcp.json` with code mode on.
 One branch per part, merged to the fork's `main` in order. Each part ships behind the
 Settings switch and passes its tests before the next part starts.
 
-| Part | Contents |
-|---|---|
-| A | Server, sandbox, host, gate, approvals, MCP pool (local servers), file tools, `bash`, injection, display |
-| B | Connectors |
-| C | `orca.*` |
-| D | `lib.*` |
-| E | Learn |
+| Part | Contents                                                                                                 |
+| ---- | -------------------------------------------------------------------------------------------------------- |
+| A    | Server, sandbox, host, gate, approvals, MCP pool (local servers), file tools, `bash`, injection, display |
+| B    | Connectors                                                                                               |
+| C    | `orca.*`                                                                                                 |
+| D    | `lib.*`                                                                                                  |
+| E    | Learn                                                                                                    |
 
 ## 12. Settings › Code mode
 

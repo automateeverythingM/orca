@@ -1,5 +1,6 @@
 import { lstat, readlink, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { errnoCodeOrUnknown } from '../../../shared/errors/errno-code'
 
 const MAX_LINK_HOPS = 40
 
@@ -15,7 +16,7 @@ async function realpathOfDeepestAncestor(target: string): Promise<string> {
       try {
         return join(await realpath(current), ...tail.toReversed())
       } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code
+        const code = errnoCodeOrUnknown(error)
         const parent = dirname(current)
         // ENOENT/ENOTDIR mean this component is missing or dangling; any other error (EACCES, ELOOP) fails closed.
         if ((code !== 'ENOENT' && code !== 'ENOTDIR') || parent === current) {

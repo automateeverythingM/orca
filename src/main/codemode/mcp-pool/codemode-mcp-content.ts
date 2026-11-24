@@ -1,4 +1,12 @@
-function describeBinary(kind: string, item: Record<string, unknown>): string {
+type ContentFields = Record<string, unknown>
+
+function isContentFields(value: unknown): value is ContentFields {
+  return typeof value === 'object' && value !== null
+}
+
+const contentFields = (value: unknown): ContentFields => (isContentFields(value) ? value : {})
+
+function describeBinary(kind: string, item: ContentFields): string {
   const mime = typeof item.mimeType === 'string' ? item.mimeType : 'unknown'
   const data = typeof item.data === 'string' ? item.data : ''
   return `[${kind} ${mime} ${Math.floor((data.length * 3) / 4)} bytes]`
@@ -7,7 +15,7 @@ function describeBinary(kind: string, item: Record<string, unknown>): string {
 export function renderMcpContent(content: unknown[]): string {
   return content
     .map((raw) => {
-      const item = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
+      const item = contentFields(raw)
       switch (item.type) {
         case 'text':
           return typeof item.text === 'string' ? item.text : ''
@@ -15,7 +23,7 @@ export function renderMcpContent(content: unknown[]): string {
         case 'audio':
           return describeBinary(item.type, item)
         case 'resource': {
-          const resource = (item.resource ?? {}) as Record<string, unknown>
+          const resource = contentFields(item.resource)
           if (typeof resource.text === 'string') {
             return resource.text
           }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { recomputeOn } from '@/lib/recompute-on'
 import {
   codemodeRunForCall,
   codemodeRunsKey,
@@ -23,7 +24,7 @@ export function useCodemodeRun(call: CodemodeRunCall): CodemodeRunRecord | null 
       target && sessionId ? retainCodemodeRuns(target, sessionId, onChange) : NO_SUBSCRIPTION(),
     [target, sessionId]
   )
-  useSyncExternalStore(subscribe, () => (key ? codemodeRunsVersion(key) : 0))
+  const version = useSyncExternalStore(subscribe, () => (key ? codemodeRunsVersion(key) : 0))
   const { callId, code, running } = call
   useEffect(
     () =>
@@ -32,5 +33,5 @@ export function useCodemodeRun(call: CodemodeRunCall): CodemodeRunRecord | null 
         : undefined,
     [target, sessionId, callId, code, running]
   )
-  return key ? codemodeRunForCall(key, callId) : null
+  return recomputeOn([version], () => (key ? codemodeRunForCall(key, callId) : null))
 }

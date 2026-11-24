@@ -267,8 +267,10 @@ class QuickJsScriptRun {
       read.error.dispose()
       return this.stopError ?? 'uncaught exception could not be read'
     }
-    const fields = JSON.parse(read.value.consume((value) => this.context.getString(value)))
-    return this.stopError ?? thrownValueText(fields as ThrownFields, code, this.limits.memoryBytes)
+    const fields: ThrownFields = JSON.parse(
+      read.value.consume((value) => this.context.getString(value))
+    )
+    return this.stopError ?? thrownValueText(fields, code, this.limits.memoryBytes)
   }
 
   private fail(error: string): ScriptResult {

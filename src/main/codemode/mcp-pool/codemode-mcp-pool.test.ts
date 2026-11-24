@@ -77,6 +77,7 @@ describe('CodemodeMcpPool', () => {
     ).rejects.toThrow('no user none@y.com')
   })
 
+  // Spawns the fake CRM server three times (two crashes, then a restart in a new turn).
   it('restarts a crashed server at most once per turn', async () => {
     const pool = makePool()
     await expect(pool.call('fake-crm', 'crash', {}, signal())).rejects.toThrow(/boom/)
