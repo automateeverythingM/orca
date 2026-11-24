@@ -14,7 +14,8 @@ export type Approver = (request: ApprovalRequest) => Promise<ApprovalDecision>
 /** One inner call as the gate sees it; `allowKey` names what an allow_session answer covers. */
 export type GateCheck = {
   gate: GateCall
-  allowKey: string
+  /** null means never remembered: allow_session counts as allow_once. */
+  allowKey: string | null
   prompt: { title: string; detail: string }
 }
 
@@ -73,7 +74,7 @@ export class CodemodeApprovals {
       return REFUSED_TEXT
     }
     const allowed = this.sessionAllowed.get(connection) ?? new Set<string>()
-    if (allowed.has(check.allowKey)) {
+    if (check.allowKey !== null && allowed.has(check.allowKey)) {
       return null
     }
     const answer = await ask(approver, {
@@ -83,7 +84,9 @@ export class CodemodeApprovals {
     })
     switch (answer) {
       case 'allow_session':
-        this.sessionAllowed.set(connection, allowed.add(check.allowKey))
+        if (check.allowKey !== null) {
+          this.sessionAllowed.set(connection, allowed.add(check.allowKey))
+        }
         return null
       case 'allow_once':
         return null

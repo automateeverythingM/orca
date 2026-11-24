@@ -28,6 +28,13 @@ const MATRIX: { name: string; call: GateCall; expected: GateDecision[] }[] = [
     call: { kind: 'mcp-start', server: 's' },
     expected: [P, P, P, P, A, R]
   },
+  { name: 'orca read', call: { kind: 'orca', label: 'read' }, expected: [A, A, A, A, A, A] },
+  { name: 'orca write', call: { kind: 'orca', label: 'write' }, expected: [Q, Q, A, A, A, R] },
+  {
+    name: 'orca destructive',
+    call: { kind: 'orca', label: 'destructive' },
+    expected: [Q, Q, Q, Q, Q, R]
+  },
   { name: 'path-outside', call: { kind: 'path-outside' }, expected: [R, R, Q, Q, Q, R] }
 ]
 

@@ -33,4 +33,34 @@ describe('CodemodeApprovals', () => {
     )
     expect(second.asked).toEqual(['Run bash'])
   })
+
+  it('asks again after allow_session when the check has no allow key', async () => {
+    const approvals = new CodemodeApprovals(() => 'full-access')
+    const signal = new AbortController().signal
+    const connection = {}
+    const check: GateCheck = {
+      gate: { kind: 'orca', label: 'destructive' },
+      allowKey: null,
+      prompt: { title: 'orca.worktree.remove', detail: '{}' }
+    }
+    const answers = asking('allow_session')
+    expect(await approvals.check(check, { ...answers, signal, connection })).toBeNull()
+    expect(await approvals.check(check, { ...answers, signal, connection })).toBeNull()
+    expect(answers.asked).toHaveLength(2)
+  })
+
+  it('remembers allow_session for a keyed orca write check', async () => {
+    const approvals = new CodemodeApprovals(() => 'ask')
+    const signal = new AbortController().signal
+    const connection = {}
+    const check: GateCheck = {
+      gate: { kind: 'orca', label: 'write' },
+      allowKey: 'orca:worktree.create',
+      prompt: { title: 'orca.worktree.create', detail: '{}' }
+    }
+    const answers = asking('allow_session')
+    expect(await approvals.check(check, { ...answers, signal, connection })).toBeNull()
+    expect(await approvals.check(check, { ...answers, signal, connection })).toBeNull()
+    expect(answers.asked).toHaveLength(1)
+  })
 })
