@@ -221,6 +221,26 @@ describe('CodemodeHttpServer', () => {
     expect((await second.listTools()).tools.map((tool) => tool.name)).toEqual(['run_js'])
   })
 
+  it('refuses a new connection while a script runs, and keeps the running one', async () => {
+    let release: () => void = () => {}
+    let started: () => void = () => {}
+    const sawStart = new Promise<void>((resolve) => (started = resolve))
+    const token = register(
+      () =>
+        new Promise((resolve) => {
+          started()
+          release = () => resolve({ text: 'done', isError: false })
+        })
+    )
+    const running = await connect(token)
+    const call = running.callTool({ name: 'run_js', arguments: { code: 'x' } })
+    await sawStart
+    expect(await post({ authorization: `Bearer ${token}` })).toBe(409)
+    release()
+    expect((await call).content).toEqual([{ type: 'text', text: 'done' }])
+    expect(await post({ authorization: `Bearer ${token}` })).toBe(200)
+  })
+
   it("stops accepting a session's token once it is unregistered", async () => {
     const token = register(async () => ({ text: 'ok', isError: false }))
     const client = await connect(token)

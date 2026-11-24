@@ -27,6 +27,8 @@ type Registration = {
 
 const PATH = /^\/codemode\/mcp(?:\?.*)?$/
 const METHODS = new Set(['POST', 'GET', 'DELETE'])
+const BUSY_TEXT =
+  'This session is running a script on another connection; try again when it finishes.'
 
 class Refusal extends Error {
   constructor(
@@ -175,13 +177,20 @@ export class CodemodeHttpServer {
     await this.openConnection(req, res, registration)
   }
 
-  /** One live connection per token: a new initialize replaces the current one. */
+  /**
+   * One live connection per token: a new initialize replaces an idle connection (an agent that
+   * reconnected without DELETE), and is refused while a script runs on the current one.
+   */
   private async openConnection(
     req: IncomingMessage,
     res: ServerResponse,
     registration: Registration
   ): Promise<void> {
     const { connections } = registration
+    const busy = (): boolean => [...connections.values()].some(({ state }) => state.running > 0)
+    if (busy()) {
+      throw new Refusal(409, BUSY_TEXT)
+    }
     const state: CodemodeConnectionState = { running: 0 }
     const mcp = createCodemodeMcpServer(
       registration.session,
@@ -192,6 +201,10 @@ export class CodemodeHttpServer {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
+        // A script started on the old connection meanwhile: it keeps the session; this one is dropped below.
+        if (busy()) {
+          return
+        }
         for (const [oldId, old] of connections) {
           void old.mcp.close()
           connections.delete(oldId)
@@ -206,8 +219,12 @@ export class CodemodeHttpServer {
     }
     await mcp.connect(transport)
     await transport.handleRequest(req, res)
-    // Not an initialize, or the session was unregistered meanwhile: nothing may keep this server.
-    if (!transport.sessionId || this.registrations.get(registration.sessionId) !== registration) {
+    // Not an initialize, displaced by a running script, or the session was unregistered meanwhile.
+    if (
+      !transport.sessionId ||
+      connections.get(transport.sessionId)?.mcp !== mcp ||
+      this.registrations.get(registration.sessionId) !== registration
+    ) {
       connections.delete(transport.sessionId ?? '')
       await mcp.close()
     }
