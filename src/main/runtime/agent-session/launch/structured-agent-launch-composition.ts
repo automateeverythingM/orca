@@ -22,6 +22,10 @@ import {
   STRUCTURED_CHILD_ENV_TO_DELETE
 } from '../environment/structured-session-child-env'
 import { type LinkedSkills, NO_LINKED_SKILLS } from '../../../native-chat/native-chat-skill-roots'
+import {
+  type StructuredCodemodeLaunch,
+  withSessionCodemode
+} from './structured-agent-codemode-launch'
 
 /** Where a launch's shared inputs come from. */
 export type StructuredAgentLaunchSources = {
@@ -60,6 +64,8 @@ export type StructuredAgentLaunchSources = {
   resolveLinkedSkills?: (record: AgentSessionRecord) => Promise<LinkedSkills>
   /** The agent loaded fewer linked skills than its instructions said; this section replaces it. */
   reportLinkedSkills?: (sessionId: string, linkedSkills: string | null) => void
+  /** Code mode's run_js server for each launch that starts a child; absent: none. */
+  codemode?: StructuredCodemodeLaunch
 }
 
 /** Resolve each input lazily once in agent-defined order; refusals before directory reads leave floating records unpinned. */
@@ -176,7 +182,9 @@ async function composedPart<L>(
   sources: StructuredAgentLaunchSources,
   part: StructuredAgentLaunchPartResolver<L>,
   identity: AgentSessionJournalIdentity,
-  permissionMode?: AgentChatPermissionChoice
+  permissionMode?: AgentChatPermissionChoice,
+  /** A launch that starts a child; it alone gets code mode, which it marks here once opened. */
+  starts?: { codemode: boolean }
 ): Promise<StructuredAgentLaunchPart<L> & { cwd: string }> {
   const record = admittedRecord(definition, sources.store, identity.sessionId)
   const launchEnv = once(() => sources.resolveAgentLaunchEnv?.(definition.agent) ?? {})
@@ -208,11 +216,25 @@ async function composedPart<L>(
             : linkedSkills)())
     })(),
     // A read-only session gets none: Look around keeps every tool off.
-    toolServers: once(async () =>
-      readOnly || !sources.resolveToolServers
-        ? BotLaunchTools.none
-        : sources.resolveToolServers(record, await launchDirectory())
-    ),
+    toolServers: once(async () => {
+      if (readOnly) {
+        return BotLaunchTools.none
+      }
+      const root = await launchDirectory()
+      const own = sources.resolveToolServers
+        ? await sources.resolveToolServers(record, root)
+        : BotLaunchTools.none
+      return starts
+        ? withSessionCodemode(own, sources, {
+            agent: definition.agent,
+            sessionId: record.sessionId,
+            root,
+            env: await environments.agent(),
+            permissionMode,
+            starts
+          })
+        : own
+    }),
     linkedSkills: once(
       async () => (await sources.resolveLinkedSkills?.(record)) ?? NO_LINKED_SKILLS
     ),
@@ -247,22 +269,31 @@ export function composeStructuredLaunch<L>(
   part: StructuredAgentLaunchPartResolver<L>
 ): StructuredAgentLaunchResolver<L> {
   return async ({ identity, spawnToken, permissionMode }) => {
-    const { launch, cwd, env, inheritedEnvToDelete, cliRuntimeCommand, commandEnv } =
-      await composedPart(definition, sources, part, identity, permissionMode)
-    admittedRecord(definition, sources.store, identity.sessionId)
-    const child = sealStructuredSessionChild({
-      sessionId: identity.sessionId,
-      spawnToken,
-      env,
-      inheritedEnvToDelete,
-      ...(cliRuntimeCommand ? { cliRuntimeCommand } : {})
-    })
-    return {
-      ...launch,
-      cwd,
-      env: child.env,
-      envToDelete: child.envToDelete,
-      commandEnv: { ...commandEnv, ...child.commandEnv }
+    const starts = { codemode: false }
+    try {
+      const { launch, cwd, env, inheritedEnvToDelete, cliRuntimeCommand, commandEnv } =
+        await composedPart(definition, sources, part, identity, permissionMode, starts)
+      admittedRecord(definition, sources.store, identity.sessionId)
+      const child = sealStructuredSessionChild({
+        sessionId: identity.sessionId,
+        spawnToken,
+        env,
+        inheritedEnvToDelete,
+        ...(cliRuntimeCommand ? { cliRuntimeCommand } : {})
+      })
+      return {
+        ...launch,
+        cwd,
+        env: child.env,
+        envToDelete: child.envToDelete,
+        commandEnv: { ...commandEnv, ...child.commandEnv }
+      }
+    } catch (error) {
+      // No child will end to close what this launch opened.
+      if (starts.codemode) {
+        void sources.codemode?.service.endSession(identity.sessionId)
+      }
+      throw error
     }
   }
 }
@@ -286,7 +317,7 @@ export function composeStructuredLaunchRead<L>(
 
 /** The shared launch inputs of the runtime an agent's adapter is built in. */
 export function structuredAgentLaunchSources(
-  context: Pick<StructuredAgentAdapterContext, 'deps' | 'store' | 'environment'>
+  context: Pick<StructuredAgentAdapterContext, 'deps' | 'store' | 'environment' | 'codemode'>
 ): StructuredAgentLaunchSources {
   const { deps } = context
   return {
@@ -313,6 +344,7 @@ export function structuredAgentLaunchSources(
     ...(deps.reportSessionLinkedSkills
       ? { reportLinkedSkills: deps.reportSessionLinkedSkills }
       : {}),
+    ...(context.codemode ? { codemode: context.codemode } : {}),
     // Wired by the real hosts only, so a test runtime never loads the bundled skill.
     ...(deps.nativeChatVisuals
       ? {

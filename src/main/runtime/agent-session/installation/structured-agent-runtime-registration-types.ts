@@ -15,6 +15,7 @@ import type { AgentModelCatalogDiscovery } from '../../../native-chat/agent-mode
 import type { AgentSessionRecordStore } from '../records/agent-session-record-store'
 import type { createStructuredAgentSessionDispatchFollowUps } from '../lifecycle/structured-agent-session-dispatch-followups'
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime-contract'
+import type { StructuredCodemodeLaunch } from '../launch/structured-agent-codemode-launch'
 import type { createStructuredAgentEnvironmentResolvers } from '../environment/structured-agent-shell-environment'
 import type {
   StructuredClaudeAccountHomeDeps,
@@ -32,6 +33,8 @@ export type StructuredAgentAdapterContext = {
   followUps: ReturnType<typeof createStructuredAgentSessionDispatchFollowUps>
   /** Null until the host is built: the adapters are built first. */
   host: () => StructuredAgentSessionHost | null
+  /** Absent when this host never offers code mode. */
+  codemode?: StructuredCodemodeLaunch
 }
 
 export type StructuredAgentRuntimeAdapter = StructuredAgentSessionAdapter & {

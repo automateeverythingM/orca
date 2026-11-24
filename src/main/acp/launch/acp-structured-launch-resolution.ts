@@ -76,6 +76,8 @@ export type AcpStructuredLaunch = StructuredAgentCommand & {
   release?: AcpInstructionsLaunch['release']
   /** The bot's own tools and `spec.ownMcpServers`, opened with each session; absent: none. */
   mcpServers?: McpServer[]
+  /** Of those, the ones Orca serves (code mode), offered only to an agent that takes MCP over HTTP. */
+  orcaMcpServerNames?: readonly string[]
   /** The saved model the launch line carries. */
   launchModel?: string
   /** The launched program's version, when its check or managed release names it. */
@@ -228,7 +230,7 @@ export function acpStructuredLaunchPart(
     const skillLoaded = visuals && loaded.includes(visuals.skill) ? visuals : null
     const tools = await basis.toolServers()
     // Why a bot's tools are off for this agent; its chat starts without them and is told so.
-    const toolsOff = tools.servers.length > 0 ? spec.botToolsOff : undefined
+    const toolsOff = tools.botServers.length > 0 ? spec.botToolsOff : undefined
     const own = await basis.instructions(
       linkedSkillsSection(
         linked.projects,
@@ -252,7 +254,7 @@ export function acpStructuredLaunchPart(
     const fullAccess = basis.permissionMode === 'full-access'
     // A managed release's receipt names its version; other programs answer the check.
     const launchedVersion = version ?? launchVersion.version
-    const botServers = toolsOff ? [] : acpBotMcpServers(tools)
+    const botServers = spec.botToolsOff ? [] : acpBotMcpServers(tools)
     // Like its bot tools, a read-only session gets none of the agent's own servers.
     const ownServers = basis.readOnly
       ? []
@@ -296,6 +298,9 @@ export function acpStructuredLaunchPart(
           : {}),
         ...(instructions?.release ? { release: instructions.release } : {}),
         ...(mcpServers.length > 0 ? { mcpServers } : {}),
+        ...(botServers.length > 0 && tools.orcaServerNames.length > 0
+          ? { orcaMcpServerNames: tools.orcaServerNames }
+          : {}),
         ...(model ? { launchModel: model } : {}),
         ...(launchedVersion ? { version: launchedVersion } : {}),
         resume: head

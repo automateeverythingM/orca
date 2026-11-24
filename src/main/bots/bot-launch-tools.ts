@@ -10,7 +10,7 @@ const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '::1']
 
 /** A bot's servers ready for its CLI; only `BotLaunchTools.for` makes one, so no saved value slips through. */
 export class BotLaunchTools {
-  static readonly none = new BotLaunchTools([], {}, {}, false)
+  static readonly none = new BotLaunchTools([], {}, {}, false, [])
   // A private member makes the type nominal: a plain object with the same fields isn't one.
   declare private readonly nominal: true
 
@@ -21,8 +21,31 @@ export class BotLaunchTools {
     /** Added to the environment of the commands the CLI runs, not the CLI's own. */
     readonly commandEnv: Readonly<Record<string, string>>,
     /** Some tool goes through the relay, so the CLI must reach loopback directly. */
-    readonly relayed: boolean
+    readonly relayed: boolean,
+    /** Servers Orca itself serves (code mode), not the bot's. */
+    readonly orcaServerNames: readonly string[]
   ) {}
+
+  /** The bot's own servers, without the ones Orca serves. */
+  get botServers(): readonly BotToolServer[] {
+    return this.servers.filter((server) => !this.orcaServerNames.includes(server.name))
+  }
+
+  /** `base` plus servers Orca serves itself; a bot server with the same name gives way. */
+  static withExtraServers(
+    base: BotLaunchTools,
+    extra: readonly BotToolServer[],
+    env: Readonly<Record<string, string>>
+  ): BotLaunchTools {
+    const names = extra.map((server) => server.name)
+    return new BotLaunchTools(
+      [...base.servers.filter((server) => !names.includes(server.name)), ...extra],
+      { ...base.env, ...env },
+      base.commandEnv,
+      base.relayed || extra.some(isLoopbackServer),
+      [...new Set([...base.orcaServerNames, ...names])]
+    )
+  }
 
   /**
    * Every bot launch gets the bot's token, whichever agent runs it: tools present it to the relay,
@@ -59,12 +82,45 @@ export class BotLaunchTools {
       }),
       commandsOnly ? {} : tokenEnv,
       commandsOnly ? tokenEnv : {},
-      servers.some((server) => 'url' in server && server.credential)
+      servers.some((server) => 'url' in server && server.credential),
+      []
     )
   }
 }
 
 const ENV_REFERENCING_AGENTS: ReadonlySet<string> = new Set(['claude', 'pi'])
+
+/** The code-mode token's variable, apart from the bot's so neither replaces the other. */
+export const CODEMODE_TOKEN_ENV = 'ORCA_CODEMODE_TOKEN'
+
+/** `base` plus code mode's server as `agent` takes it: Claude and Pi name the token's variable. */
+export function withCodemodeServer(
+  base: BotLaunchTools,
+  server: BotToolServer,
+  agent: string
+): BotLaunchTools {
+  const authorization = 'url' in server ? server.headers?.authorization : undefined
+  if (!('url' in server) || !authorization || !ENV_REFERENCING_AGENTS.has(agent)) {
+    return BotLaunchTools.withExtraServers(base, [server], {})
+  }
+  const token = authorization.replace(/^Bearer /, '')
+  const referenced: BotToolServer = {
+    ...server,
+    headers: { ...server.headers, authorization: `Bearer \${${CODEMODE_TOKEN_ENV}}` }
+  }
+  return BotLaunchTools.withExtraServers(base, [referenced], { [CODEMODE_TOKEN_ENV]: token })
+}
+
+function isLoopbackServer(server: BotToolServer): boolean {
+  if (!('url' in server)) {
+    return false
+  }
+  try {
+    return LOOPBACK_HOSTS.includes(new URL(server.url).hostname.replace(/^\[|\]$/g, ''))
+  } catch {
+    return false
+  }
+}
 
 /** `env` with the tools' additions, and loopback added to both NO_PROXY spellings when needed. */
 export function withBotLaunchToolsEnv(

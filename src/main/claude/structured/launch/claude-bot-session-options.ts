@@ -11,6 +11,8 @@ import {
   claudeReadOnlyOptions
 } from '../../claude-structured-read-only-options'
 
+let codemodeRefusalLogged = false
+
 /** What a chat adds over the base launch: its instructions, a read-only session's limits, and a
  *  bot's own tools on top of the owner's (a read-only session gets none, nor one whose managed
  *  settings refused them). */
@@ -26,7 +28,13 @@ export async function claudeBotSessionOptions(
   // Claude loads every linked project's skills, so the section lists none as unloaded.
   const own = await basis.instructions(linkedSkillsSection(linked, []))
   // Managed settings that refuse --mcp-config would stop Claude starting; it starts without them.
-  const toolsOff = tools.servers.length > 0 && refused.mcpConfig
+  const toolsOff = tools.botServers.length > 0 && refused.mcpConfig
+  if (refused.mcpConfig && tools.orcaServerNames.length > 0 && !codemodeRefusalLogged) {
+    codemodeRefusalLogged = true
+    console.warn(
+      '[codemode] Claude managed settings refuse MCP config; Claude chats run without run_js'
+    )
+  }
   const instructions = toolsOff
     ? [own, botToolsOffInstruction("your organization's Claude Code managed settings refuse them")]
         .filter(Boolean)
@@ -37,6 +45,8 @@ export async function claudeBotSessionOptions(
       ? { systemPrompt: { type: 'preset', preset: 'claude_code', append: instructions } }
       : {}),
     ...(basis.readOnly ? claudeReadOnlyOptions(basis.readOnly) : {}),
-    ...(tools.servers.length > 0 && !toolsOff ? { mcpServers: claudeLaunchServers(tools) } : {})
+    ...(tools.servers.length > 0 && !refused.mcpConfig
+      ? { mcpServers: claudeLaunchServers(tools) }
+      : {})
   }
 }

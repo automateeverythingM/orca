@@ -14,6 +14,7 @@ export function structuredAgentSettingGates(
   | 'piManagedExtensionsEnabled'
   | 'nativeChatPromptSuggestions'
   | 'sharedCodexServers'
+  | 'codemodeEnabled'
 > {
   return {
     resolveAgentFullAccess: (agent) =>
@@ -23,6 +24,7 @@ export function structuredAgentSettingGates(
     // Offered for this computer's chats only: a remote or WSL server runs plain Node, not Electron.
     sharedCodexServers: () =>
       process.versions.electron !== undefined &&
-      getSettings().experimentalSharedCodexServers === true
+      getSettings().experimentalSharedCodexServers === true,
+    codemodeEnabled: () => getSettings().codemodeEnabled === true
   }
 }

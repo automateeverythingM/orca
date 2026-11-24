@@ -87,6 +87,8 @@ export type StructuredAgentSessionRuntimeDeps = StructuredAgentSessionTransportO
   prepareSessionLinkedSkills?: (record: AgentSessionRecord) => Promise<LinkedSkills>
   /** See `StructuredAgentLaunchSources.reportLinkedSkills`. */
   reportSessionLinkedSkills?: (sessionId: string, linkedSkills: string | null) => void
+  /** This host's code-mode setting, read per launch; absent: chats never get run_js. */
+  codemodeEnabled?: () => boolean
   /** See `StructuredAgentSessionHostDeps.quietTurnEnd`. */
   quietTurnEnd?: StructuredAgentSessionHostDeps['quietTurnEnd']
   /** See `StructuredAgentSessionHostDeps.isBotHome`. */

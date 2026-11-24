@@ -12,6 +12,8 @@ export type InstalledRuntime = {
   waitForRecovery: () => Promise<void>
   /** Stop admissions and timers synchronously; join accepted work before closing its sinks. */
   stopBackgroundWork?: () => void | Promise<void>
+  /** Once every child is closed: revoke what code mode still serves and close its server. */
+  stopCodemode?: () => Promise<void>
 }
 
 /** Latch the resume-marker trigger: the startup-ordering ratchet requires the quit call without arguments. */
@@ -55,6 +57,11 @@ export async function tearDownRuntime(
   // A backstop close can still deliver a final exit callback.
   try {
     await installed.waitForRecovery()
+  } catch (error) {
+    failures.push(error)
+  }
+  try {
+    await installed.stopCodemode?.()
   } catch (error) {
     failures.push(error)
   }

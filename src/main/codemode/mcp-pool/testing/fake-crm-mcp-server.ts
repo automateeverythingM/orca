@@ -80,6 +80,9 @@ server.registerTool(
 server.registerTool('get_state', { description: 'All users' }, async () =>
   text([...users.values()])
 )
+server.registerTool('pid', { description: 'This server process id' }, async () =>
+  text(String(process.pid))
+)
 server.registerTool('crash', { description: 'Exit with an error' }, async () => {
   process.stderr.write('boom\n', () => process.exit(1))
   return new Promise<never>(() => {})

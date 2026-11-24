@@ -29,6 +29,7 @@ import type { AcpStructuredLaunch } from '../../launch/acp-structured-launch-res
 import type { AcpStructuredOptions } from '../../options/acp-structured-options'
 import type { AcpStructuredPrompts } from '../../requests/acp-structured-prompts'
 import { acpSessionStartMeta } from '../../launch/acp-session-meta'
+import { acpSessionMcpServers } from '../../launch/acp-mcp-server'
 import type { AcpStructuredSessionAdapterDeps } from '../acp-structured-session-adapter-deps'
 import { AcpStructuredTurns } from '../../turns/acp-structured-turns'
 import type { AcpStructuredTurnsDeps } from '../../turns/acp-turn-dispatch-contract'
@@ -98,6 +99,7 @@ export async function initializeAcpStructuredSession(
     antigravityChatAuth: launch.antigravityChatAuth
   })
   const setup = {
+    mcpServers: acpSessionMcpServers(launch, initialized),
     authMethodId,
     authMethodUnavailableMessage: spec.authMethodUnavailableMessage,
     resumePreference: spec.resumePreference
@@ -127,7 +129,6 @@ export async function initializeAcpStructuredSession(
           const opened = await connection.start(
             {
               cwd,
-              mcpServers: launch.mcpServers ?? [],
               sessionId: resume.sessionId,
               ...acpSessionStartMeta(spec, meta, reopenMeta),
               ...setup
@@ -194,7 +195,6 @@ export async function initializeAcpStructuredSession(
       started = await connection.start(
         {
           cwd: launch.cwd,
-          mcpServers: launch.mcpServers ?? [],
           ...acpSessionStartMeta(spec, meta, sessionMeta),
           ...setup
         },

@@ -28,6 +28,7 @@ import type { CatalogOwner } from '../model-catalog/structured-agent-model-catal
 import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-session-runtime-contract'
 import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecycle/agent-session-record'
 import { observePRWatchCommittedRows } from '../lifecycle/pr-watch-runtime'
+import { processCodemodeService } from '../../../codemode/codemode-service'
 
 export async function installOnJournal(
   deps: StructuredAgentSessionRuntimeDeps,
@@ -46,12 +47,27 @@ export async function installOnJournal(
       )
     }
   })
+  const codemode = deps.codemodeEnabled
+    ? {
+        enabled: deps.codemodeEnabled,
+        service: processCodemodeService({
+          log: (message, error) => deps.logger.warn(message, { scope: 'codemode', error })
+        })
+      }
+    : undefined
   const context: StructuredAgentAdapterContext = {
     deps,
     store,
     journalDatabase,
     environment: envResolvers,
-    deliverLifecycle: lifecycle.deliver,
+    // Every child's end, requested or not, before the host reacts: its code-mode token dies first.
+    deliverLifecycle: (event) => {
+      if (event.type === 'ended') {
+        void codemode?.service.endSession(event.sessionId)
+      }
+      lifecycle.deliver(event)
+    },
+    ...(codemode ? { codemode } : {}),
     followUps: createStructuredAgentSessionDispatchFollowUps({
       host: () => host,
       logger: deps.logger
@@ -199,6 +215,7 @@ export async function installOnJournal(
     adapter,
     journalDatabase,
     waitForRecovery: lifecycle.drain,
+    ...(codemode ? { stopCodemode: () => codemode.service.stop() } : {}),
     stopBackgroundWork: () => {
       turnAttention?.stop()
       stopTurnAttention?.()
