@@ -18,6 +18,7 @@ const launchSettings = new Set([
   'agentPermissionOverrides',
   'nativeChatInheritShellEnvironment',
   'nativeChatInlineVisuals',
+  'codemodeEnabled',
   'nativeChatShellEnvironmentVariables',
   'terminalWindowsShell',
   'terminalWindowsPowerShellImplementation',
