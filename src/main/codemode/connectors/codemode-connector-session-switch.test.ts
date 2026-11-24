@@ -7,7 +7,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { FakeOAuthMcpServer } from '../../bots/tool-oauth/testing/fake-oauth-mcp-server'
 import { CodemodeService } from '../codemode-service'
 import { CodemodeConnectorPool } from './codemode-connector-pool'
-import { readConnectorsOff, writeConnectorsOff } from './codemode-connector-session-switch'
+import {
+  codemodeServerTrust,
+  connectorsOffValue,
+  readConnectorsOff,
+  writeConnectorsOff
+} from './codemode-connector-session-switch'
 import { setUpConnectorTestEnv } from './testing/codemode-connector-test-env'
 
 const KEY = 'codemode.connectorsOff'
@@ -17,6 +22,13 @@ describe('connectorsOff option', () => {
     const options = writeConnectorsOff({ model: 'm' }, ['b-2_X', 'a1'])
     expect(options).toEqual({ model: 'm', [KEY]: 'a1,b-2_X' })
     expect(readConnectorsOff({ options })).toEqual(new Set(['a1', 'b-2_X']))
+  })
+
+  it('never writes an empty value, which a session record cannot hold', () => {
+    expect(connectorsOffValue({}, [])).not.toBe('')
+    expect(readConnectorsOff({ options: { [KEY]: connectorsOffValue({}, ['bad id']) } })).toEqual(
+      new Set()
+    )
   })
 
   it('drops the key when nothing is off', () => {
@@ -31,6 +43,39 @@ describe('connectorsOff option', () => {
       new Set(['a1'])
     )
     expect(writeConnectorsOff({}, ['', 'bad id', 'a,b', 'ok'])).toEqual({ [KEY]: 'ok' })
+  })
+})
+
+describe('codemodeServerTrust', () => {
+  it('never trusts a connector name through the local setting, usable or not', () => {
+    const trusted = codemodeServerTrust({
+      connectors: { claimed: () => ['crm', 'docs'] },
+      connectorTrusted: (name) => name === 'docs',
+      trustedServers: () => ['crm', 'local']
+    })
+    expect(['crm', 'docs', 'local', 'other'].map(trusted)).toEqual([false, true, true, false])
+  })
+})
+
+describe('CodemodeService.setConnectorOff', () => {
+  it('refuses without writing when connectors could not be opened', async () => {
+    const written: string[] = []
+    const service = new CodemodeService({
+      log: () => {},
+      connectors: async () => {
+        throw new Error('store unreadable')
+      },
+      sessionOptions: {
+        read: () => ({ [KEY]: 'a1' }),
+        writeOption: async (_sessionId, key) => {
+          written.push(key)
+        }
+      }
+    })
+    await expect(service.setConnectorOff('s1', 'a1', false)).rejects.toThrow(
+      'connectors unavailable'
+    )
+    expect(written).toEqual([])
   })
 })
 
@@ -85,8 +130,8 @@ describe('connectors in run_js', () => {
       connectors: async () => ({ store, auth, pool: new CodemodeConnectorPool(store, auth) }),
       sessionOptions: {
         read: (sessionId) => saved.get(sessionId),
-        write: async (sessionId, options) => {
-          saved.set(sessionId, options)
+        writeOption: async (sessionId, key, value) => {
+          saved.set(sessionId, { ...saved.get(sessionId), [key]: value })
         }
       }
     })

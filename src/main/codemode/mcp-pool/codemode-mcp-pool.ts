@@ -10,8 +10,11 @@ export type CodemodeToolInfo = { name: string; description?: string; input_schem
 /** `structured` is the tool's `structuredContent` when it sent one; `text` is the rendered content. */
 export type CodemodeToolResult = { text: string; structured?: unknown }
 
-/** Connectors this chat may call, by name; `names()` is read live, so a switch applies to the next call. */
+/** Connectors by name, read live so a switch applies to the next call. */
 export type CodemodeConnectorAccess = {
+  /** Every connector's name, usable or not: a local server of that name never runs. */
+  claimed(): string[]
+  /** The connectors this chat may call now. */
   names(): string[]
   describe(name: string, signal?: AbortSignal): Promise<CodemodeToolInfo[]>
   call(
@@ -84,15 +87,14 @@ export class CodemodeMcpPool {
   }
 
   names(): string[] {
-    const connectors = this.connectorNames()
-    return [...connectors, ...this.localNames(connectors)]
+    return [...(this.options.connectors?.names() ?? []), ...this.localNames()]
   }
 
   list(): { server: string; tools: string[] | null }[] {
-    const connectors = this.connectorNames()
+    const connectors = this.options.connectors?.names() ?? []
     return [
       ...connectors.map((name) => ({ server: name, tools: this.connectorTools.get(name) ?? null })),
-      ...this.localNames(connectors).map((name) => {
+      ...this.localNames().map((name) => {
         const tools = this.entries.get(name)?.tools
         return { server: name, tools: tools ? tools.map((tool) => tool.name) : null }
       })
@@ -190,12 +192,9 @@ export class CodemodeMcpPool {
     await Promise.all(lives.map((live) => live.client.close().catch(() => {})))
   }
 
-  private connectorNames(): string[] {
-    return this.options.connectors?.names() ?? []
-  }
-
-  private localNames(connectors: readonly string[]): string[] {
-    return [...this.entries.keys()].filter((name) => !connectors.includes(name))
+  private localNames(): string[] {
+    const claimed = this.options.connectors?.claimed() ?? []
+    return [...this.entries.keys()].filter((name) => !claimed.includes(name))
   }
 
   private connectorsServing(server: string): CodemodeConnectorAccess | null {
@@ -203,13 +202,23 @@ export class CodemodeMcpPool {
       throw new Error(POOL_CLOSED)
     }
     const { connectors } = this.options
-    return connectors?.names().includes(server) ? connectors : null
+    if (!connectors?.claimed().includes(server)) {
+      return null
+    }
+    if (!connectors.names().includes(server)) {
+      throw this.unknownServer(server)
+    }
+    return connectors
+  }
+
+  private unknownServer(server: string): Error {
+    return new Error(`unknown MCP server ${server}; known: ${this.names().join(', ')}`)
   }
 
   private entry(server: string): Entry {
     const entry = this.entries.get(server)
     if (!entry) {
-      throw new Error(`unknown MCP server ${server}; known: ${this.names().join(', ')}`)
+      throw this.unknownServer(server)
     }
     return entry
   }

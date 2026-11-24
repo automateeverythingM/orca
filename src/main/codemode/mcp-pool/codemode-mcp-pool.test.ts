@@ -137,6 +137,7 @@ describe('CodemodeMcpPool', () => {
   it('routes a name to the connector over a local server of the same name, without a start', async () => {
     const calls: string[] = []
     const connectors: CodemodeConnectorAccess = {
+      claimed: () => ['crm', 'docs'],
       names: () => ['crm', 'docs'],
       describe: async (name) => [{ name: `${name}_tool`, input_schema: {} }],
       call: async (name, tool, args) => {
@@ -167,6 +168,33 @@ describe('CodemodeMcpPool', () => {
       { server: 'fake-crm', tools: null }
     ])
     expect(calls).toEqual(['crm.get_state'])
+    expect(asked).toBe(0)
+    expect(pool.startedCount()).toBe(0)
+  })
+
+  it('keeps a connector name unknown while that connector is unusable, without starting the local one', async () => {
+    let asked = 0
+    const pool = new CodemodeMcpPool([{ ...spec, name: 'crm' }, spec], {
+      cwd: process.cwd(),
+      env: process.env,
+      approveStart: async () => {
+        asked++
+        return true
+      },
+      connectors: {
+        claimed: () => ['crm'],
+        names: () => [],
+        describe: async () => [],
+        call: async () => ({ text: 'connector' })
+      }
+    })
+    pools.push(pool)
+    expect(pool.names()).toEqual(['fake-crm'])
+    expect(pool.list()).toEqual([{ server: 'fake-crm', tools: null }])
+    await expect(pool.call('crm', 'get_state', {}, signal())).rejects.toThrow(
+      'unknown MCP server crm; known: fake-crm'
+    )
+    await expect(pool.describe('crm')).rejects.toThrow('unknown MCP server crm')
     expect(asked).toBe(0)
     expect(pool.startedCount()).toBe(0)
   })

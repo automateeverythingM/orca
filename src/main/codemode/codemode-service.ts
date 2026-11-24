@@ -8,8 +8,9 @@ import {
   type CodemodeSessionOptionsAccess,
   connectorAccess,
   memorySessionOptions,
-  readConnectorsOff,
-  writeConnectorsOff
+  CONNECTORS_OFF_OPTION,
+  connectorsOffValue,
+  readConnectorsOff
 } from './connectors/codemode-connector-session-switch'
 import { CodemodeConnectorStore } from './connectors/codemode-connector-store'
 import type { GateMode } from './gate/codemode-gate'
@@ -162,22 +163,23 @@ export class CodemodeService {
   /** Switches a connector off or on for one chat; the chat's next inner call sees it. */
   async setConnectorOff(sessionId: string, connectorId: string, off: boolean): Promise<void> {
     const wiring = await this.openConnectors()
-    if (off && !wiring?.store.get(connectorId)) {
+    if (!wiring) {
+      throw new Error('connectors unavailable')
+    }
+    if (off && !wiring.store.get(connectorId)) {
       throw new Error(`unknown connector: ${connectorId}`)
     }
-    // Why: each write rewrites the whole option, so one chat's switches must not interleave.
+    // Why: each write sets the whole id list, so one chat's switches must not interleave.
     const previous = this.switchWrites.get(sessionId) ?? Promise.resolve()
     const next = previous
       .catch(() => {})
       .then(async () => {
         const options = this.sessionOptions.read(sessionId)
         const ids = [...readConnectorsOff({ options })].filter(
-          (id) => id !== connectorId && wiring?.store.get(id)
+          (id) => id !== connectorId && wiring.store.get(id)
         )
-        await this.sessionOptions.write(
-          sessionId,
-          writeConnectorsOff(options, off ? [...ids, connectorId] : ids)
-        )
+        const value = connectorsOffValue(options, off ? [...ids, connectorId] : ids)
+        await this.sessionOptions.writeOption(sessionId, CONNECTORS_OFF_OPTION, value)
       })
     this.switchWrites.set(sessionId, next)
     try {

@@ -239,6 +239,7 @@ describe('CodemodeSession', () => {
 
   it('asks for untrusted connector calls only and trusts listed local servers', async () => {
     const connectors: CodemodeConnectorAccess = {
+      claimed: () => ['crm', 'docs'],
       names: () => ['crm', 'docs'],
       describe: async () => [],
       call: async (name, tool) => ({ text: `${name}.${tool}` })

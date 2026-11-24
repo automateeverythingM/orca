@@ -19,21 +19,20 @@ export type StructuredCodemodeLaunch = {
 
 /** A chat's code-mode options kept on its session record, so a switch outlives the launch. */
 export function codemodeRecordOptions(
-  store: Pick<AgentSessionRecordStore, 'getRecord' | 'replaceSessionOptions'>
+  store: Pick<AgentSessionRecordStore, 'getRecord' | 'updateRecord'>
 ): CodemodeSessionOptionsAccess {
   return {
     read: (sessionId) => store.getRecord(sessionId)?.options,
-    write: async (sessionId, options) => {
+    writeOption: async (sessionId, key, value) => {
       const record = store.getRecord(sessionId)
       if (!record) {
         throw new Error(`unknown session ${sessionId}`)
       }
-      // Why: a host-side write like an option pick, so it goes under the lease the record holds now.
-      await store.replaceSessionOptions({
-        sessionId,
-        fence: record.lease.runtimeFence,
-        options,
-        now: Date.now()
+      // Why: an option pick merges its one key at apply time, so a concurrent model pick survives.
+      const args = { sessionId, fence: record.lease.runtimeFence, key, value, now: Date.now() }
+      await store.updateRecord(sessionId, {
+        kind: 'pick-option',
+        args: { ...args, models: undefined }
       })
     }
   }

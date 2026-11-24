@@ -18,15 +18,16 @@ type Options = Readonly<Record<string, string>>
 /** Where a chat's options live: the session record in the app, memory elsewhere. */
 export type CodemodeSessionOptionsAccess = {
   read(sessionId: string): Options | undefined
-  write(sessionId: string, options: Options): Promise<void>
+  /** Sets one key, merged into the options as they are when the write applies. */
+  writeOption(sessionId: string, key: string, value: string): Promise<void>
 }
 
 export function memorySessionOptions(): CodemodeSessionOptionsAccess {
   const saved = new Map<string, Options>()
   return {
     read: (sessionId) => saved.get(sessionId),
-    write: async (sessionId, options) => {
-      saved.set(sessionId, options)
+    writeOption: async (sessionId, key, value) => {
+      saved.set(sessionId, { ...saved.get(sessionId), [key]: value })
     }
   }
 }
@@ -42,25 +43,35 @@ export function readConnectorsOff(
   return new Set(typeof value === 'string' ? validIds(value.split(',')) : [])
 }
 
+// Why: a record option can't be empty, and a lone comma reads back as no ids.
+const NONE_OFF = ','
+
+/** The option's value for `ids`, never empty. Throws past the record's option limits. */
+export function connectorsOffValue(options: Options | undefined, ids: Iterable<string>): string {
+  const value = validIds(ids).sort().join(',') || NONE_OFF
+  if (value.length > OPTION_VALUE_LIMIT) {
+    throw new Error('too many connectors switched off in this chat')
+  }
+  const saved = options ?? {}
+  if (!(CONNECTORS_OFF_OPTION in saved) && Object.keys(saved).length >= OPTION_COUNT_LIMIT) {
+    throw new Error('this chat has too many options to switch connectors off')
+  }
+  return value
+}
+
 export function writeConnectorsOff(
   options: Options | undefined,
   ids: Iterable<string>
 ): Record<string, string> {
   const { [CONNECTORS_OFF_OPTION]: _previous, ...rest } = options ?? {}
-  const value = validIds(ids).sort().join(',')
-  if (value === '') {
-    return rest
-  }
-  if (value.length > OPTION_VALUE_LIMIT) {
-    throw new Error('too many connectors switched off in this chat')
-  }
-  if (Object.keys(rest).length >= OPTION_COUNT_LIMIT) {
-    throw new Error('this chat has too many options to switch connectors off')
-  }
-  return { ...rest, [CONNECTORS_OFF_OPTION]: value }
+  const value = connectorsOffValue(options, ids)
+  return value === NONE_OFF ? rest : { ...rest, [CONNECTORS_OFF_OPTION]: value }
 }
 
-/** Connectors a chat reaches by name: only enabled ones it has not switched off, resolved per call. */
+/**
+ * Connectors a chat reaches by name: every listed connector claims its name, but only enabled ones
+ * the chat has not switched off are usable. Resolved per call.
+ */
 export function connectorAccess(deps: {
   store: Pick<CodemodeConnectorStore, 'list' | 'byName'>
   pool: Pick<CodemodeConnectorPool, 'describe' | 'call'>
@@ -76,6 +87,7 @@ export function connectorAccess(deps: {
     return connector
   }
   return {
+    claimed: () => deps.store.list().map((connector) => connector.name),
     names: () =>
       deps.store
         .list()
@@ -88,12 +100,12 @@ export function connectorAccess(deps: {
 
 /** A connector's own `trusted` flag; a local server is trusted when its name is in the setting. */
 export function codemodeServerTrust(deps: {
-  connectors: Pick<CodemodeConnectorAccess, 'names'> | undefined
+  connectors: Pick<CodemodeConnectorAccess, 'claimed'> | undefined
   connectorTrusted: (name: string) => boolean
   trustedServers: () => readonly string[]
 }): (server: string) => boolean {
   return (server) =>
-    deps.connectors?.names().includes(server) === true
+    deps.connectors?.claimed().includes(server) === true
       ? deps.connectorTrusted(server)
       : deps.trustedServers().includes(server)
 }
