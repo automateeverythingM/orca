@@ -14,6 +14,9 @@ import { codemodeGateMode, withCodemodeTools } from './structured-agent-codemode
 
 const TOKEN = 'a'.repeat(64)
 const URL = 'http://127.0.0.1:4100/codemode/mcp'
+const FAKE_URL = 'http://127.0.0.1:4200/c/AbCdEfGh12345678/mcp'
+const BEARER = `Bearer ${TOKEN}`
+const REFERENCED = `Bearer \${${CODEMODE_TOKEN_ENV}}`
 
 function codemode(enabled: boolean) {
   const launched: string[] = []
@@ -22,14 +25,13 @@ function codemode(enabled: boolean) {
     launch: {
       enabled: () => enabled,
       service: {
-        launchServer: async ({ sessionId }: { sessionId: string }): Promise<BotToolServer> => {
+        // The service's answer for a chat with connector `fake` enabled and on.
+        launchServer: async ({ sessionId }: { sessionId: string }): Promise<BotToolServer[]> => {
           launched.push(sessionId)
-          return {
-            name: 'orca',
-            url: URL,
-            transport: 'http',
-            headers: { authorization: `Bearer ${TOKEN}` }
-          }
+          return [
+            { name: 'orca', url: URL, transport: 'http', headers: { authorization: BEARER } },
+            { name: 'fake', url: FAKE_URL, transport: 'http', headers: { authorization: BEARER } }
+          ]
         },
         endSession: async () => {}
       }
@@ -37,8 +39,11 @@ function codemode(enabled: boolean) {
   }
 }
 
-function toolsFor(agent: string, enabled = true): Promise<BotLaunchTools> {
-  return withCodemodeTools(BotLaunchTools.none, codemode(enabled).launch, {
+function toolsFor(
+  agent: string,
+  base: BotLaunchTools = BotLaunchTools.none
+): Promise<BotLaunchTools> {
+  return withCodemodeTools(base, codemode(true).launch, {
     agent,
     sessionId: 's1',
     launchId: 'launch-1',
@@ -51,15 +56,12 @@ function toolsFor(agent: string, enabled = true): Promise<BotLaunchTools> {
 const basis = { instructions: async () => null, readOnly: null }
 
 describe('code mode in a structured launch', () => {
-  it('gives Claude an orca server that names the token variable, with the token in its env', async () => {
+  it('gives Claude orca and each connector, naming the token variable, with the token in its env', async () => {
     const tools = await toolsFor('claude')
     const options = await claudeBotSessionOptions(basis, [], tools, { mcpConfig: false })
     expect(options.mcpServers).toEqual({
-      orca: {
-        type: 'http',
-        url: URL,
-        headers: { authorization: `Bearer \${${CODEMODE_TOKEN_ENV}}` }
-      }
+      orca: { type: 'http', url: URL, headers: { authorization: REFERENCED } },
+      fake: { type: 'http', url: FAKE_URL, headers: { authorization: REFERENCED } }
     })
     const env = withBotLaunchToolsEnv({ NO_PROXY: 'corp.example' }, tools)
     expect(env[CODEMODE_TOKEN_ENV]).toBe(TOKEN)
@@ -77,16 +79,19 @@ describe('code mode in a structured launch', () => {
     const tools = await toolsFor('codex')
     expect(codexBotToolsThreadConfig(tools, [])).toEqual({
       'mcp_servers.orca.url': URL,
-      'mcp_servers.orca.http_headers': { authorization: `Bearer ${TOKEN}` }
+      'mcp_servers.orca.http_headers': { authorization: BEARER },
+      'mcp_servers.fake.url': FAKE_URL,
+      'mcp_servers.fake.http_headers': { authorization: BEARER }
     })
     expect(withBotLaunchToolsEnv({}, tools)[CODEMODE_TOKEN_ENV]).toBeUndefined()
     expect(tools.commandEnv).toEqual({})
   })
 
-  it("adds orca to Pi's tool config, naming the token variable", async () => {
+  it("adds orca and each connector to Pi's tool config, naming the token variable", async () => {
     const tools = await toolsFor('pi')
     expect(JSON.parse(piBotToolsConfig(tools) ?? '{}')).toEqual({
-      orca: { url: URL, headers: { authorization: `Bearer \${${CODEMODE_TOKEN_ENV}}` } }
+      orca: { url: URL, headers: { authorization: REFERENCED } },
+      fake: { url: FAKE_URL, headers: { authorization: REFERENCED } }
     })
     expect(withBotLaunchToolsEnv({}, tools)[CODEMODE_TOKEN_ENV]).toBe(TOKEN)
     expect(PI_BOT_TOOLS_ENV).toBe('ORCA_PI_BOT_TOOLS')
@@ -109,7 +114,29 @@ describe('code mode in a structured launch', () => {
     expect(await claudeBotSessionOptions(basis, [], tools, { mcpConfig: false })).toEqual({})
   })
 
-  it('gives an ACP agent orca only when it says it takes MCP over HTTP', async () => {
+  it('replaces a bot server named like a connector with the connector', async () => {
+    const relay = { grant: async () => ({ origin: 'http://127.0.0.1:4300', token: 'bot' }) }
+    const base = await BotLaunchTools.for(relay, { botId: 'b1', folder: '/bot', agent: 'claude' }, [
+      { name: 'fake', command: 'bot-fake', args: [] },
+      { name: 'keep', command: 'bot-keep', args: [] }
+    ])
+    const tools = await toolsFor('claude', base)
+    const options = await claudeBotSessionOptions(basis, [], tools, { mcpConfig: false })
+    expect(options.mcpServers).toEqual({
+      keep: { type: 'stdio', command: 'bot-keep', args: [] },
+      orca: { type: 'http', url: URL, headers: { authorization: REFERENCED } },
+      fake: { type: 'http', url: FAKE_URL, headers: { authorization: REFERENCED } }
+    })
+    expect(tools.botServers.map((server) => server.name)).toEqual(['keep'])
+    const acp = acpBotMcpServers(await toolsFor('gemini', base))
+    expect(acp.map((server) => [server.name, 'url' in server ? server.url : null])).toEqual([
+      ['keep', null],
+      ['orca', URL],
+      ['fake', FAKE_URL]
+    ])
+  })
+
+  it('gives an ACP agent orca and its connectors only when it says it takes MCP over HTTP', async () => {
     const tools = await toolsFor('gemini')
     const launch = {
       mcpServers: acpBotMcpServers(tools),
@@ -128,13 +155,10 @@ describe('code mode in a structured launch', () => {
     ])
     expect(acpCodemodeUnavailableRow(launch, withHttp, 'p1')).toEqual([])
     expect(acpCodemodeUnavailableRow({}, [], 'p1')).toEqual([])
+    const headers = [{ name: 'authorization', value: BEARER }]
     expect(withHttp).toEqual([
-      {
-        type: 'http',
-        name: 'orca',
-        url: URL,
-        headers: [{ name: 'authorization', value: `Bearer ${TOKEN}` }]
-      }
+      { type: 'http', name: 'orca', url: URL, headers },
+      { type: 'http', name: 'fake', url: FAKE_URL, headers }
     ])
   })
 })

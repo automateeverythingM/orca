@@ -5,6 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { FakeOAuthMcpServer } from '../../bots/tool-oauth/testing/fake-oauth-mcp-server'
+import { BotToolRelay } from '../../bots/tool-relay/bot-tool-relay'
 import { CodemodeService } from '../codemode-service'
 import { CodemodeConnectorPool } from './codemode-connector-pool'
 import {
@@ -102,11 +103,13 @@ beforeAll(async () => {
 }, 30_000)
 afterAll(() => rmSync(bundleRoot, { recursive: true, force: true }))
 
+const relay = new BotToolRelay((url, init) => fetch(url, init))
 const env = setUpConnectorTestEnv(async () => {
   await client?.close().catch(() => {})
   client = null
   await service?.stop()
   service = null
+  relay.close()
   await fake?.stop()
   fake = null
 })
@@ -127,6 +130,7 @@ describe('connectors in run_js', () => {
     service = new CodemodeService({
       workerPath,
       log: () => {},
+      relay,
       connectors: async () => ({ store, auth, pool: new CodemodeConnectorPool(store, auth) }),
       sessionOptions: {
         read: (sessionId) => saved.get(sessionId),
@@ -135,13 +139,13 @@ describe('connectors in run_js', () => {
         }
       }
     })
-    const server = await service.launchServer({
+    const [server] = (await service.launchServer({
       sessionId: 's1',
       launchId: 'launch-1',
       root: dir,
       env: process.env,
       mode: () => 'full-access'
-    })
+    })) ?? [null]
     if (!server || !('url' in server) || !server.headers?.authorization) {
       throw new Error('expected an http server with a bearer token')
     }

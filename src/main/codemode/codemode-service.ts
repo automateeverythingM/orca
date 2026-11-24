@@ -6,6 +6,7 @@ import { CodemodeConnectorAuth, type ConnectorStatus } from './connectors/codemo
 import { CodemodeConnectorPool } from './connectors/codemode-connector-pool'
 import {
   codemodeCallerKey,
+  connectorRelayServers,
   createConnectorRelayRoute
 } from './connectors/codemode-connector-relay-route'
 import {
@@ -112,8 +113,11 @@ export class CodemodeService {
     return () => this.listeners.delete(listener)
   }
 
-  /** The session's `orca` server with a fresh token; null when code mode can't serve it. */
-  async launchServer(input: CodemodeLaunchInput): Promise<BotToolServer | null> {
+  /**
+   * The session's `orca` server with a fresh token, then one server per connector it can use now,
+   * all with that token; null when code mode can't serve it.
+   */
+  async launchServer(input: CodemodeLaunchInput): Promise<BotToolServer[] | null> {
     let origin: string
     try {
       ;({ origin } = await this.server.start())
@@ -166,12 +170,24 @@ export class CodemodeService {
         servers: session.serverNames()
       }))
       void previous?.session.close()
-      return {
+      const authorization = `Bearer ${token}`
+      const orca: BotToolServer = {
         name: 'orca',
         url: `${origin}/codemode/mcp`,
         transport: 'http',
-        headers: { authorization: `Bearer ${token}` }
+        headers: { authorization }
       }
+      const off = this.connectorsOff(sessionId)
+      const direct = await connectorRelayServers(
+        wiring?.store.list() ?? [],
+        off,
+        authorization,
+        () => this.relayOrigin()
+      ).catch((error: unknown) => {
+        this.log(`connectors could not be served to session ${sessionId}; run_js has them`, error)
+        return []
+      })
+      return [orca, ...direct]
     } catch (error) {
       this.log(`code mode could not open for session ${sessionId}`, error)
       return null

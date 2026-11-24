@@ -1,5 +1,7 @@
 // Agents reach connectors as direct MCP servers through Orca's tool relay at `/c/<connectorId>/mcp`,
 // with their chat's code-mode token; the relay attaches the connector's secret.
+import type { BotToolServer } from '../../../shared/bot-tools'
+import type { CodemodeConnector } from '../../../shared/codemode/codemode-connector-types'
 import type { RelayAllowance, RelayRoute } from '../../bots/tool-relay/bot-tool-relay-routes'
 import {
   connectorCredentialSource,
@@ -55,4 +57,27 @@ export function createConnectorRelayRoute(service: ConnectorRelayHost): RelayRou
     missing: UNKNOWN_CONNECTOR,
     unauthorized: 'This connector needs the chat’s Orca token.'
   }
+}
+
+/**
+ * Each connector the chat can use now (enabled, not switched off for it) as its agent takes it
+ * directly: the relay route with the chat's bearer. The relay starts only when one is needed.
+ */
+export async function connectorRelayServers(
+  connectors: readonly CodemodeConnector[],
+  off: ReadonlySet<string>,
+  authorization: string,
+  relayOrigin: () => Promise<string>
+): Promise<BotToolServer[]> {
+  const usable = connectors.filter((connector) => connector.enabled && !off.has(connector.id))
+  if (usable.length === 0) {
+    return []
+  }
+  const origin = await relayOrigin()
+  return usable.map((connector) => ({
+    name: connector.name,
+    url: `${origin}/c/${connector.id}/mcp`,
+    transport: 'http',
+    headers: { authorization }
+  }))
 }

@@ -59,13 +59,13 @@ async function setUp(kind: 'oauth' | 'token' = 'oauth'): Promise<{ id: string; o
 
 /** The chat's code-mode token, as its agent holds it. */
 async function launch(sessionId: string, launchId = `launch-${sessionId}`): Promise<string> {
-  const server = await service!.launchServer({
+  const [server] = (await service!.launchServer({
     sessionId,
     launchId,
     root: env.current().dir,
     env: process.env,
     mode: () => 'full-access'
-  })
+  })) ?? [null]
   const authorization = server && 'headers' in server ? server.headers?.authorization : undefined
   if (!authorization) {
     throw new Error('expected an http server with a bearer token')

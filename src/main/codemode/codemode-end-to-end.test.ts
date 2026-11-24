@@ -65,13 +65,13 @@ afterEach(async () => {
 
 /** Connects an agent that declares form elicitation and answers each approval by its message. */
 async function agent(mode: GateMode, policy: (message: string) => Decision): Promise<Client> {
-  const server = await service.launchServer({
+  const [server] = (await service.launchServer({
     sessionId: 's1',
     launchId: 'launch-1',
     root,
     env: process.env,
     mode: () => mode
-  })
+  })) ?? [null]
   if (!server || !('url' in server) || !server.headers?.authorization) {
     throw new Error('expected an http server with a bearer token')
   }

@@ -1,5 +1,5 @@
 import type { ReadOnlySessionMode } from '../../../bots/bot-look-around-policy'
-import { type BotLaunchTools, withCodemodeServer } from '../../../bots/bot-launch-tools'
+import { type BotLaunchTools, withCodemodeServers } from '../../../bots/bot-launch-tools'
 import type { CodemodeLaunchInput, CodemodeService } from '../../../codemode/codemode-service'
 import type { CodemodeSessionOptionsAccess } from '../../../codemode/connectors/codemode-connector-session-switch'
 import type { GateMode } from '../../../codemode/gate/codemode-gate'
@@ -55,7 +55,7 @@ export function codemodeGateMode(
   }
 }
 
-/** `tools` plus the session's `orca` run_js server when code mode is on and its server serves. */
+/** `tools` plus the session's `orca` run_js server and its connectors when code mode is on and serves. */
 export async function withCodemodeTools(
   tools: BotLaunchTools,
   codemode: StructuredCodemodeLaunch | undefined,
@@ -65,8 +65,8 @@ export async function withCodemodeTools(
     return tools
   }
   const { agent, ...launch } = input
-  const server = await codemode.service.launchServer(launch)
-  return server ? withCodemodeServer(tools, server, agent) : tools
+  const servers = await codemode.service.launchServer(launch)
+  return servers ? withCodemodeServers(tools, servers, agent) : tools
 }
 
 /** A launch's tools with code mode; marks `starts` when it opened a session that must be closed. */

@@ -8,6 +8,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BotToolServer } from '../../shared/bot-tools'
+import { FakeOAuthMcpServer } from '../bots/tool-oauth/testing/fake-oauth-mcp-server'
+import { BotToolRelay } from '../bots/tool-relay/bot-tool-relay'
+import { CodemodeConnectorPool } from './connectors/codemode-connector-pool'
+import { setUpConnectorTestEnv } from './connectors/testing/codemode-connector-test-env'
 import { fakeCrmServerSpec } from './mcp-pool/testing/fake-crm-command'
 import { CodemodeHttpServer } from './server/codemode-http-server'
 import { CodemodeService } from './codemode-service'
@@ -51,14 +55,24 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-function launch(sessionId = 's1', launchId = 'launch-1'): Promise<BotToolServer | null> {
-  return service.launchServer({
+async function launchAll(sessionId = 's1', launchId = 'launch-1'): Promise<BotToolServer[]> {
+  const servers = await service.launchServer({
     sessionId,
     launchId,
     root,
     env: process.env,
     mode: () => 'full-access'
   })
+  if (!servers) {
+    throw new Error('expected code mode to serve the session')
+  }
+  return servers
+}
+
+async function launch(sessionId = 's1', launchId = 'launch-1'): Promise<BotToolServer> {
+  const [orca, ...rest] = await launchAll(sessionId, launchId)
+  expect(rest).toEqual([])
+  return orca
 }
 
 function urlServer(server: BotToolServer | null): { url: string; authorization: string } {
@@ -193,5 +207,65 @@ describe('CodemodeService', () => {
     expect(await broken.launchServer({ sessionId: 's1', ...input })).toBe(null)
     expect(await broken.launchServer({ sessionId: 's2', ...input })).toBe(null)
     expect(logged).toHaveLength(1)
+  })
+})
+
+describe('CodemodeService connectors as direct servers', () => {
+  let fake: FakeOAuthMcpServer | null = null
+  let relay: BotToolRelay | null = null
+  const env = setUpConnectorTestEnv(async () => {
+    await Promise.all(clients.splice(0).map((client) => client.close().catch(() => {})))
+    await service.stop()
+    service = new CodemodeService({ workerPath, log: () => {} })
+    relay?.close()
+    relay = null
+    await fake?.stop()
+    fake = null
+  })
+
+  /** Connector `fake` (a token connector) and a service wired to a real relay, as the app wires them. */
+  async function withConnector(): Promise<string> {
+    const { store, auth } = env.current()
+    fake = await FakeOAuthMcpServer.start()
+    const connector = store.add({ name: 'fake', url: fake.mcpUrl, auth: 'token' })
+    fake.accessTokens.add('pasted-token')
+    auth.setToken(connector.id, 'pasted-token')
+    relay = new BotToolRelay((url, init) => fetch(url, init))
+    await service.stop()
+    service = new CodemodeService({
+      workerPath,
+      log: () => {},
+      relay,
+      connectors: async () => ({ store, auth, pool: new CodemodeConnectorPool(store, auth) })
+    })
+    return connector.id
+  }
+
+  it("gives the chat each usable connector at the relay route, with orca's token", async () => {
+    const id = await withConnector()
+    const [orca, connector] = await launchAll()
+    const { authorization } = urlServer(orca)
+    expect(connector).toEqual({
+      name: 'fake',
+      url: `${await relay!.origin()}/c/${id}/mcp`,
+      transport: 'http',
+      headers: { authorization }
+    })
+    const { tools } = await (await connect(connector)).listTools()
+    expect(tools.map((tool) => tool.name).sort()).toEqual(['count', 'echo', 'whoami'])
+  })
+
+  it('leaves out a connector switched off for the chat or disabled, without starting the relay', async () => {
+    const id = await withConnector()
+    const origin = vi.spyOn(relay!, 'origin')
+    await service.setConnectorOff('s1', id, true)
+    expect((await launchAll('s1')).map((server) => server.name)).toEqual(['orca'])
+    expect((await launchAll('s2')).map((server) => server.name)).toEqual(['orca', 'fake'])
+    expect(origin).toHaveBeenCalledTimes(1)
+
+    env.current().store.update(id, { enabled: false })
+    expect((await launchAll('s2', 'launch-2')).map((server) => server.name)).toEqual(['orca'])
+    expect((await launchAll('s1', 'launch-2')).map((server) => server.name)).toEqual(['orca'])
+    expect(origin).toHaveBeenCalledTimes(1)
   })
 })

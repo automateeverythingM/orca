@@ -93,22 +93,30 @@ const ENV_REFERENCING_AGENTS: ReadonlySet<string> = new Set(['claude', 'pi'])
 /** The code-mode token's variable, apart from the bot's so neither replaces the other. */
 export const CODEMODE_TOKEN_ENV = 'ORCA_CODEMODE_TOKEN'
 
-/** `base` plus code mode's server as `agent` takes it: Claude and Pi name the token's variable. */
-export function withCodemodeServer(
+/**
+ * `base` plus code mode's servers (`orca` first, then the chat's connectors) as `agent` takes them:
+ * Claude and Pi name the token's variable wherever a server carries `orca`'s token.
+ */
+export function withCodemodeServers(
   base: BotLaunchTools,
-  server: BotToolServer,
+  servers: readonly BotToolServer[],
   agent: string
 ): BotLaunchTools {
-  const authorization = 'url' in server ? server.headers?.authorization : undefined
-  if (!('url' in server) || !authorization || !ENV_REFERENCING_AGENTS.has(agent)) {
-    return BotLaunchTools.withExtraServers(base, [server], {})
+  const orca = servers[0]
+  const authorization = orca && 'url' in orca ? orca.headers?.authorization : undefined
+  if (!authorization || !ENV_REFERENCING_AGENTS.has(agent)) {
+    return BotLaunchTools.withExtraServers(base, servers, {})
   }
   const token = authorization.replace(/^Bearer /, '')
-  const referenced: BotToolServer = {
-    ...server,
-    headers: { ...server.headers, authorization: `Bearer \${${CODEMODE_TOKEN_ENV}}` }
-  }
-  return BotLaunchTools.withExtraServers(base, [referenced], { [CODEMODE_TOKEN_ENV]: token })
+  const referenced = servers.map((server): BotToolServer =>
+    'url' in server && server.headers?.authorization === authorization
+      ? {
+          ...server,
+          headers: { ...server.headers, authorization: `Bearer \${${CODEMODE_TOKEN_ENV}}` }
+        }
+      : server
+  )
+  return BotLaunchTools.withExtraServers(base, referenced, { [CODEMODE_TOKEN_ENV]: token })
 }
 
 function isLoopbackServer(server: BotToolServer): boolean {
