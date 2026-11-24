@@ -139,9 +139,15 @@ export class FakeOAuthApp {
           return
         }
         this.challenges.delete(params.get('code')!)
-      } else if (this.revokedRefreshTokens.has(params.get('refresh_token') ?? '')) {
-        json(400, { error: 'invalid_grant' })
-        return
+      } else if (params.get('grant_type') === 'refresh_token') {
+        const used = params.get('refresh_token') ?? ''
+        if (!this.refreshTokens.has(used) || this.revokedRefreshTokens.has(used)) {
+          json(400, { error: 'invalid_grant' })
+          return
+        }
+        if (this.rotate) {
+          this.revokedRefreshTokens.add(used)
+        }
       }
       this.issued += 1
       this.accessTokens.add(`access-${this.issued}`)

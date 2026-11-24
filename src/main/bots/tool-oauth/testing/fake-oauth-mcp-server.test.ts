@@ -117,6 +117,35 @@ describe('FakeOAuthMcpServer', () => {
     expect(fake.counts().refreshes).toBe(1)
   })
 
+  const refreshWith = (server: FakeOAuthMcpServer, token: string) =>
+    fetch(`${server.base}/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: token })
+    })
+
+  it('rejects garbage and empty refresh tokens with invalid_grant', async () => {
+    fake = await FakeOAuthMcpServer.start()
+    for (const token of ['garbage', '']) {
+      const res = await refreshWith(fake, token)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'invalid_grant' })
+    }
+  })
+
+  it('counts a good refresh and rejects reuse of the rotated token', async () => {
+    fake = await FakeOAuthMcpServer.start()
+    const { refresh } = await signIn(fake)
+    const first = await refreshWith(fake, refresh)
+    expect(first.status).toBe(200)
+    expect(fake.counts()).toMatchObject({ tokenRequests: 2, refreshes: 1 })
+    const reused = await refreshWith(fake, refresh)
+    expect(reused.status).toBe(400)
+    expect(await reused.json()).toEqual({ error: 'invalid_grant' })
+    const next = ((await first.json()) as { refresh_token: string }).refresh_token
+    expect((await refreshWith(fake, next)).status).toBe(200)
+  })
+
   it('redirects /mcp and announces tools/list_changed', async () => {
     fake = await FakeOAuthMcpServer.start()
     fake.redirectMcpTo('http://example.invalid/elsewhere')
