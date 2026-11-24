@@ -18,6 +18,8 @@ type Live = { client: Client; alive: boolean }
 
 type Entry = {
   id: string
+  /** The name when the entry was made; a rename keeps the entry, so the store's name comes first. */
+  name: string
   /** What the client was opened for; a change to either reopens it. */
   url: string
   auth: CodemodeConnector['auth']
@@ -171,6 +173,7 @@ export class CodemodeConnectorPool {
     if (!entry) {
       entry = {
         id,
+        name: connector.name,
         url: connector.url,
         auth: connector.auth,
         live: null,
@@ -218,7 +221,7 @@ export class CodemodeConnectorPool {
       // Closed while connecting: whoever waited on this connect fails with the rest.
       live.alive = false
       await client.close().catch(() => {})
-      throw new Error(`connector ${entry.id} was closed`)
+      throw new Error(`connector ${this.store.get(entry.id)?.name ?? entry.name} was closed`)
     }
     entry.live = live
     entry.tools = null

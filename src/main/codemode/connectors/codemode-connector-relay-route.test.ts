@@ -188,6 +188,19 @@ describe('relay route for direct connector access', () => {
     expect(fake!.counts().refreshes).toBe(1)
   })
 
+  it('answers sign-in needed, not a bare 401, once a pasted token is refused', async () => {
+    const { id, origin } = await setUp('token')
+    const client = await agent(`${origin}/c/${id}/mcp`, await launch('s1'))
+    await client.callTool({ name: 'count', arguments: {} })
+    fake!.revokeAll()
+    await expect(
+      client.callTool({ name: 'count', arguments: {} }, undefined, { timeout: 2000 })
+    ).rejects.toMatchObject({
+      code: -32001,
+      message: 'MCP error -32001: connector fake needs sign-in'
+    })
+  })
+
   it('answers unknown connector when it is removed after the chat was let through', async () => {
     const { id, origin } = await setUp()
     const token = await launch('s1')

@@ -265,13 +265,14 @@ export class BotToolRelay {
       }
       this.sessions.check(req, scope, answer, route.adoptsUnknownSessions === true)
       upstream = await sendUpstream(this.fetchUpstream, req, answer, body, signal)
-      // Only Orca's own sign-in can renew a refused token; saved headers are passed on as refused.
-      if (upstream.status !== 401 || answer.bearer === undefined) {
+      // Only Orca's own sign-in can renew a refused token; saved headers are passed on as refused,
+      // unless the route words its own sign-in answer.
+      if (upstream.status !== 401 || (answer.bearer === undefined && !route.signInNeeded)) {
         break
       }
       await upstream.body?.cancel()
-      if (tries === 2) {
-        // A token fresh from the app was refused too: only a new sign-in helps.
+      if (tries === 2 || answer.bearer === undefined) {
+        // A token fresh from the app, or a saved one, was refused: only a new sign-in helps.
         answerSignInNeeded(req, res, body, route.signInNeeded?.(credentialId))
         return
       }
