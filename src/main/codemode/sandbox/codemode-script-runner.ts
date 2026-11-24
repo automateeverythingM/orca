@@ -14,6 +14,7 @@ import {
   hostErrorText,
   SCRIPT_FILE,
   thrownValueText,
+  type ThrownFields,
   wrapScript
 } from './codemode-script-error-text'
 
@@ -52,6 +53,7 @@ class QuickJsScriptRun {
   private stopError: string | undefined
   private finished = false
   private promise: QuickJSHandle | undefined
+  private readThrown: QuickJSHandle | undefined
   private wakeUp: (() => void) | undefined
   private readonly wake = (): void => {
     const wakeUp = this.wakeUp
@@ -90,9 +92,9 @@ class QuickJsScriptRun {
   }
 
   private async drive(code: string): Promise<ScriptResult> {
-    this.context
-      .unwrapResult(this.enterVm(() => this.context.evalCode(CODEMODE_PRELUDE, PRELUDE_FILE)))
-      .dispose()
+    this.readThrown = this.context.unwrapResult(
+      this.enterVm(() => this.context.evalCode(CODEMODE_PRELUDE, PRELUDE_FILE))
+    )
     const evaluated = this.enterVm(() => this.context.evalCode(wrapScript(code), SCRIPT_FILE))
     if (evaluated.error) {
       return this.failWithThrown(evaluated.error, code)
@@ -116,6 +118,10 @@ class QuickJsScriptRun {
       if (state.type === 'fulfilled') {
         try {
           const value = this.enterVm(() => this.context.dump(state.value))
+          // dump runs toJSON and getters, so the interrupt may have fired inside it.
+          if (this.stopError !== undefined) {
+            return this.fail(this.stopError)
+          }
           return { ok: true, printed: this.printedLines(), value }
         } finally {
           state.value.dispose()
@@ -243,12 +249,26 @@ class QuickJsScriptRun {
 
   private failWithThrown(handle: QuickJSHandle, code: string): ScriptResult {
     try {
-      return this.fail(
-        this.stopError ?? thrownValueText(this.context.dump(handle), code, this.limits.memoryBytes)
-      )
+      return this.fail(this.stopError ?? this.describeThrown(handle, code))
     } finally {
       handle.dispose()
     }
+  }
+
+  private describeThrown(handle: QuickJSHandle, code: string): string {
+    const reader = this.readThrown
+    if (!reader) {
+      return 'uncaught exception'
+    }
+    const read = this.enterVm(() =>
+      this.context.callFunction(reader, this.context.undefined, handle)
+    )
+    if (read.error) {
+      read.error.dispose()
+      return this.stopError ?? 'uncaught exception could not be read'
+    }
+    const fields = JSON.parse(read.value.consume((value) => this.context.getString(value)))
+    return this.stopError ?? thrownValueText(fields as ThrownFields, code, this.limits.memoryBytes)
   }
 
   private fail(error: string): ScriptResult {
@@ -264,6 +284,7 @@ class QuickJsScriptRun {
       }
       this.inFlight.clear()
       this.promise?.dispose()
+      this.readThrown?.dispose()
       this.context.dispose()
       this.runtime.dispose()
     } catch {

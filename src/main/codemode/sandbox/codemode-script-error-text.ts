@@ -39,14 +39,22 @@ function scriptFrames(stack: unknown, codeLines: number): string[] {
   })
 }
 
-export function thrownValueText(thrown: unknown, code: string, memoryBytes: number): string {
-  if (typeof thrown !== 'object' || thrown === null || !('message' in thrown)) {
-    return typeof thrown === 'string' ? thrown : (JSON.stringify(thrown) ?? String(thrown))
+// Shape produced by the prelude's thrown-value reader.
+export type ThrownFields =
+  | { text: string }
+  | { name: string | null; message: string | null; stack: string | null }
+
+export function thrownValueText(thrown: ThrownFields, code: string, memoryBytes: number): string {
+  if ('text' in thrown) {
+    return thrown.text
   }
-  const { name, message, stack } = thrown as { name?: unknown; message: unknown; stack?: unknown }
+  const { name, message, stack } = thrown
+  if (message === null) {
+    return name === null ? 'uncaught non-Error value' : `uncaught ${name}`
+  }
   if (name === 'InternalError' && message === 'out of memory') {
     return `memory limit ${byteSizeText(memoryBytes)}`
   }
-  const header = name === undefined || name === 'Error' ? String(message) : `${name}: ${message}`
+  const header = name === null || name === 'Error' ? message : `${name}: ${message}`
   return [header, ...scriptFrames(stack, code.split('\n').length)].join('\n')
 }

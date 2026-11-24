@@ -1,4 +1,4 @@
-// Runs inside QuickJS before agent code; captures and hides the raw host bindings.
+// Runs inside QuickJS before agent code; hides the raw host bindings and evaluates to the thrown-value reader.
 export const CODEMODE_PRELUDE = String.raw`(() => {
   const host = globalThis.__host
   const emit = globalThis.__print
@@ -55,5 +55,31 @@ export const CODEMODE_PRELUDE = String.raw`(() => {
     }
   }
   globalThis.print = (...values) => emit(values.map(show).join(' '))
+
+  // Captured before agent code runs; reads data properties only so thrown getters and toJSON never run.
+  const ownDescriptor = Object.getOwnPropertyDescriptor
+  const prototypeOf = Object.getPrototypeOf
+  const hasOwn = Object.hasOwn
+  const quote = JSON.stringify
+  const toText = String
+  const dataString = (target, key) => {
+    for (let at = target, depth = 0; at !== null && depth < 16; at = prototypeOf(at), depth++) {
+      const descriptor = ownDescriptor(at, key)
+      if (descriptor) {
+        return hasOwn(descriptor, 'value') && typeof descriptor.value === 'string' ? descriptor.value : null
+      }
+    }
+    return null
+  }
+  const field = (value) => (value === null ? 'null' : quote(value))
+  return (thrown) => {
+    if (thrown === null || (typeof thrown !== 'object' && typeof thrown !== 'function')) {
+      return '{"text":' + quote(toText(thrown)) + '}'
+    }
+    const name = field(dataString(thrown, 'name'))
+    const message = field(dataString(thrown, 'message'))
+    const stack = field(dataString(thrown, 'stack'))
+    return '{"name":' + name + ',"message":' + message + ',"stack":' + stack + '}'
+  }
 })()
 `

@@ -162,4 +162,28 @@ describe('runScript', () => {
     const result = await run('const a = 1\nlet let = 2')
     expect(result.ok === false && result.error).toMatch(/^SyntaxError: .*\n.*line 2/)
   })
+
+  it.each([
+    ['throw { message: "m", toJSON() { while(true){} } }', 'm'],
+    ['throw { get message() { for(;;){} } }', 'uncaught non-Error value'],
+    ['await Promise.reject({ get name() { for(;;){} } })', 'uncaught non-Error value'],
+    [
+      'throw new Proxy({}, { getOwnPropertyDescriptor() { for(;;){} } })',
+      'script exceeded 0.2s JS time'
+    ],
+    ['return { toJSON() { while(true){} } }', 'script exceeded 0.2s JS time']
+  ])('reading the outcome of %s cannot outrun the JS time limit', async (code, error) => {
+    const startedAt = Date.now()
+    const result = await run(code, undefined, { jsTimeMs: 200 })
+    expect(result).toEqual({ ok: false, printed: [], error })
+    expect(Date.now() - startedAt).toBeLessThan(3000)
+  })
+
+  it('reports thrown values without running their getters', async () => {
+    expect(await run('throw "plain"')).toEqual({ ok: false, printed: [], error: 'plain' })
+    const named = await run(
+      'throw Object.assign(new TypeError("bad"), { toJSON() { return "x" } })'
+    )
+    expect(named.ok === false && named.error).toMatch(/^TypeError: bad\n.*line 1/)
+  })
 })
