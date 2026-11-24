@@ -1,10 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { renderMcpContent } from './codemode-mcp-content'
-import {
-  type CodemodeConnectorAccess,
-  CodemodeMcpPool,
-  type CodemodeServerSpec
-} from './codemode-mcp-pool'
+import type { CodemodeConnectorAccess } from './codemode-mcp-connector-access'
+import { CodemodeMcpPool, type CodemodeServerSpec } from './codemode-mcp-pool'
 import { fakeCrmServerSpec } from './testing/fake-crm-command'
 
 let spec: CodemodeServerSpec
@@ -138,6 +135,7 @@ describe('CodemodeMcpPool', () => {
     const calls: string[] = []
     const connectors: CodemodeConnectorAccess = {
       claimed: () => ['crm', 'docs'],
+      idOf: (name) => `id-${name}`,
       names: () => ['crm', 'docs'],
       describe: async (name) => [{ name: `${name}_tool`, input_schema: {} }],
       call: async (name, tool, args) => {
@@ -183,6 +181,7 @@ describe('CodemodeMcpPool', () => {
       },
       connectors: {
         claimed: () => ['crm'],
+        idOf: () => 'id-crm',
         names: () => [],
         describe: async () => [],
         call: async () => ({ text: 'connector' })
@@ -197,6 +196,28 @@ describe('CodemodeMcpPool', () => {
     await expect(pool.describe('crm')).rejects.toThrow('unknown MCP server crm')
     expect(asked).toBe(0)
     expect(pool.startedCount()).toBe(0)
+  })
+
+  it("forgets a connector's listed tools once its name belongs to another connector", async () => {
+    let id = 'c1'
+    const pool = new CodemodeMcpPool([], {
+      cwd: process.cwd(),
+      env: process.env,
+      approveStart: async () => true,
+      connectors: {
+        claimed: () => ['crm'],
+        idOf: () => id,
+        names: () => ['crm'],
+        describe: async () => [{ name: `${id}_tool`, input_schema: {} }],
+        call: async () => ({ text: '' })
+      }
+    })
+    pools.push(pool)
+    await pool.describe('crm')
+    expect(pool.list()).toEqual([{ server: 'crm', tools: ['c1_tool'] }])
+    id = 'c2'
+    expect(pool.list()).toEqual([{ server: 'crm', tools: null }])
+    expect(pool.identity('crm')).toBe('connector:c2')
   })
 
   it('close() leaves no child processes', async () => {

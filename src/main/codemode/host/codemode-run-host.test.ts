@@ -7,7 +7,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { CODEMODE_LIMITS, type CodemodeLimits } from '../codemode-limits'
 import type { GateMode } from '../gate/codemode-gate'
 import { codemodeServerTrust } from '../connectors/codemode-connector-session-switch'
-import type { CodemodeConnectorAccess, CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
+import type { CodemodeConnectorAccess } from '../mcp-pool/codemode-mcp-connector-access'
+import type { CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
 import { fakeCrmServerSpec } from '../mcp-pool/testing/fake-crm-command'
 import {
   type ApprovalDecision,
@@ -240,6 +241,7 @@ describe('CodemodeSession', () => {
   it('asks for untrusted connector calls only and trusts listed local servers', async () => {
     const connectors: CodemodeConnectorAccess = {
       claimed: () => ['crm', 'docs'],
+      idOf: (name) => `id-${name}`,
       names: () => ['crm', 'docs'],
       describe: async () => [],
       call: async (name, tool) => ({ text: `${name}.${tool}` })
@@ -260,9 +262,69 @@ describe('CodemodeSession', () => {
     ]`)
     expect(result).toEqual({ text: '=> ["crm.lookup","docs.search",0]', isError: false })
     expect(h.requests.map((request) => [request.title, request.personOnly])).toEqual([
-      ['Call crm.lookup', false],
+      ['Call connector crm.lookup', false],
       ['Start MCP server fake-crm', true]
     ])
+  })
+
+  describe('approvals follow the server a name resolves to', () => {
+    // Connectors by name; removing one and adding it again gives it a new id.
+    function connectorIds(): { connectors: CodemodeConnectorAccess; ids: Map<string, string> } {
+      const ids = new Map<string, string>()
+      const connectors: CodemodeConnectorAccess = {
+        claimed: () => [...ids.keys()],
+        idOf: (name) => ids.get(name) ?? null,
+        names: () => [...ids.keys()],
+        describe: async () => [],
+        call: async (name, tool) => ({ text: `connector ${ids.get(name)} ${name}.${tool}` })
+      }
+      return { connectors, ids }
+    }
+    const which = `const r = await ${crm('get_state', '')}; return r.startsWith('connector') ? r : 'local'`
+
+    it('asks again when a connector takes a local name, and when it is removed and re-added', async () => {
+      const { connectors, ids } = connectorIds()
+      const h = makeSession({ mode: () => 'ask', connectors, answer: async () => 'allow_session' })
+      const callCards = () => h.requests.filter((r) => !r.personOnly).map((r) => r.title)
+      expect(await h.run(which)).toEqual({ text: '=> "local"', isError: false })
+      expect(await h.run(which)).toEqual({ text: '=> "local"', isError: false })
+      expect(callCards()).toEqual(['Call fake-crm.get_state'])
+
+      ids.set('fake-crm', 'c1')
+      const c1 = { text: '=> "connector c1 fake-crm.get_state"', isError: false }
+      expect(await h.run(which)).toEqual(c1)
+      expect(await h.run(which)).toEqual(c1)
+      expect(callCards()).toHaveLength(2)
+
+      ids.delete('fake-crm')
+      ids.set('fake-crm', 'c2')
+      expect(await h.run(which)).toEqual({
+        text: '=> "connector c2 fake-crm.get_state"',
+        isError: false
+      })
+      expect(callCards()).toEqual([
+        'Call fake-crm.get_state',
+        'Call connector fake-crm.get_state',
+        'Call connector fake-crm.get_state'
+      ])
+    })
+
+    it('fails a call whose name moved to another server while its card was open', async () => {
+      const { connectors, ids } = connectorIds()
+      ids.set('fake-crm', 'c1')
+      const h = makeSession({
+        mode: () => 'ask',
+        connectors,
+        answer: async () => {
+          ids.set('fake-crm', 'c2')
+          return 'allow_once'
+        }
+      })
+      expect(await h.run(`return await ${crm('get_state', '')}`)).toEqual({
+        text: 'Error: fake-crm changed while waiting for approval',
+        isError: true
+      })
+    })
   })
 
   it('does not ask again for a refused server start within one run', async () => {

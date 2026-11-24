@@ -6,7 +6,10 @@ import {
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { CodemodeConnector } from '../../../shared/codemode/codemode-connector-types'
 import { renderMcpContent } from '../mcp-pool/codemode-mcp-content'
-import type { CodemodeToolInfo, CodemodeToolResult } from '../mcp-pool/codemode-mcp-pool'
+import type {
+  CodemodeToolInfo,
+  CodemodeToolResult
+} from '../mcp-pool/codemode-mcp-connector-access'
 import type { CodemodeConnectorAuth } from './codemode-connector-auth'
 import { connectorFetch } from './codemode-connector-fetch'
 import type { CodemodeConnectorStore } from './codemode-connector-store'

@@ -1,9 +1,9 @@
 import type { CodemodeConnector } from '../../../shared/codemode/codemode-connector-types'
-import type { CodemodeConnectorAccess } from '../mcp-pool/codemode-mcp-pool'
+import type { CodemodeConnectorAccess } from '../mcp-pool/codemode-mcp-connector-access'
 import type { CodemodeConnectorPool } from './codemode-connector-pool'
 import type { CodemodeConnectorStore } from './codemode-connector-store'
 
-export type { CodemodeConnectorAccess } from '../mcp-pool/codemode-mcp-pool'
+export type { CodemodeConnectorAccess } from '../mcp-pool/codemode-mcp-connector-access'
 
 /** Session-record option holding the ids of the connectors this chat switched off, comma-separated. */
 export const CONNECTORS_OFF_OPTION = 'codemode.connectorsOff'
@@ -88,6 +88,7 @@ export function connectorAccess(deps: {
   }
   return {
     claimed: () => deps.store.list().map((connector) => connector.name),
+    idOf: (name) => deps.store.byName(name)?.id ?? null,
     names: () =>
       deps.store
         .list()

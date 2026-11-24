@@ -2,11 +2,8 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import type { CodemodeLimits } from '../codemode-limits'
 import type { GateMode } from '../gate/codemode-gate'
-import {
-  type CodemodeConnectorAccess,
-  CodemodeMcpPool,
-  type CodemodeServerSpec
-} from '../mcp-pool/codemode-mcp-pool'
+import type { CodemodeConnectorAccess } from '../mcp-pool/codemode-mcp-connector-access'
+import { CodemodeMcpPool, type CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
 import { formatScriptResult, type InnerCallLine, trimOutput } from '../sandbox/codemode-output-trim'
 import type { HostCall, HostReply } from '../sandbox/codemode-script-runner'
 import { runScriptInWorker } from '../sandbox/codemode-worker-run'

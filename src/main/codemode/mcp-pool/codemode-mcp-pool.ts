@@ -2,28 +2,14 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { renderMcpContent } from './codemode-mcp-content'
 import type { CodemodeServerSpec } from './codemode-mcp-config'
+import {
+  CONNECTOR_IDENTITY,
+  type CodemodeConnectorAccess,
+  type CodemodeToolInfo,
+  type CodemodeToolResult
+} from './codemode-mcp-connector-access'
 
 export type { CodemodeServerSpec } from './codemode-mcp-config'
-
-export type CodemodeToolInfo = { name: string; description?: string; input_schema: unknown }
-
-/** `structured` is the tool's `structuredContent` when it sent one; `text` is the rendered content. */
-export type CodemodeToolResult = { text: string; structured?: unknown }
-
-/** Connectors by name, read live so a switch applies to the next call. */
-export type CodemodeConnectorAccess = {
-  /** Every connector's name, usable or not: a local server of that name never runs. */
-  claimed(): string[]
-  /** The connectors this chat may call now. */
-  names(): string[]
-  describe(name: string, signal?: AbortSignal): Promise<CodemodeToolInfo[]>
-  call(
-    name: string,
-    tool: string,
-    args: Record<string, unknown>,
-    signal: AbortSignal
-  ): Promise<CodemodeToolResult>
-}
 
 type PoolOptions = {
   cwd: string
@@ -63,6 +49,7 @@ function cleanEnv(env: NodeJS.ProcessEnv): Record<string, string> {
 
 export class CodemodeMcpPool {
   private readonly entries = new Map<string, Entry>()
+  /** Tool names a connector last described, by connector id. */
   private readonly connectorTools = new Map<string, string[]>()
   private readonly allPids: number[] = []
   private started = 0
@@ -93,7 +80,10 @@ export class CodemodeMcpPool {
   list(): { server: string; tools: string[] | null }[] {
     const connectors = this.options.connectors?.names() ?? []
     return [
-      ...connectors.map((name) => ({ server: name, tools: this.connectorTools.get(name) ?? null })),
+      ...connectors.map((name) => ({
+        server: name,
+        tools: this.connectorTools.get(this.options.connectors?.idOf(name) ?? '') ?? null
+      })),
       ...this.localNames().map((name) => {
         const tools = this.entries.get(name)?.tools
         return { server: name, tools: tools ? tools.map((tool) => tool.name) : null }
@@ -117,12 +107,25 @@ export class CodemodeMcpPool {
     }
   }
 
+  /**
+   * What `server` names now: `connector:<id>` or `local:<name>`. Approvals are keyed by it, so a
+   * different server taking the name never inherits them. Throws for a server this chat can't use.
+   */
+  identity(server: string): string {
+    if (this.connectorsServing(server)) {
+      return `${CONNECTOR_IDENTITY}${this.connectorId(server)}`
+    }
+    this.entry(server)
+    return `local:${server}`
+  }
+
   async describe(server: string): Promise<CodemodeToolInfo[]> {
     const connectors = this.connectorsServing(server)
     if (connectors) {
+      const id = this.connectorId(server)
       const tools = await connectors.describe(server)
       this.connectorTools.set(
-        server,
+        id,
         tools.map((tool) => tool.name)
       )
       return tools
@@ -145,13 +148,20 @@ export class CodemodeMcpPool {
     }
   }
 
-  /** A tool result flagged isError rejects with its rendered text. */
+  /**
+   * A tool result flagged isError rejects with its rendered text. With `expected`, the call runs
+   * only while `server` still names that identity.
+   */
   async call(
     server: string,
     tool: string,
     args: Record<string, unknown>,
-    signal: AbortSignal
+    signal: AbortSignal,
+    expected?: string
   ): Promise<CodemodeToolResult> {
+    if (expected !== undefined && this.currentIdentity(server) !== expected) {
+      throw new Error(`${server} changed while waiting for approval`)
+    }
     const connectors = this.connectorsServing(server)
     if (connectors) {
       return connectors.call(server, tool, args, signal)
@@ -192,6 +202,25 @@ export class CodemodeMcpPool {
     await Promise.all(lives.map((live) => live.client.close().catch(() => {})))
   }
 
+  private connectorId(server: string): string {
+    const id = this.options.connectors?.idOf(server)
+    if (!id) {
+      throw this.unknownServer(server)
+    }
+    return id
+  }
+
+  private currentIdentity(server: string): string | null {
+    try {
+      return this.identity(server)
+    } catch (error) {
+      if (this.closed) {
+        throw error
+      }
+      return null
+    }
+  }
+
   private localNames(): string[] {
     const claimed = this.options.connectors?.claimed() ?? []
     return [...this.entries.keys()].filter((name) => !claimed.includes(name))
@@ -212,7 +241,7 @@ export class CodemodeMcpPool {
   }
 
   private unknownServer(server: string): Error {
-    return new Error(`unknown MCP server ${server}; known: ${this.names().join(', ')}`)
+    return new Error(`unknown MCP server ${server}; known: ${this.names().join(', ') || 'none'}`)
   }
 
   private entry(server: string): Entry {

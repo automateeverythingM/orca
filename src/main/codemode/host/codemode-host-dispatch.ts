@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import type { CodemodeLimits } from '../codemode-limits'
+import { isConnectorIdentity } from '../mcp-pool/codemode-mcp-connector-access'
 import type { CodemodeMcpPool, CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
 import { trimOutput } from '../sandbox/codemode-output-trim'
 import type { HostCall, HostReply } from '../sandbox/codemode-script-runner'
@@ -166,15 +167,21 @@ function planFileChange(
 }
 
 function planMcpCall(fields: Fields, ctx: HostCallContext): PlannedHostCall {
-  const server = knownServer(ctx.pool, text('mcp.call', fields, 'server'))
+  const server = text('mcp.call', fields, 'server')
+  // Why: resolved once; approvals cover this server only, and the call fails if the name moves.
+  const identity = ctx.pool.identity(server)
   const tool = text('mcp.call', fields, 'tool')
   const args = fieldsOf('mcp.call', fields.args ?? {})
+  const kind = isConnectorIdentity(identity) ? 'connector ' : ''
   return {
     gate: { kind: 'mcp', server, trusted: ctx.trusted(server) },
-    allowKey: `mcp:${server}/${tool}`,
-    prompt: { title: `Call ${server}.${tool}`, detail: clip(JSON.stringify(args, null, 2)) },
+    allowKey: `mcp:${identity}/${tool}`,
+    prompt: {
+      title: `Call ${kind}${server}.${tool}`,
+      detail: clip(JSON.stringify(args, null, 2))
+    },
     execute: async () => {
-      const result = await ctx.pool.call(server, tool, args, ctx.signal)
+      const result = await ctx.pool.call(server, tool, args, ctx.signal, identity)
       return { ok: true, value: result.structured === undefined ? result.text : result.structured }
     }
   }
