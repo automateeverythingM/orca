@@ -247,6 +247,23 @@ describe('CodemodeSession', () => {
     expect(existsSync(join(root, 'a.txt'))).toBe(false)
   })
 
+  it('returns structured MCP content to the script as an object', async () => {
+    const h = makeSession({ mode: () => 'full-access' })
+    const result = await h.run(`
+      const user = await ${crm('structured_user', "{ email: 'x@y.com' }")}
+      return [typeof user, user.id, user.credits]`)
+    expect(result).toEqual({ text: '=> ["object","u1",0]', isError: false })
+  })
+
+  it.skipIf(process.platform === 'win32')('reads the bash timeout in seconds', async () => {
+    const h = makeSession({ mode: () => 'full-access' })
+    const started = Date.now()
+    const result = await h.run(`return await bash('sleep 5', { timeout: 0.3 })`)
+    expect(result.text).toContain('"exit_code":124')
+    expect(result.text).toContain('[timed out after 0.3s]')
+    expect(Date.now() - started).toBeLessThan(4000)
+  })
+
   describe('paths outside the workspace', () => {
     const writeOutside = `
       try { return await write({ path: '../outside.txt', content: 'hi' }) } catch (e) { return e.message }`
@@ -270,6 +287,47 @@ describe('CodemodeSession', () => {
       const h = makeSession({ mode: () => 'auto', answer: async () => 'deny' })
       expect(await h.run(writeOutside)).toEqual({ text: '=> "denied by user"', isError: false })
       expect(existsSync(join(base, 'outside.txt'))).toBe(false)
+    })
+
+    it('asks before reading outside in auto and reads on allow_once', async () => {
+      await writeFile(join(base, 'secret.txt'), 's3cret')
+      const h = makeSession({ mode: () => 'auto' })
+      expect(await h.run(`return await read('../secret.txt')`)).toEqual({
+        text: '=> "s3cret"',
+        isError: false
+      })
+      expect(h.requests).toHaveLength(1)
+      expect(h.requests[0].title).toContain(join(base, 'secret.txt'))
+    })
+
+    it.each(['ask', 'read-only'] as const)(
+      'refuses outside reads and searches in %s mode without asking',
+      async (mode) => {
+        await writeFile(join(base, 'secret.txt'), 's3cret')
+        const h = makeSession({ mode: () => mode })
+        const result = await h.run(`
+          const out = []
+          for (const attempt of [() => read('../secret.txt'), () => find({ pattern: '*', path: '..' })]) {
+            try { await attempt() } catch (e) { out.push(e.message) }
+          }
+          return out`)
+        expect(result).toEqual({
+          text: '=> ["not allowed in this chat mode","not allowed in this chat mode"]',
+          isError: false
+        })
+        expect(h.requests).toEqual([])
+      }
+    )
+
+    it('remembers allow_session per outside path', async () => {
+      const h = makeSession({ mode: () => 'auto', answer: async () => 'allow_session' })
+      const write = (name: string) => `await write({ path: '../${name}', content: 'x' })`
+      await h.run(`${write('one.txt')}; ${write('one.txt')}; ${write('two.txt')}; return 1`)
+      expect(h.requests.map((r) => r.title)).toEqual([
+        expect.stringContaining(join(base, 'one.txt')),
+        expect.stringContaining(join(base, 'two.txt'))
+      ])
+      expect(await readFile(join(base, 'two.txt'), 'utf8')).toBe('x')
     })
 
     it('refuses an outside write in ask mode without asking', async () => {

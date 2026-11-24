@@ -57,7 +57,7 @@ describe('CodemodeMcpPool', () => {
     const pool = makePool()
     await pool.call('fake-crm', 'add_credits', { user_id: 'u1', amount: 5 }, signal())
     await pool.call('fake-crm', 'add_credits', { user_id: 'u1', amount: 2 }, signal())
-    const state = JSON.parse(await pool.call('fake-crm', 'get_state', {}, signal()))
+    const state = JSON.parse((await pool.call('fake-crm', 'get_state', {}, signal())).text)
     expect(state[0].credits).toBe(7)
   })
 
@@ -87,7 +87,7 @@ describe('CodemodeMcpPool', () => {
     )
     expect(pool.startedCount()).toBe(2)
     pool.newTurn()
-    expect(await pool.call('fake-crm', 'get_state', {}, signal())).toContain('u1')
+    expect((await pool.call('fake-crm', 'get_state', {}, signal())).text).toContain('u1')
     expect(pool.startedCount()).toBe(3)
   }, 30_000)
 

@@ -64,6 +64,19 @@ server.registerTool(
       user.credits += amount
     })
 )
+server.registerTool(
+  'structured_user',
+  {
+    description: 'Find a user by email, as structured content',
+    inputSchema: { email: z.string() }
+  },
+  async ({ email }) => {
+    const user = users.get(email)
+    return user
+      ? { ...text(user), structuredContent: user }
+      : { ...text(`no user ${email}`), isError: true }
+  }
+)
 server.registerTool('get_state', { description: 'All users' }, async () =>
   text([...users.values()])
 )

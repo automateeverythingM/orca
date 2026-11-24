@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import type { CodemodeLimits } from '../codemode-limits'
 import type { CodemodeMcpPool, CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
 import { trimOutput } from '../sandbox/codemode-output-trim'
@@ -7,6 +8,7 @@ import { runBash } from './codemode-bash'
 import {
   editFileTool,
   findTool,
+  type FileToolContext,
   grepTool,
   readFileTool,
   writeFileTool
@@ -92,47 +94,71 @@ export function serverStartCheck(spec: CodemodeServerSpec): GateCheck {
   }
 }
 
-async function planFileChange(
+const READ_CHECK: GateCheck = { gate: { kind: 'read' }, allowKey: 'read', prompt: NO_PROMPT }
+
+/**
+ * Plans a file tool call: an inside path gets `inside`; an outside path gets a path-outside
+ * check keyed by its real path, and only that check lets the tool reach outside.
+ */
+async function planPathCall(
+  ctx: HostCallContext,
+  path: string | undefined,
+  inside: GateCheck,
+  outside: { verb: string; detail: string },
+  run: (fileCtx: FileToolContext) => Promise<HostReply>
+): Promise<PlannedHostCall> {
+  const target =
+    path === undefined
+      ? { path: ctx.root, inside: true }
+      : await resolveInRoot(ctx.root, path).catch(() => ({
+          path: resolve(ctx.root, path),
+          inside: false
+        }))
+  // Why: the tool re-resolves the path, so a link swapped in after this check is still refused.
+  if (target.inside) {
+    return { ...inside, execute: () => run({ root: ctx.root }) }
+  }
+  return {
+    gate: { kind: 'path-outside' },
+    allowKey: `path-outside:${target.path}`,
+    prompt: {
+      title: `${outside.verb} ${target.path} (outside the workspace)`,
+      detail: outside.detail
+    },
+    execute: () => run({ root: ctx.root, allowOutside: true })
+  }
+}
+
+function planFileChange(
   tool: 'write' | 'edit',
   fields: Fields,
   ctx: HostCallContext
 ): Promise<PlannedHostCall> {
   const path = text(tool, fields, 'path')
-  const detail =
-    tool === 'write'
-      ? clip(text(tool, fields, 'content'))
-      : clip(`- ${text(tool, fields, 'old_string')}\n+ ${text(tool, fields, 'new_string')}`)
-  const inside = await resolveInRoot(ctx.root, path).then(
-    (resolved) => resolved.inside,
-    () => false
+  if (tool === 'write') {
+    const input = { path, content: text(tool, fields, 'content') }
+    const detail = clip(input.content)
+    return planPathCall(
+      ctx,
+      path,
+      { gate: { kind: 'write' }, allowKey: 'write', prompt: { title: `Write ${path}`, detail } },
+      { verb: 'Write', detail },
+      (fileCtx) => writeFileTool(input, fileCtx)
+    )
+  }
+  const input = {
+    path,
+    old_string: text(tool, fields, 'old_string'),
+    new_string: text(tool, fields, 'new_string')
+  }
+  const detail = clip(`- ${input.old_string}\n+ ${input.new_string}`)
+  return planPathCall(
+    ctx,
+    path,
+    { gate: { kind: 'write' }, allowKey: 'write', prompt: { title: `Edit ${path}`, detail } },
+    { verb: 'Edit', detail },
+    (fileCtx) => editFileTool(input, fileCtx)
   )
-  const verb = tool === 'write' ? 'Write' : 'Edit'
-  // Why: the tool re-resolves the path, so a link swapped in after this check is still refused.
-  const fileCtx = { root: ctx.root, allowOutside: !inside }
-  const execute = (): Promise<HostReply> =>
-    tool === 'write'
-      ? writeFileTool({ path, content: fields.content as string }, fileCtx)
-      : editFileTool(
-          {
-            path,
-            old_string: fields.old_string as string,
-            new_string: fields.new_string as string
-          },
-          fileCtx
-        )
-  return inside
-    ? {
-        gate: { kind: 'write' },
-        allowKey: 'write',
-        prompt: { title: `${verb} ${path}`, detail },
-        execute
-      }
-    : {
-        gate: { kind: 'path-outside' },
-        allowKey: 'path-outside',
-        prompt: { title: `${verb} ${path} outside the workspace`, detail },
-        execute
-      }
 }
 
 function planMcpCall(fields: Fields, ctx: HostCallContext): PlannedHostCall {
@@ -143,21 +169,20 @@ function planMcpCall(fields: Fields, ctx: HostCallContext): PlannedHostCall {
     gate: { kind: 'mcp', server, trusted: ctx.trusted(server) },
     allowKey: `mcp:${server}/${tool}`,
     prompt: { title: `Call ${server}.${tool}`, detail: clip(JSON.stringify(args, null, 2)) },
-    execute: async () => ({
-      ok: true,
-      value: await ctx.pool.call(server, tool, args, ctx.signal)
-    })
+    execute: async () => {
+      const result = await ctx.pool.call(server, tool, args, ctx.signal)
+      return { ok: true, value: result.structured === undefined ? result.text : result.structured }
+    }
   }
 }
 
 function readOnly(execute: () => Promise<HostReply>): PlannedHostCall {
-  return { gate: { kind: 'read' }, allowKey: 'read', prompt: NO_PROMPT, execute }
+  return { ...READ_CHECK, execute }
 }
 
 /** Validates one host call from the sandbox and maps it to its gate check and executor. */
 export async function planHostCall(call: HostCall, ctx: HostCallContext): Promise<PlannedHostCall> {
   const fields = fieldsOf(call.tool, call.input)
-  const fileCtx = { root: ctx.root }
   switch (call.tool) {
     case 'read': {
       const input = {
@@ -165,7 +190,13 @@ export async function planHostCall(call: HostCall, ctx: HostCallContext): Promis
         offset: optionalNumber('read', fields, 'offset'),
         limit: optionalNumber('read', fields, 'limit')
       }
-      return readOnly(() => readFileTool(input, fileCtx))
+      return planPathCall(
+        ctx,
+        input.path,
+        READ_CHECK,
+        { verb: 'Read', detail: input.path },
+        (fileCtx) => readFileTool(input, fileCtx)
+      )
     }
     case 'grep': {
       const input = {
@@ -173,14 +204,20 @@ export async function planHostCall(call: HostCall, ctx: HostCallContext): Promis
         path: optionalText('grep', fields, 'path'),
         glob: optionalText('grep', fields, 'glob')
       }
-      return readOnly(() => grepTool(input, fileCtx))
+      const outside = { verb: 'Search', detail: clip(input.pattern) }
+      return planPathCall(ctx, input.path, READ_CHECK, outside, (fileCtx) =>
+        grepTool(input, fileCtx)
+      )
     }
     case 'find': {
       const input = {
         pattern: text('find', fields, 'pattern'),
         path: optionalText('find', fields, 'path')
       }
-      return readOnly(() => findTool(input, fileCtx))
+      const outside = { verb: 'List files in', detail: clip(input.pattern) }
+      return planPathCall(ctx, input.path, READ_CHECK, outside, (fileCtx) =>
+        findTool(input, fileCtx)
+      )
     }
     case 'mcp.list':
       return readOnly(async () => ({ ok: true, value: ctx.pool.list() }))
@@ -196,7 +233,12 @@ export async function planHostCall(call: HostCall, ctx: HostCallContext): Promis
       return planFileChange(call.tool, fields, ctx)
     case 'bash': {
       const cmd = text('bash', fields, 'cmd')
-      const timeoutMs = optionalNumber('bash', fields, 'timeout')
+      // Why: scripts give `timeout` in seconds; runBash clamps the ms value to bashMaxMs.
+      const timeoutSeconds = optionalNumber('bash', fields, 'timeout')
+      const timeoutMs =
+        timeoutSeconds === undefined
+          ? undefined
+          : Math.min(timeoutSeconds * 1000, ctx.limits.bashMaxMs)
       return {
         gate: { kind: 'bash' },
         allowKey: 'bash',

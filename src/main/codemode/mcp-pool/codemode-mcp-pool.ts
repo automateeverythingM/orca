@@ -7,6 +7,9 @@ export type { CodemodeServerSpec } from './codemode-mcp-config'
 
 export type CodemodeToolInfo = { name: string; description?: string; input_schema: unknown }
 
+/** `structured` is the tool's `structuredContent` when it sent one; `text` is the rendered content. */
+export type CodemodeToolResult = { text: string; structured?: unknown }
+
 type PoolOptions = {
   cwd: string
   env: NodeJS.ProcessEnv
@@ -111,13 +114,13 @@ export class CodemodeMcpPool {
     }
   }
 
-  /** Resolves with rendered text; a tool result flagged isError rejects with that text. */
+  /** A tool result flagged isError rejects with its rendered text. */
   async call(
     server: string,
     tool: string,
     args: Record<string, unknown>,
     signal: AbortSignal
-  ): Promise<string> {
+  ): Promise<CodemodeToolResult> {
     const entry = this.entry(server)
     const live = await this.ensure(entry)
     let result: Awaited<ReturnType<Client['callTool']>>
@@ -133,7 +136,9 @@ export class CodemodeMcpPool {
     if (result.isError) {
       throw new Error(text || `tool ${tool} failed`)
     }
-    return text
+    return result.structuredContent === undefined
+      ? { text }
+      : { text, structured: result.structuredContent }
   }
 
   async close(): Promise<void> {
