@@ -25,6 +25,8 @@ export function structuredAgentSettingGates(
     sharedCodexServers: () =>
       process.versions.electron !== undefined &&
       getSettings().experimentalSharedCodexServers === true,
-    codemodeEnabled: () => getSettings().codemodeEnabled === true
+    // Same: the run_js worker and its WASM ship only with the desktop app, not with orcad.
+    codemodeEnabled: () =>
+      process.versions.electron !== undefined && getSettings().codemodeEnabled === true
   }
 }
