@@ -38,6 +38,19 @@ export type StructuredAgentSessionStartupAttempt = {
   readonly signal?: AbortSignal
 }
 
+type LaunchRequestFields = Pick<StructuredAgentSessionStartupAttempt, 'identity' | 'spawnToken'> &
+  Partial<Pick<StructuredAgentSessionStartupAttempt, 'attemptId' | 'permissionMode'>>
+
+/** What an attempt asks its launch resolver for: the session, its reservation, and which attempt asks. */
+export function structuredLaunchRequestOf(attempt: LaunchRequestFields): LaunchRequestFields {
+  return {
+    identity: attempt.identity,
+    spawnToken: attempt.spawnToken,
+    ...(attempt.attemptId ? { attemptId: attempt.attemptId } : {}),
+    ...(attempt.permissionMode ? { permissionMode: attempt.permissionMode } : {})
+  }
+}
+
 export class StructuredAgentSessionStartupExpiredError extends Error {
   constructor() {
     super('the agent stopped making progress before it finished starting')

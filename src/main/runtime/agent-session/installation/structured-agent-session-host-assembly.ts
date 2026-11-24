@@ -29,6 +29,7 @@ import type { StructuredAgentSessionRuntimeDeps } from './structured-agent-sessi
 import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecycle/agent-session-record'
 import { observePRWatchCommittedRows } from '../lifecycle/pr-watch-runtime'
 import { processCodemodeService } from '../../../codemode/codemode-service'
+import { CodemodeAcquisitionRouter } from './structured-agent-codemode-router'
 
 export async function installOnJournal(
   deps: StructuredAgentSessionRuntimeDeps,
@@ -61,9 +62,10 @@ export async function installOnJournal(
     journalDatabase,
     environment: envResolvers,
     // Every child's end, requested or not, before the host reacts: its code-mode token dies first.
+    // Only that child's own launch ends: a late end from a superseded child leaves a newer launch alone.
     deliverLifecycle: (event) => {
       if (event.type === 'ended') {
-        void codemode?.service.endSession(event.sessionId)
+        void codemode?.service.endChild(event.sessionId, event.acquisitionGeneration)
       }
       lifecycle.deliver(event)
     },
@@ -78,9 +80,12 @@ export async function installOnJournal(
     ({ definition, createAdapter }) => ({ definition, adapter: createAdapter(context) })
   )
   const agents = new StructuredAgentRegistry(registrations)
-  const adapter = new StructuredAgentSessionAdapterRouter(agents, async () => {
+  const closeAdapters = async (): Promise<void> => {
     await Promise.all(registrations.map((registration) => registration.adapter.closeAll()))
-  })
+  }
+  const adapter = codemode
+    ? new CodemodeAcquisitionRouter(agents, closeAdapters, codemode.service)
+    : new StructuredAgentSessionAdapterRouter(agents, closeAdapters)
   const providerNaming = createStructuredAgentSessionProviderNaming({
     adapter,
     logger: deps.logger

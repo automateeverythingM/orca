@@ -4,6 +4,7 @@ import { AgentSessionAcquisitionExitUnprovenError } from '../../../native-chat/a
 import { launchPreparationFailure } from '../../../native-chat/agent-session-wire/providers/structured-agent-session-adapter-errors'
 import type { StructuredAgentSessionAcquireInput } from '../../../native-chat/agent-session-wire/providers/structured-agent-session-adapter'
 import { stopAgentSessionProviderRoot } from '../../../native-chat/agent-session-wire/termination/structured-agent-session-provider-exit-proof'
+import { structuredLaunchRequestOf } from '../../../native-chat/agent-session-wire/startup/structured-agent-session-startup-attempt-contract'
 import { withAgentSessionCreatePhase } from '../../../observability/agent-session-instrumentation'
 import type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
 import {
@@ -94,11 +95,7 @@ export async function resolveClaudeAcquisitionLaunch(args: {
         }
       : input.identity
     const launch = await deps
-      .resolveLaunch({
-        identity: launchIdentity,
-        spawnToken: input.spawnToken,
-        ...(input.permissionMode ? { permissionMode: input.permissionMode } : {})
-      })
+      .resolveLaunch(structuredLaunchRequestOf({ ...input, identity: launchIdentity }))
       .catch((error: unknown) => {
         throw launchPreparationFailure(error)
       })

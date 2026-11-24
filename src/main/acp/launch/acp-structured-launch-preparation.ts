@@ -12,19 +12,18 @@ import { acpPrivateTempConnect } from './acp-private-temp'
 import type { AcpStructuredLaunch } from './acp-structured-launch-resolution'
 import type { AcpStructuredSessionAdapterDeps } from '../session/acp-structured-session-adapter-deps'
 import type { AcpLaunchSpec } from './acp-launch-contract'
+import { structuredLaunchRequestOf } from '../../native-chat/agent-session-wire/startup/structured-agent-session-startup-attempt-contract'
 import type { AcpStructuredConnection, ConnectAcpAgent } from '../process/acp-structured-connection'
 
 export function prepareAcpStructuredLaunch(
   deps: Pick<AcpStructuredSessionAdapterDeps, 'resolveLaunch'>,
-  acquire: Pick<StructuredAgentSessionAcquireInput, 'identity' | 'spawnToken' | 'permissionMode'>,
+  acquire: Pick<
+    StructuredAgentSessionAcquireInput,
+    'identity' | 'spawnToken' | 'permissionMode' | 'attemptId'
+  >,
   closedBeforeSpawn: () => void
 ): Promise<AcpStructuredLaunch> {
-  const resolveLaunch = () =>
-    deps.resolveLaunch({
-      identity: acquire.identity,
-      spawnToken: acquire.spawnToken,
-      ...(acquire.permissionMode ? { permissionMode: acquire.permissionMode } : {})
-    })
+  const resolveLaunch = () => deps.resolveLaunch(structuredLaunchRequestOf(acquire))
   return prepareAcpLaunch(resolveLaunch, closedBeforeSpawn)
 }
 

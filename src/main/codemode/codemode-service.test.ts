@@ -51,8 +51,14 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-function launch(sessionId = 's1'): Promise<BotToolServer | null> {
-  return service.launchServer({ sessionId, root, env: process.env, mode: () => 'full-access' })
+function launch(sessionId = 's1', launchId = 'launch-1'): Promise<BotToolServer | null> {
+  return service.launchServer({
+    sessionId,
+    launchId,
+    root,
+    env: process.env,
+    mode: () => 'full-access'
+  })
 }
 
 function urlServer(server: BotToolServer | null): { url: string; authorization: string } {
@@ -156,17 +162,36 @@ describe('CodemodeService', () => {
     expect(await initializeStatus(kept)).toBe(200)
   })
 
+  it("keeps a newer launch's token when the superseded launch's child ends late", async () => {
+    await launch('s1', 'launch-a')
+    service.bindChild('s1', 'launch-a', 'generation-a')
+    const newer = await launch('s1', 'launch-b')
+
+    await service.endChild('s1', 'generation-a')
+    await service.endSession('s1', 'launch-a')
+    expect(await initializeStatus(newer)).toBe(200)
+
+    service.bindChild('s1', 'launch-b', 'generation-b')
+    await service.endChild('s1', 'generation-b')
+    expect(await initializeStatus(newer)).toBe(401)
+  })
+
+  it('ends a launch whose own child ended before its acquisition reported it', async () => {
+    const server = await launch('s1', 'launch-a')
+    await service.endChild('s1', 'generation-a')
+    expect(await initializeStatus(server)).toBe(200)
+    service.bindChild('s1', 'launch-a', 'generation-a')
+    await vi.waitFor(async () => expect(await initializeStatus(server)).toBe(401))
+  })
+
   it('launches without code mode when the server cannot start', async () => {
     const failing = new CodemodeHttpServer()
     failing.start = () => Promise.reject(new Error('EADDRINUSE'))
     const logged: string[] = []
     const broken = new CodemodeService({ server: failing, log: (message) => logged.push(message) })
-    expect(await broken.launchServer({ sessionId: 's1', root, env: {}, mode: () => 'ask' })).toBe(
-      null
-    )
-    expect(await broken.launchServer({ sessionId: 's2', root, env: {}, mode: () => 'ask' })).toBe(
-      null
-    )
+    const input = { launchId: 'launch-1', root, env: {}, mode: () => 'ask' as const }
+    expect(await broken.launchServer({ sessionId: 's1', ...input })).toBe(null)
+    expect(await broken.launchServer({ sessionId: 's2', ...input })).toBe(null)
     expect(logged).toHaveLength(1)
   })
 })

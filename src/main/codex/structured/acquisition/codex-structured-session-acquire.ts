@@ -38,6 +38,7 @@ import type { deliverCodexServerRequest } from '../session-lifecycle/codex-struc
 import { codexAcquisitionNotificationHandler } from './codex-structured-acquisition-notification'
 import { codexStartFailure } from '../../app-server/codex-startup-outcome'
 import { codexAcceptedSend } from '../journal/codex-structured-journal-translation-turns'
+import { structuredLaunchRequestOf } from '../../../native-chat/agent-session-wire/startup/structured-agent-session-startup-attempt-contract'
 
 export async function acquireCodexStructuredSession(input: {
   input: StructuredAgentSessionAcquireInput
@@ -121,11 +122,7 @@ export async function acquireCodexStructuredSession(input: {
     }
     acquisitions.assertCurrent(sessionId, attempt)
     const resolvedLaunch = await deps
-      .resolveLaunch({
-        identity: acquireInput.identity,
-        spawnToken: acquireInput.spawnToken,
-        ...(acquireInput.permissionMode ? { permissionMode: acquireInput.permissionMode } : {})
-      })
+      .resolveLaunch(structuredLaunchRequestOf(acquireInput))
       .catch((error: unknown) => {
         throw launchPreparationFailure(error)
       })

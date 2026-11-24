@@ -41,6 +41,7 @@ function toolsFor(agent: string, enabled = true): Promise<BotLaunchTools> {
   return withCodemodeTools(BotLaunchTools.none, codemode(enabled).launch, {
     agent,
     sessionId: 's1',
+    launchId: 'launch-1',
     root: '/work',
     env: {},
     mode: () => 'ask'
@@ -96,6 +97,7 @@ describe('code mode in a structured launch', () => {
     const tools = await withCodemodeTools(BotLaunchTools.none, off.launch, {
       agent: 'claude',
       sessionId: 's1',
+      launchId: 'launch-1',
       root: '/work',
       env: {},
       mode: () => 'ask'

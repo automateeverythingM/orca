@@ -23,9 +23,11 @@ import { applyPiRpcSessionOption } from './options/rpc-options'
 import { supportsSupervisedProviderChildLocation } from '../../provider-process/supervised-provider-child-location'
 
 export type PiRpcSessionAdapterDeps = PiRpcSessionDeps & {
-  resolveLaunch: (input: {
-    [K in 'identity' | 'spawnToken']: StructuredAgentSessionAcquireInput[K]
-  }) => Promise<PiRpcResolvedLaunch>
+  resolveLaunch: (
+    input: { [K in 'identity' | 'spawnToken']: StructuredAgentSessionAcquireInput[K] } & {
+      attemptId?: string
+    }
+  ) => Promise<PiRpcResolvedLaunch>
   readProcessStartTime?: (pid: number) => Promise<number | null>
 }
 
@@ -67,7 +69,11 @@ export class PiRpcSessionAdapter implements StructuredAgentSessionAdapter {
       let launch: PiRpcResolvedLaunch
       try {
         launch = await waitForPromiseWithSignal(
-          this.deps.resolveLaunch({ identity: input.identity, spawnToken: input.spawnToken }),
+          this.deps.resolveLaunch({
+            identity: input.identity,
+            spawnToken: input.spawnToken,
+            ...(input.attemptId ? { attemptId: input.attemptId } : {})
+          }),
           attempt.signal
         )
       } catch (error) {

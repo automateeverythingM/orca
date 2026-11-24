@@ -30,6 +30,7 @@ export type AcpStructuredSessionAdapterDeps = {
     spawnToken: string
     /** Defaults to ask. */
     permissionMode?: AgentChatPermissionChoice
+    attemptId?: string
   }) => Promise<AcpStructuredLaunch>
   /** The same launch for a read that starts no child (a conversation copy): the agent's env, unsealed. */
   readLaunch: (identity: AgentSessionJournalIdentity) => Promise<AcpStructuredLaunch>

@@ -1,5 +1,6 @@
 // Compose shared admission, cwd, environment, visuals and child sealing; agent parts add only agent-specific inputs and never set cwd/sealed env.
 
+import { randomUUID } from 'node:crypto'
 import type { ReadOnlySessionMode } from '../../../bots/bot-look-around-policy'
 import { BotLaunchTools } from '../../../bots/bot-launch-tools'
 import type { AgentSessionJournalIdentity } from '../../../../shared/agent-session/journal/agent-session-journal-identity'
@@ -102,6 +103,8 @@ export type StructuredLaunchRequest = {
   /** The reservation's token, which the seal hands the child. */
   spawnToken: string
   permissionMode?: AgentChatPermissionChoice
+  /** The startup attempt this launch is for; code mode ties its session to it. */
+  attemptId?: string
 }
 
 /** What the composition sets on a launch; an agent's part never does. */
@@ -184,7 +187,7 @@ async function composedPart<L>(
   identity: AgentSessionJournalIdentity,
   permissionMode?: AgentChatPermissionChoice,
   /** A launch that starts a child; it alone gets code mode, which it marks here once opened. */
-  starts?: { codemode: boolean }
+  starts?: { codemode: boolean; launchId: string }
 ): Promise<StructuredAgentLaunchPart<L> & { cwd: string }> {
   const record = admittedRecord(definition, sources.store, identity.sessionId)
   const launchEnv = once(() => sources.resolveAgentLaunchEnv?.(definition.agent) ?? {})
@@ -231,6 +234,7 @@ async function composedPart<L>(
             root,
             env: await environments.agent(),
             permissionMode,
+            launchId: starts.launchId,
             starts
           })
         : own
@@ -268,8 +272,8 @@ export function composeStructuredLaunch<L>(
   sources: StructuredAgentLaunchSources,
   part: StructuredAgentLaunchPartResolver<L>
 ): StructuredAgentLaunchResolver<L> {
-  return async ({ identity, spawnToken, permissionMode }) => {
-    const starts = { codemode: false }
+  return async ({ identity, spawnToken, permissionMode, attemptId }) => {
+    const starts = { codemode: false, launchId: attemptId ?? randomUUID() }
     try {
       const { launch, cwd, env, inheritedEnvToDelete, cliRuntimeCommand, commandEnv } =
         await composedPart(definition, sources, part, identity, permissionMode, starts)
@@ -291,7 +295,7 @@ export function composeStructuredLaunch<L>(
     } catch (error) {
       // No child will end to close what this launch opened.
       if (starts.codemode) {
-        void sources.codemode?.service.endSession(identity.sessionId)
+        void sources.codemode?.service.endSession(identity.sessionId, starts.launchId)
       }
       throw error
     }

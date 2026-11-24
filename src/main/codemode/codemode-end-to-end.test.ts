@@ -67,6 +67,7 @@ afterEach(async () => {
 async function agent(mode: GateMode, policy: (message: string) => Decision): Promise<Client> {
   const server = await service.launchServer({
     sessionId: 's1',
+    launchId: 'launch-1',
     root,
     env: process.env,
     mode: () => mode

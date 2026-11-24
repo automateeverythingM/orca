@@ -8,6 +8,8 @@ import { CodemodeHttpServer } from './server/codemode-http-server'
 
 export type CodemodeLaunchInput = {
   sessionId: string
+  /** The startup attempt this launch is for: only its own teardown may end it. */
+  launchId: string
   /** The session's launch directory. */
   root: string
   /** The session's launch environment. */
@@ -19,6 +21,15 @@ export type CodemodeLaunchInput = {
 export type CodemodeInnerCallListener = (sessionId: string, event: InnerCallEvent) => void
 
 type CodemodeServerHost = Pick<CodemodeHttpServer, 'start' | 'register' | 'unregister' | 'stop'>
+
+type LiveLaunch = {
+  launchId: string
+  session: CodemodeSession
+  /** The child this launch spawned, once its acquisition succeeded. */
+  generation?: string
+  /** Ends seen before the child was known: an early end of this launch's own child stays owed. */
+  earlyEnds: Set<string>
+}
 
 export type CodemodeServiceOptions = {
   log?: (message: string, error?: unknown) => void
@@ -33,7 +44,7 @@ export type CodemodeServiceOptions = {
 /** One per process: the loopback run_js server and each structured session's code-mode session. */
 export class CodemodeService {
   private readonly server: CodemodeServerHost
-  private readonly sessions = new Map<string, CodemodeSession>()
+  private readonly sessions = new Map<string, LiveLaunch>()
   private readonly listeners = new Set<CodemodeInnerCallListener>()
   private readonly log: (message: string, error?: unknown) => void
   private readonly runs: CodemodeRunStore
@@ -82,11 +93,11 @@ export class CodemodeService {
         ...(this.opts.workerPath ? { workerPath: this.opts.workerPath } : {})
       })
       const previous = this.sessions.get(sessionId)
-      this.sessions.set(sessionId, session)
+      this.sessions.set(sessionId, { launchId: input.launchId, session, earlyEnds: new Set() })
       const token = this.server.register(sessionId, session, () => ({
         servers: session.serverNames()
       }))
-      void previous?.close()
+      void previous?.session.close()
       return {
         name: 'orca',
         url: `${origin}/codemode/mcp`,
@@ -99,14 +110,49 @@ export class CodemodeService {
     }
   }
 
-  /** Revokes the session's token before closing its MCP servers. */
-  endSession(sessionId: string): Promise<void> {
-    const session = this.sessions.get(sessionId)
+  /**
+   * Revokes the session's token before closing its MCP servers. With `launchId`, only while that
+   * launch is still the session's current one: a superseded launch's teardown must not end a newer one.
+   */
+  endSession(sessionId: string, launchId?: string): Promise<void> {
+    const live = this.sessions.get(sessionId)
+    if (launchId !== undefined && live?.launchId !== launchId) {
+      return Promise.resolve()
+    }
     this.sessions.delete(sessionId)
     this.runs.dropSession(sessionId)
     // Why: unregister revokes synchronously, so a relaunch registering after this keeps its token.
     const unregistered = this.server.unregister(sessionId)
-    return unregistered.then(() => session?.close())
+    return unregistered.then(() => live?.session.close())
+  }
+
+  /** Ties the launch to the child its acquisition produced, so that child's end ends it. */
+  bindChild(sessionId: string, launchId: string, generation: string): void {
+    const live = this.sessions.get(sessionId)
+    if (!live || live.launchId !== launchId) {
+      return
+    }
+    if (live.earlyEnds.has(generation)) {
+      void this.endSession(sessionId, launchId)
+      return
+    }
+    live.generation = generation
+    live.earlyEnds.clear()
+  }
+
+  /** A child ended: ends the session's code mode only when that child is the current launch's. */
+  endChild(sessionId: string, generation: string): Promise<void> {
+    const live = this.sessions.get(sessionId)
+    if (!live) {
+      return Promise.resolve()
+    }
+    if (live.generation === undefined) {
+      live.earlyEnds.add(generation)
+      return Promise.resolve()
+    }
+    return live.generation === generation
+      ? this.endSession(sessionId, live.launchId)
+      : Promise.resolve()
   }
 
   async stop(): Promise<void> {
