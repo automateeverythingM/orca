@@ -69,6 +69,23 @@ describe('codemode file tools', () => {
     expect((await findTool({ pattern: '*', path: '..' }, ctx)).ok).toBe(false)
   })
 
+  it('reaches outside paths only when the context allows it', async () => {
+    const open = { root, allowOutside: true }
+    expect(await writeFileTool({ path: 'link/new.txt', content: 'x' }, open)).toEqual({
+      ok: true,
+      value: 'wrote link/new.txt'
+    })
+    expect(await readFile(join(base, 'outside', 'new.txt'), 'utf8')).toBe('x')
+    expect(await readFileTool({ path: '../outside/secret.txt' }, open)).toEqual({
+      ok: true,
+      value: 'secret'
+    })
+    expect(
+      await editFileTool({ path: 'link/new.txt', old_string: 'x', new_string: 'y' }, open)
+    ).toEqual({ ok: true, value: 'edited link/new.txt' })
+    expect(await readFile(join(base, 'outside', 'new.txt'), 'utf8')).toBe('y')
+  })
+
   it('refuses writing through a dangling symlink to a missing outside file', async () => {
     await symlink(join(base, 'outside', 'planted.txt'), join(root, 'innocent.txt'))
     const reply = await writeFileTool({ path: 'innocent.txt', content: 'x' }, ctx)

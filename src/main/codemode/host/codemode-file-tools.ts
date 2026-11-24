@@ -4,7 +4,8 @@ import { spawnBundledRipgrep } from '../../ripgrep/bundled-ripgrep-spawn'
 import type { HostReply } from '../sandbox/codemode-script-runner'
 import { resolveInRoot } from './codemode-paths'
 
-export type FileToolContext = { root: string }
+/** `allowOutside` is set only after the gate allowed a path-outside call. */
+export type FileToolContext = { root: string; allowOutside?: boolean }
 
 const MAX_RG_OUTPUT_BYTES = 8 * 1024 * 1024
 
@@ -17,12 +18,14 @@ function failure(error: unknown): HostReply {
 }
 
 async function resolveOrRefuse(
-  root: string,
+  ctx: FileToolContext,
   input: string
 ): Promise<{ path: string } | { refusal: HostReply }> {
   try {
-    const resolved = await resolveInRoot(root, input)
-    return resolved.inside ? { path: resolved.path } : { refusal: outside(input) }
+    const resolved = await resolveInRoot(ctx.root, input)
+    return resolved.inside || ctx.allowOutside === true
+      ? { path: resolved.path }
+      : { refusal: outside(input) }
   } catch (error) {
     return { refusal: failure(error) }
   }
@@ -33,7 +36,7 @@ export async function readFileTool(
   input: { path: string; offset?: number; limit?: number },
   ctx: FileToolContext
 ): Promise<HostReply> {
-  const target = await resolveOrRefuse(ctx.root, input.path)
+  const target = await resolveOrRefuse(ctx, input.path)
   if ('refusal' in target) {
     return target.refusal
   }
@@ -54,7 +57,7 @@ export async function writeFileTool(
   input: { path: string; content: string },
   ctx: FileToolContext
 ): Promise<HostReply> {
-  const target = await resolveOrRefuse(ctx.root, input.path)
+  const target = await resolveOrRefuse(ctx, input.path)
   if ('refusal' in target) {
     return target.refusal
   }
@@ -71,7 +74,7 @@ export async function editFileTool(
   input: { path: string; old_string: string; new_string: string },
   ctx: FileToolContext
 ): Promise<HostReply> {
-  const target = await resolveOrRefuse(ctx.root, input.path)
+  const target = await resolveOrRefuse(ctx, input.path)
   if ('refusal' in target) {
     return target.refusal
   }
@@ -132,14 +135,14 @@ function cleanLines(stdout: string): string {
 }
 
 async function searchBase(
-  root: string,
+  ctx: FileToolContext,
   input: string | undefined
 ): Promise<{ realRoot: string; arg: string } | { refusal: HostReply }> {
-  const target = await resolveOrRefuse(root, input ?? '.')
+  const target = await resolveOrRefuse(ctx, input ?? '.')
   if ('refusal' in target) {
     return { refusal: input === undefined ? target.refusal : outside(input) }
   }
-  const realRoot = (await resolveInRoot(root, '.')).path
+  const realRoot = (await resolveInRoot(ctx.root, '.')).path
   return { realRoot, arg: relative(realRoot, target.path) || '.' }
 }
 
@@ -147,7 +150,7 @@ export async function grepTool(
   input: { pattern: string; path?: string; glob?: string },
   ctx: FileToolContext
 ): Promise<HostReply> {
-  const base = await searchBase(ctx.root, input.path)
+  const base = await searchBase(ctx, input.path)
   if ('refusal' in base) {
     return base.refusal
   }
@@ -170,7 +173,7 @@ export async function findTool(
   input: { pattern: string; path?: string },
   ctx: FileToolContext
 ): Promise<HostReply> {
-  const base = await searchBase(ctx.root, input.path)
+  const base = await searchBase(ctx, input.path)
   if ('refusal' in base) {
     return base.refusal
   }
