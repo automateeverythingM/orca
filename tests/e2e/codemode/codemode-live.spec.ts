@@ -2,7 +2,7 @@
 // Manual only: it needs the developer's Claude login and spends a little usage.
 // Run: ORCA_CODEMODE_LIVE=1 ORCA_BACKGROUND_LAUNCH=1 SKIP_BUILD=1 pnpm run test:e2e tests/e2e/codemode/codemode-live.spec.ts
 
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -19,11 +19,22 @@ const PROMPT =
 const SHOTS =
   process.env.ORCA_CODEMODE_LIVE_SHOTS ?? path.join(os.tmpdir(), 'orca-codemode-live-shots')
 
+// Every tool Claude used across the live runs; anything else (a direct fake-crm call above all) fails.
+const ALLOWED_TOOLS = new Set(['mcp__orca__run_js'])
+
 type CrmUser = { id: string; email: string; name: string; groups: string[]; credits: number }
 type ToolUse = { name: string; input: Record<string, unknown> }
 type Transcript = { toolUses: ToolUse[]; toolResults: string[]; finalText: string | null }
 
-test.use({ seedTestRepo: false })
+// Why: the app runs under an isolated HOME, so Claude's login reaches it only through these variables.
+const CLAUDE_CREDENTIAL_ENV = Object.fromEntries(
+  ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'].flatMap((key) => {
+    const value = process.env[key]
+    return value ? [[key, value]] : []
+  })
+)
+
+test.use({ seedTestRepo: false, orcaAppExtraEnv: CLAUDE_CREDENTIAL_ENV })
 
 async function makeWorkspace(): Promise<{ folder: string; stateFile: string }> {
   const folder = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'orca-codemode-live-')))
@@ -84,23 +95,14 @@ async function appHome(app: ElectronApplication): Promise<string> {
   return app.evaluate(({ app }) => app.getPath('home'))
 }
 
-/** Claude keeps its macOS login in the login keychain, which `security` finds through HOME. */
-async function shareLoginKeychain(app: ElectronApplication): Promise<void> {
-  const library = path.join(await appHome(app), 'Library')
-  await mkdir(library, { recursive: true })
-  await symlink(path.join(os.homedir(), 'Library', 'Keychains'), path.join(library, 'Keychains'))
-}
-
 /** Opens a native Claude chat on a fresh folder workspace whose `.orca/mcp.json` runs fake-crm. */
 async function startClaudeChat(
   page: Page,
-  app: ElectronApplication,
   mode: AgentChatPermissionMode,
   cleanup: (run: () => Promise<void>) => void
 ): Promise<string> {
   const { folder, stateFile } = await makeWorkspace()
   cleanup(() => rm(folder, { recursive: true, force: true }))
-  await shareLoginKeychain(app)
   await configureChat(page, mode)
   await openFolderWorkspace(page, folder)
   await page.getByRole('button', { name: 'New tab' }).click({ force: true })
@@ -131,6 +133,15 @@ async function listJsonl(dir: string): Promise<string[]> {
 
 type TranscriptLine = { type?: string; message?: { content?: unknown } } | null
 
+/** Claude may be mid-write on the last line; a line that does not parse yet is skipped. */
+function parseLine(line: string): TranscriptLine[] {
+  try {
+    return line.trim() ? [JSON.parse(line)] : []
+  } catch {
+    return []
+  }
+}
+
 function parseTranscript(lines: TranscriptLine[]): Transcript {
   const transcript: Transcript = { toolUses: [], toolResults: [], finalText: null }
   for (const entry of lines) {
@@ -158,8 +169,7 @@ async function readClaudeTranscript(home: string): Promise<Transcript> {
     if (!text.includes('through code mode')) {
       continue
     }
-    const lines = text.split('\n').filter((line) => line.trim().length > 0)
-    const transcript = parseTranscript(lines.map((line): TranscriptLine => JSON.parse(line)))
+    const transcript = parseTranscript(text.split('\n').flatMap(parseLine))
     if (transcript.toolUses.length >= best.toolUses.length) {
       best = transcript
     }
@@ -246,8 +256,11 @@ async function answerCards(page: Page, home: string): Promise<string[]> {
 }
 
 test.describe('code mode with a real agent', () => {
-  test.skip(!LIVE, 'Live agent run: set ORCA_CODEMODE_LIVE=1 (uses your Claude login)')
-  test.skip(process.platform !== 'darwin', 'Shares the macOS login keychain with the isolated HOME')
+  test.skip(!LIVE, 'Live agent run: set ORCA_CODEMODE_LIVE=1')
+  test.skip(
+    Object.keys(CLAUDE_CREDENTIAL_ENV).length === 0,
+    'Set CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) or ANTHROPIC_API_KEY'
+  )
   // A real agent turn, with a person answering its approval cards, can take minutes.
   test.setTimeout(8 * 60_000)
 
@@ -258,7 +271,6 @@ test.describe('code mode with a real agent', () => {
   }) => {
     const stateFile = await startClaudeChat(
       orcaPage,
-      electronApp,
       'full-access',
       registerPostElectronShutdownCleanup
     )
@@ -277,8 +289,8 @@ test.describe('code mode with a real agent', () => {
     const crm = await readCrm(stateFile)
     logEvidence('full-access', transcript, crm)
     const names = transcript.toolUses.map((use) => use.name)
-    expect(names.filter((name) => name === 'mcp__orca__run_js').length).toBeGreaterThanOrEqual(1)
-    expect(names.filter((name) => /fake[-_]crm/.test(name))).toEqual([])
+    expect(names).toContain('mcp__orca__run_js')
+    expect(names.filter((name) => !ALLOWED_TOOLS.has(name))).toEqual([])
     expect(crm).toEqual({
       id: 'u1',
       email: 'x@y.com',
@@ -295,12 +307,7 @@ test.describe('code mode with a real agent', () => {
     registerPostElectronShutdownCleanup
   }) => {
     await mkdir(SHOTS, { recursive: true })
-    const stateFile = await startClaudeChat(
-      orcaPage,
-      electronApp,
-      'ask',
-      registerPostElectronShutdownCleanup
-    )
+    const stateFile = await startClaudeChat(orcaPage, 'ask', registerPostElectronShutdownCleanup)
     const home = await appHome(electronApp)
     const cards = await answerCards(orcaPage, home)
     console.log(`[codemode-live:ask] cards: ${JSON.stringify(cards, null, 2)}`)
@@ -310,14 +317,15 @@ test.describe('code mode with a real agent', () => {
     logEvidence('ask', transcript, crm)
     const names = transcript.toolUses.map((use) => use.name)
     expect(names).toContain('mcp__orca__run_js')
-    expect(names.filter((name) => /fake[-_]crm/.test(name))).toEqual([])
+    expect(names.filter((name) => !ALLOWED_TOOLS.has(name))).toEqual([])
     expect(cards.some((card) => /add_credits/.test(card))).toBe(true)
     expect(
       transcript.toolResults.some((result) =>
         result.includes('mcp.fake-crm.add_credits: denied by user')
       )
     ).toBe(true)
-    expect(crm?.credits).toBe(0)
+    // The calls the person allowed ran; only the denied one did not.
+    expect(crm).toMatchObject({ name: 'Bob', groups: ['Team A'], credits: 0 })
     await shootRunJsRow(orcaPage, 'claude-ask-deny.png')
   })
 })
