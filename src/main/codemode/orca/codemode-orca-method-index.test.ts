@@ -65,6 +65,7 @@ const PROMPTS_AND_SHELL_INPUT = [
   'agentSession.threadGoal',
   'orchestration.peerMailReturn',
   'orchestration.taskCreate',
+  'orchestration.taskUpdate',
   'jira.generateIssueSummary',
   'worktree.restore',
   'webhooks.pause'
@@ -144,7 +145,8 @@ describe('Orca method exposure for code mode', () => {
       'google.bot.connected',
       'bots.update',
       'bots.lookAround.set',
-      'bots.composio.setup'
+      'bots.composio.setup',
+      'worktree.releaseBotHome'
     ]) {
       expect(exposedNames.has(name), name).toBe(false)
     }

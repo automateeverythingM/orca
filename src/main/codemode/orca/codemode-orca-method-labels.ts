@@ -118,6 +118,8 @@ export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel>
     'agentSession.rewind',
     'agentSession.conversationCommand',
     'orchestration.taskCreate',
+    // Its `status` can complete a gate-blocked task, which readies and dispatches dependents.
+    'orchestration.taskUpdate',
     'jira.generateIssueSummary',
     'worktree.restore'
   ]),

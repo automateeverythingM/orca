@@ -120,6 +120,8 @@ export const CODEMODE_ORCA_DENIED_METHODS: ReadonlySet<string> = new Set([
   'bots.tools.update',
   'automation.create',
   'automation.update',
+  // Bot-home plumbing; bot management (the `bots` area) is excluded.
+  'worktree.releaseBotHome',
   // Its trustedOrcaHooks field marks repo hook scripts trusted.
   'ui.set'
 ])
