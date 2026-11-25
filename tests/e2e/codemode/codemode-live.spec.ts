@@ -147,7 +147,11 @@ async function sendInNewClaudeChat(page: Page, prompt: string): Promise<void> {
   await expect(field).toBeVisible({ timeout: 30_000 })
   await field.click({ force: true })
   await page.keyboard.insertText(prompt)
-  await page.keyboard.press('Enter')
+  // Enter can land before the new session accepts input and is then dropped; wait for Send instead.
+  const send = page.getByRole('button', { name: 'Send', exact: true }).last()
+  await expect(send).toBeEnabled({ timeout: 60_000 })
+  await send.click()
+  await expect(field).toHaveText('', { timeout: 30_000 })
 }
 
 async function listJsonl(dir: string): Promise<string[]> {
