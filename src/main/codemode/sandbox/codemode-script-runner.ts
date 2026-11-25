@@ -67,6 +67,14 @@ class QuickJsScriptRun {
     this.context
       .newFunction('__print', (line) => this.prints.add(this.context.getString(line)))
       .consume((fn) => this.context.setProp(this.context.global, '__print', fn))
+    // Saved functions run in this same context; the prelude captures and deletes the binding.
+    this.context
+      .newFunction('__evalLib', (code, file) =>
+        this.enterVm(() =>
+          this.context.evalCode(this.context.getString(code), this.context.getString(file))
+        )
+      )
+      .consume((fn) => this.context.setProp(this.context.global, '__evalLib', fn))
     signal.addEventListener('abort', this.wake)
   }
 
@@ -144,7 +152,11 @@ class QuickJsScriptRun {
   }
 
   // Only time spent executing inside QuickJS counts toward jsTimeMs; host calls run between entries.
+  // Re-entrant: __evalLib enters again from inside the VM and must not count that time twice.
   private enterVm<T>(fn: () => T): T {
+    if (this.vmEnteredAt !== undefined) {
+      return fn()
+    }
     const enteredAt = performance.now()
     this.vmEnteredAt = enteredAt
     try {

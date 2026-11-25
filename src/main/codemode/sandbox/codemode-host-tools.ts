@@ -16,5 +16,9 @@ export const HOST_TOOLS: ReadonlySet<string> = new Set([
   'edit',
   'grep',
   'find',
-  'bash'
+  'bash',
+  'lib.list',
+  'lib.describe',
+  'lib.load',
+  'lib.save'
 ])

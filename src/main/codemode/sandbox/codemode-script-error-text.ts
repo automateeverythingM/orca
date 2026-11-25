@@ -1,5 +1,7 @@
 export const SCRIPT_FILE = 'run_js'
 const SCRIPT_FRAME = /run_js:(\d+)(?::(\d+))?/
+// Saved functions are evaluated under their display path, line for line with the file.
+const LIB_FRAME = /\blib\/[A-Za-z_$][\w$]*\.js:\d+/
 const STACK_OVERFLOW = 'InternalError: stack overflow'
 const KIB = 1024
 const MIB = 1024 * 1024
@@ -24,12 +26,15 @@ export function hostErrorText(error: unknown): string {
   return `sandbox error: ${error instanceof Error ? error.message : String(error)}`
 }
 
-// Agent code starts on line 2 of wrapScript's output, so stack lines shift by one.
+// Agent code starts on line 2 of wrapScript's output, so stack lines shift by one; lib frames stay.
 function scriptFrames(stack: unknown, codeLines: number): string[] {
   if (typeof stack !== 'string') {
     return []
   }
   return stack.split('\n').flatMap((frame) => {
+    if (LIB_FRAME.test(frame)) {
+      return [frame]
+    }
     const match = SCRIPT_FRAME.exec(frame)
     const line = match ? Number(match[1]) - 1 : 0
     if (!match || line < 1 || line > codeLines) {

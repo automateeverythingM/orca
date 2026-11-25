@@ -1,9 +1,14 @@
+/** How many saved functions may be on the call stack at once (agent -> lib.a -> lib.b ...). */
+export const CODEMODE_LIB_MAX_DEPTH = 8
+
 // Runs inside QuickJS before agent code; hides the raw host bindings and evaluates to the thrown-value reader.
 export const CODEMODE_PRELUDE = String.raw`(() => {
   const host = globalThis.__host
   const emit = globalThis.__print
+  const evalLib = globalThis.__evalLib
   delete globalThis.__host
   delete globalThis.__print
+  delete globalThis.__evalLib
 
   const send = async (tool, input) => JSON.parse(await host(tool, JSON.stringify(input ?? null)))
   const call = async (tool, input) => {
@@ -60,6 +65,33 @@ export const CODEMODE_PRELUDE = String.raw`(() => {
       return Object.hasOwn(orcaReserved, name) ? orcaReserved[name] : orcaPath(name)
     }
   })
+
+  // lib.<name>(args) loads a saved function's file and runs it in this context, so its calls share
+  // the host, gate and call budget. stack holds the saved functions already running in this chain.
+  const libReserved = {
+    list: () => call('lib.list', {}),
+    describe: (name) => call('lib.describe', { name }),
+    save: (arg) => call('lib.save', arg)
+  }
+  const invoke = async (name, args, stack) => {
+    if (stack.includes(name)) throw new Error('lib recursion: ' + [...stack, name].join(' → '))
+    if (stack.length >= ${CODEMODE_LIB_MAX_DEPTH}) throw new Error('lib nesting limit ${CODEMODE_LIB_MAX_DEPTH} reached')
+    const loaded = await call('lib.load', { name })
+    // Nothing goes before the source on line 1, so error lines match the file.
+    const wrapped = '(function (lib) {' + loaded.source + '\n;return ' + name + '\n})'
+    const fn = evalLib(wrapped, loaded.file)(childLib([...stack, name]))
+    return await fn(args ?? {})
+  }
+  const childLib = (stack) =>
+    new Proxy({}, {
+      get: (_target, name) => {
+        if (typeof name !== 'string' || notMethods.has(name)) return undefined
+        if (name === 'toString') return () => '[lib]'
+        if (Object.hasOwn(libReserved, name)) return libReserved[name]
+        return async (args) => invoke(name, args, stack)
+      }
+    })
+  globalThis.lib = childLib([])
 
   globalThis.read = (arg) => call('read', pathArg(arg))
   globalThis.write = (arg) => call('write', arg)

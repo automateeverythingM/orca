@@ -35,7 +35,9 @@ const MATRIX: { name: string; call: GateCall; expected: GateDecision[] }[] = [
     call: { kind: 'orca', label: 'destructive' },
     expected: [Q, Q, Q, Q, Q, R]
   },
-  { name: 'path-outside', call: { kind: 'path-outside' }, expected: [R, R, Q, Q, Q, R] }
+  { name: 'path-outside', call: { kind: 'path-outside' }, expected: [R, R, Q, Q, Q, R] },
+  { name: 'lib-save', call: { kind: 'lib-save' }, expected: [P, P, P, P, P, R] },
+  { name: 'lib-trust', call: { kind: 'lib-trust' }, expected: [P, P, P, P, P, R] }
 ]
 
 describe('decideGate', () => {

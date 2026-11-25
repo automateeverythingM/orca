@@ -9,6 +9,8 @@ export type GateCall =
   | { kind: 'mcp-start'; server: string }
   | { kind: 'path-outside' }
   | { kind: 'orca'; label: OrcaMethodLabel }
+  | { kind: 'lib-save' }
+  | { kind: 'lib-trust' }
 
 export type GateMode = AgentChatPermissionChoice | 'read-only'
 
@@ -38,5 +40,9 @@ export function decideGate(call: GateCall, mode: GateMode): GateDecision {
       return call.label === 'write' && !strict ? 'allow' : 'ask'
     case 'path-outside':
       return strict ? 'refuse' : 'ask'
+    case 'lib-save':
+    case 'lib-trust':
+      // Why: saving or trusting code that later runs unasked needs the person, even in full-access.
+      return 'ask-person-only'
   }
 }
