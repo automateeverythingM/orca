@@ -19,6 +19,8 @@ import type {
 const WORKER_ENTRY_FILENAME = 'codemode-learn-worker-entry.js'
 // One call's budget from dispatch: a cold open (schema, WAL) plus a lock wait.
 const OPERATION_TIMEOUT_MS = 10_000
+/** `compact` (VACUUM after a clear) rewrites the whole file; it runs after Clear has answered. */
+const COMPACT_TIMEOUT_MS = 5 * 60_000
 const IDLE_TEARDOWN_MS = 60_000
 const MAX_QUEUED_CALLS = 200
 
@@ -59,8 +61,13 @@ export class CodemodeLearnWorkerClient {
   }
 
   /** One store call in the worker; a store's refusal comes back as a rejected promise. */
-  async call(path: string, op: string, args: unknown[]): Promise<unknown> {
-    const response = await this.queue.dispatch((id) => ({ id, path, op, args }), this.timeoutMs)
+  async call(
+    path: string,
+    op: string,
+    args: unknown[],
+    timeoutMs = this.timeoutMs
+  ): Promise<unknown> {
+    const response = await this.queue.dispatch((id) => ({ id, path, op, args }), timeoutMs)
     if (response.ok) {
       return response.value
     }
@@ -70,7 +77,11 @@ export class CodemodeLearnWorkerClient {
   /** The Learn store in `path`, every call answered by the worker. */
   store(path: string): CodemodeLearnRemote {
     const remote = Object.fromEntries(
-      CODEMODE_LEARN_OPS.map((op) => [op, (...args: unknown[]) => this.call(path, op, args)])
+      CODEMODE_LEARN_OPS.map((op) => [
+        op,
+        (...args: unknown[]) =>
+          this.call(path, op, args, op === 'compact' ? COMPACT_TIMEOUT_MS : this.timeoutMs)
+      ])
     )
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: each op forwards its own arguments to the store method of that name, whose return value the worker answers unchanged.
     return remote as unknown as CodemodeLearnRemote

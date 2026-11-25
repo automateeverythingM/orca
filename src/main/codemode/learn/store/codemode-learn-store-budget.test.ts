@@ -8,7 +8,11 @@ import type {
   CodemodeLearnRun
 } from '../../../../shared/codemode/codemode-learn-types'
 import { codemodeShapeHash } from '../codemode-shape'
-import { LEARN_RUN_CALL_BUDGET_BYTES, LEARN_STORE_BUDGET_BYTES } from './codemode-learn-rows'
+import {
+  clampLimit,
+  LEARN_RUN_CALL_BUDGET_BYTES,
+  LEARN_STORE_BUDGET_BYTES
+} from './codemode-learn-rows'
 import { CodemodeLearnStore, type CodemodeLearnBudgets } from './codemode-learn-store'
 
 const NOW = 1_800_000_000_000
@@ -19,7 +23,10 @@ let dir: string
 const opened: CodemodeLearnStore[] = []
 
 function open(budgets: Partial<CodemodeLearnBudgets> = {}): CodemodeLearnStore {
-  const store = CodemodeLearnStore.open(join(dir, `learn-${opened.length}.sqlite`), budgets)
+  const store = CodemodeLearnStore.open(join(dir, `learn-${opened.length}.sqlite`), {
+    ...budgets,
+    clock: () => NOW
+  })
   opened.push(store)
   return store
 }
@@ -102,15 +109,19 @@ describe('CodemodeLearnStore budgets', () => {
 
 describe('CodemodeLearnStore list limits', () => {
   it('clamps limits to integers in [1, 500], with 50 for one that is not a number or below 1', () => {
+    expect(clampLimit(10_000)).toBe(500)
+    expect(clampLimit(Number.POSITIVE_INFINITY)).toBe(500)
+    expect(clampLimit(Number.NaN)).toBe(50)
+    expect(clampLimit(-3)).toBe(50)
+    expect(clampLimit(0)).toBe(50)
+    expect(clampLimit(2.9)).toBe(2)
     const store = open()
-    for (let i = 0; i < 501; i++) {
+    for (let i = 0; i < 30; i++) {
       store.record(run(`r${i}`, NOW + i, []), NOW + i)
     }
-    expect(store.runsForShape(SHAPE, 10_000)).toHaveLength(500)
-    expect(store.runsForShape(SHAPE, Number.POSITIVE_INFINITY)).toHaveLength(500)
-    expect(store.runsForShape(SHAPE, Number.NaN)).toHaveLength(50)
-    expect(store.runsForShape(SHAPE, -3)).toHaveLength(50)
-    expect(store.runsForShape(SHAPE, 0)).toHaveLength(50)
+    // runsForShape clones every call's input and output, so it returns 20 at most.
+    expect(store.runsForShape(SHAPE, 10_000)).toHaveLength(20)
+    expect(store.runsForShape(SHAPE, Number.NaN)).toHaveLength(20)
     expect(store.runsForShape(SHAPE, 2.9)).toHaveLength(2)
     expect(store.repeatedScripts(NOW, Number.NaN)).toEqual([])
   })

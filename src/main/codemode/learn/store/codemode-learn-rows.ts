@@ -1,4 +1,5 @@
 // The Learn store's tables, caps and row shapes. No SQLite here: the store runs the SQL, in its worker.
+import { createHash } from 'node:crypto'
 import type {
   CodemodeLearnCall,
   CodemodeLearnRun,
@@ -27,6 +28,14 @@ export function clampLimit(limit: unknown): number {
     return DEFAULT_LIMIT
   }
   return Math.min(value, MAX_LIMIT)
+}
+
+/** Most runs `runsForShape` returns: each comes with its calls' inputs and outputs. */
+export const LEARN_SHAPE_RUNS_MAX = 20
+
+/** A `runsForShape` limit: `clampLimit`, then at most 20. */
+export function clampShapeRunsLimit(limit: unknown): number {
+  return Math.min(clampLimit(limit), LEARN_SHAPE_RUNS_MAX)
 }
 
 export const LEARN_SCHEMA = `
@@ -193,6 +202,18 @@ export function runOf(row: Row, calls: CodemodeLearnCall[]): CodemodeLearnRun {
   return run
 }
 
+/** Longest chain signature used as its own key; a longer one is keyed by its hash. */
+const CHAIN_KEY_MAX_BYTES = 1024
+
+/** A chain's stored, listed and dismiss key: its signature while that is at most 1 KiB, else `h:` and
+ *  the signature's SHA-256 hex. A signature always holds a separator, so it is never a hashed key;
+ *  a key is its own key. */
+export function learnChainKey(signature: string): string {
+  return Buffer.byteLength(signature) <= CHAIN_KEY_MAX_BYTES
+    ? signature
+    : `h:${createHash('sha256').update(signature).digest('hex')}`
+}
+
 export function chainOf(row: Row): CodemodeRepeatedChain {
   let tools: string[] = []
   try {
@@ -203,7 +224,8 @@ export function chainOf(row: Row): CodemodeRepeatedChain {
   }
   return {
     kind: 'chain',
-    signature: str(row.signature),
+    // Why: chains saved before keys were hashed may hold a longer signature.
+    signature: learnChainKey(str(row.signature)),
     tools,
     sessions: num(row.sessions),
     occurrences: num(row.occurrences),

@@ -39,7 +39,7 @@ let now: number
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'orca-learn-rpc-'))
-  store = CodemodeLearnStore.open(join(dir, 'codemode-learn.sqlite'))
+  store = CodemodeLearnStore.open(join(dir, 'codemode-learn.sqlite'), { clock: () => NOW })
   remote = inProcessLearnStore(() => store)
   enabled = true
   fileExists = true

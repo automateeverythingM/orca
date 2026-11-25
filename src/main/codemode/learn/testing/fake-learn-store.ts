@@ -18,6 +18,7 @@ export function fakeLearnStore(
     dismiss: unused,
     dismissed: unused,
     clear: unused,
+    compact: unused,
     stats: unused
   }
 }

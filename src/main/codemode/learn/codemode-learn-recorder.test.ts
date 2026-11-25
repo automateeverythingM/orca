@@ -81,6 +81,42 @@ describe('CodemodeLearnRecorder', () => {
     )
   })
 
+  it('nudges once per chat and shape; seenInChats marks every run', async () => {
+    const h = makeRecorder({
+      record: async () => ({ shape: 'h', otherSessions: 1, dismissed: false })
+    })
+    const results: Awaited<ReturnType<typeof h.recorder.finish>>[] = []
+    for (const runId of ['r1', 'r2', 'r3']) {
+      h.feed(runId, ['mcp.crm.a', 'mcp.crm.b'])
+      results.push(await h.recorder.finish(runId, finished))
+    }
+    expect(results).toEqual([
+      { note: learnNote(1), seenInChats: 2 },
+      { note: null, seenInChats: 2 },
+      { note: null, seenInChats: 2 }
+    ])
+    // Another chat running the same shape still gets its own nudge.
+    h.recorder.begin('s2', '/project', 'r4', 'code')
+    h.recorder.call('r4', call(1, 'mcp.crm.a'))
+    h.recorder.call('r4', call(2, 'mcp.crm.b'))
+    expect(await h.recorder.finish('r4', finished)).toEqual({ note: learnNote(1), seenInChats: 2 })
+  })
+
+  it('a run in flight is not recorded once Learn is off or its store is closed for deletion', async () => {
+    let enabled = true
+    const h = makeRecorder({ enabled: () => enabled })
+    h.feed('r1', ['mcp.crm.a', 'mcp.crm.b'])
+    enabled = false
+    expect(await h.recorder.finish('r1', finished)).toEqual({ note: null, seenInChats: null })
+
+    enabled = true
+    h.feed('r2', ['mcp.crm.a', 'mcp.crm.b'])
+    h.recorder.dropPending()
+    expect(await h.recorder.finish('r2', finished)).toEqual({ note: null, seenInChats: null })
+    expect(h.store.record).not.toHaveBeenCalled()
+    expect(h.storeFactory).not.toHaveBeenCalled()
+  })
+
   it('no nudge for lib calls or trivial scripts', async () => {
     const h = makeRecorder({
       record: async () => ({ shape: 'h', otherSessions: 4, dismissed: false })

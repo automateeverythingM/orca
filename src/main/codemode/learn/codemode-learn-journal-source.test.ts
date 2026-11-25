@@ -2,7 +2,15 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AgentJournalItemBody } from '../../../shared/agent-session/journal/agent-session-journal-types'
+import type { AgentJournalItemIdentity } from '../../../shared/agent-session/journal/agent-session-journal-identity'
+import { claudeProviderHandle } from '../../../shared/agent-session/lifecycle/provider-handles/agent-session-provider-handle-encoding'
 import { LOCAL_EXECUTION_HOST_ID } from '../../../shared/execution-host/execution-host'
+import { createClaudeJournalTranslator } from '../../claude/structured/journal/claude-structured-journal-translation'
+import type {
+  StructuredAgentSessionEventSink,
+  StructuredAgentSessionItemAppendOptions
+} from '../../native-chat/agent-session-wire/journal-ingress/structured-agent-session-event-sink'
 import { createTrackedJournalOpener } from '../../native-chat/agent-session-journal/store-lifecycle/journal-host-database-test-support'
 import {
   writeToolCallChat,
@@ -69,7 +77,111 @@ function deps(journal: LearnChainJournal, dismissed: string[] = []) {
   } satisfies RefreshChainsDeps
 }
 
+type ClaudeRow = {
+  identity: AgentJournalItemIdentity
+  body: AgentJournalItemBody
+  options: StructuredAgentSessionItemAppendOptions
+}
+
+/** One Claude turn that calls `tools` one after another, each answered, as Claude's structured
+ *  translation journals it: the rows it hands its sink, written to a journal in that order. */
+async function claudeChat(sessionId: string, tools: string[]) {
+  const rows: ClaudeRow[] = []
+  const append = (
+    ...[identity, body, options]: Parameters<StructuredAgentSessionEventSink['appendItem']>
+  ) => {
+    rows.push({ identity, body, options })
+    return true
+  }
+  const sink = {
+    appendItem: append,
+    tryAppendItem: append,
+    publish: () => true,
+    tryPublish: () => true,
+    appendLifecycleBatch: () => true,
+    tryAppendLifecycleBatch: () => true,
+    tryAppendLifecycleTransition: () => true
+  }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a turn of plain tool calls reaches only these sink methods; a missing one throws and fails the test.
+  const translatorSink = sink as unknown as StructuredAgentSessionEventSink
+  const translator = createClaudeJournalTranslator({ sink: translatorSink })
+  const frame = (message: Record<string, unknown>) =>
+    translator.handle({ type: 'message', sessionId, observedAt: NOW - DAY, message })
+  tools.forEach((name, index) => {
+    const id = `toolu_${index}`
+    frame({
+      type: 'assistant',
+      session_id: `claude-${sessionId}`,
+      uuid: `a-${index}`,
+      message: {
+        id: `msg_${index}`,
+        role: 'assistant',
+        content: [{ type: 'tool_use', id, name, input: {} }]
+      }
+    })
+    frame({
+      type: 'user',
+      session_id: `claude-${sessionId}`,
+      uuid: `u-${index}`,
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] }
+    })
+  })
+  const journal = await journals.open({
+    identity: {
+      sessionId,
+      workspaceId: 'ws-1',
+      hostId: 'host-1',
+      agent: 'claude',
+      providerHandle: claudeProviderHandle(`claude-${sessionId}`, null)
+    },
+    stateDirectory: root,
+    now: () => NOW - DAY
+  })
+  for (const { identity, body, options } of rows) {
+    await journal.appendItem(identity, body, {
+      fence: 1,
+      observedAt: NOW - DAY,
+      turnScope: options.turnScope,
+      ...(options.agentId ? { agentId: options.agentId } : {})
+    })
+  }
+  // A call's result row revises its call row (same identity): one call each.
+  const calls = new Map(
+    rows
+      .filter((row) => row.body.kind === 'tool-call')
+      .map((row) => [JSON.stringify(row.identity), row])
+  )
+  return [...calls.values()]
+}
+
 describe('readLearnChainSessions', () => {
+  it('Claude MCP calls in one turn, as Claude journals them, form a chain', async () => {
+    const tools = ['mcp__crm__find', 'mcp__crm__update', 'mcp__mail__send']
+    const written = await claudeChat('claude-a', tools)
+    await claudeChat('claude-b', tools)
+    // Claude names the call `mcp__server__tool`, states no MCP identity, and scopes it to the turn.
+    expect(new Set(written.map((row) => JSON.stringify(row.options.turnScope))).size).toBe(1)
+    expect(written[0].options.turnScope).toMatchObject({ kind: 'turn' })
+    expect(written.map((row) => row.body.kind === 'tool-call' && row.body.mcpIdentity)).toEqual([
+      undefined,
+      undefined,
+      undefined
+    ])
+    const sessions = await readLearnChainSessions(
+      await journalOf(record('claude-a'), record('claude-b')),
+      NOW,
+      vi.fn()
+    )
+    expect(sessions.map((entry) => entry.turns.map((turn) => turn.tools))).toEqual([
+      [CHAIN_KEYS],
+      [CHAIN_KEYS]
+    ])
+    const refresh = deps(await journalOf(record('claude-a'), record('claude-b')))
+    expect(await refreshChains(refresh)).toEqual([
+      expect.objectContaining({ tools: ['crm.find', 'crm.update', 'mail.send'], sessions: 2 })
+    ])
+  })
+
   it('groups top-level calls by turn, marking calls that are not direct', async () => {
     await chat('chat-a', [
       ...claudeChain('turn-1'),

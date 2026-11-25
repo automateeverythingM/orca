@@ -8,6 +8,7 @@ import {
   LEARN_MAX_CHAINS,
   type ChainSession
 } from './codemode-learn-chains'
+import { learnChainKey } from './store/codemode-learn-rows'
 
 const DAY = 24 * 60 * 60 * 1000
 const NOW = 100 * DAY
@@ -180,6 +181,18 @@ describe('chain keys', () => {
         NOW
       )
     ).toEqual([])
+  })
+
+  it('a chain longer than 1 KiB is keyed by a hash, everywhere it is keyed', () => {
+    const long = Array.from({ length: 100 }, (_, index) => k(`server${index}.tool_${index}`))
+    const sessions = ['a', 'b'].map((id) => session(id, { tools: long, at: NOW }))
+    const [chain] = findRepeatedChains(sessions, NOW)
+    expect(chain.signature).toMatch(/^h:[0-9a-f]{64}$/)
+    expect(chain.signature).toBe(learnChainKey(long.join('\u001e')))
+    expect(chain.tools).toHaveLength(100)
+    expect(findRepeatedChains(sessions, NOW, new Set([chain.signature]))).toEqual([])
+    // A short chain keeps its readable signature as its key.
+    expect(learnChainKey(ABC_SIGNATURE)).toBe(ABC_SIGNATURE)
   })
 
   it('a name holding a key separator is not a direct call', () => {

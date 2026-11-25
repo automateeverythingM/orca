@@ -11,6 +11,7 @@ export const CODEMODE_LEARN_OPS = [
   'dismiss',
   'dismissed',
   'clear',
+  'compact',
   'stats'
 ] as const satisfies readonly (keyof CodemodeLearnStore)[]
 

@@ -11,7 +11,8 @@ import { spawnWorkerThread } from '../../../worker-threads/worker-thread-spawn'
 import { codemodeShapeHash } from '../codemode-shape'
 import { CodemodeLearnWorkerClient } from './codemode-learn-worker-client'
 
-const NOW = 1_800_000_000_000
+// ast-grep-ignore: test-no-wall-clock -- the worker's store prunes by the real clock; runs must sit inside its 30 days.
+const NOW = Date.now()
 const SCRIPT = `const a = await mcp.crm.find({ q: 1 }); return mcp.crm.update(a)`
 
 let dir: string
@@ -80,6 +81,16 @@ describe('CodemodeLearnWorkerClient', () => {
     await client.close()
     expect(workers[0].threadId).toBe(-1)
     await expect(learn.stats()).rejects.toThrow()
+  })
+
+  it('compact gets its own long timeout', async () => {
+    // Every other call would time out after 1 ms; compact, after Clear has answered, may take minutes.
+    const client = new CodemodeLearnWorkerClient(
+      () => spawnWorkerThread(entryPath, { name: 'orca-codemode-learn' }),
+      1
+    )
+    await expect(client.store(join(dir, 'compact.sqlite')).compact()).resolves.toBeUndefined()
+    await client.close()
   })
 
   it('a store error comes back as a rejected call', async () => {

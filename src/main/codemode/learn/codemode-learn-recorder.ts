@@ -17,6 +17,8 @@ const LEARN_STORE_FILE = 'codemode-learn.sqlite'
 export const learnStorePath = (): string => join(getProfileUserDataPath(), LEARN_STORE_FILE)
 /** The longest a run's result waits on the Learn worker. */
 const FINISH_WAIT_MS = 2_000
+/** Most (chat, shape) pairs remembered as nudged; past it the memory starts over. */
+const MAX_NUDGED = 10_000
 
 export type CodemodeLearnRecorderDeps = {
   /** The Learn switch, read at each run's start. */
@@ -45,6 +47,8 @@ function mayNudge(run: CodemodeLearnRun): boolean {
 
 export class CodemodeLearnRecorder {
   private readonly pending = new Map<string, Pending>()
+  /** `sessionId` and shape of each nudge given: a chat hears about a shape once. */
+  private readonly nudged = new Set<string>()
   private failureLogged = false
   private timeoutLogged = false
 
@@ -69,10 +73,11 @@ export class CodemodeLearnRecorder {
     end: { ok: boolean; ms: number; startedAt: number }
   ): Promise<CodemodeLearnFinish> {
     const pending = this.pending.get(runId)
-    if (!pending) {
+    this.pending.delete(runId)
+    // Why: Learn switched off (and its file maybe deleted) while the run was in flight.
+    if (!pending || !this.deps.enabled()) {
       return NO_NUDGE
     }
-    this.pending.delete(runId)
     const run: CodemodeLearnRun = { ...pending.run, ...end }
     let recorded: ReturnType<CodemodeLearnRemote['record']>
     try {
@@ -104,7 +109,21 @@ export class CodemodeLearnRecorder {
     if (!result || result.dismissed || result.otherSessions < 1) {
       return NO_NUDGE
     }
-    return { note: learnNote(result.otherSessions), seenInChats: result.otherSessions + 1 }
+    const seenInChats = result.otherSessions + 1
+    const key = `${run.sessionId}\u0000${result.shape}`
+    if (this.nudged.has(key)) {
+      return { note: null, seenInChats }
+    }
+    if (this.nudged.size >= MAX_NUDGED) {
+      this.nudged.clear()
+    }
+    this.nudged.add(key)
+    return { note: learnNote(result.otherSessions), seenInChats }
+  }
+
+  /** Forgets every run in flight, so none is recorded: the store is closing to be deleted. */
+  dropPending(): void {
+    this.pending.clear()
   }
 
   private failed(error: unknown): void {

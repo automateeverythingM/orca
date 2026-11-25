@@ -130,6 +130,7 @@ describe('Learn end to end', () => {
       storeExists: async () => true,
       removeStoreFiles: async () => {},
       journal: async () => null,
+      // ast-grep-ignore: test-no-wall-clock -- the recorder stamps runs with the real clock in the worker; reads must use the same clock.
       now: Date.now,
       log: () => {}
     })
@@ -145,6 +146,7 @@ describe('Learn end to end', () => {
         }
       ]
     })
+    // ast-grep-ignore: test-no-wall-clock -- the recorder stamps runs with the real clock in the worker; reads must use the same clock.
     expect(await remote.repeatedScripts(Date.now(), 5)).toMatchObject([{ sessions: 2 }])
   })
 
@@ -153,6 +155,7 @@ describe('Learn end to end', () => {
     const result = await chat('s2').run(crmScript('other', 5))
     expect(result.isError).toBe(false)
     expect(result.text).not.toContain('Note:')
+    // ast-grep-ignore: test-no-wall-clock -- the recorder stamps runs with the real clock in the worker; reads must use the same clock.
     expect(await remote.repeatedScripts(Date.now(), 5)).toEqual([])
     expect((await remote.stats()).runs).toBe(2)
   })

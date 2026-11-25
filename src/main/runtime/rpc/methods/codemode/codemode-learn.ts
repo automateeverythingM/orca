@@ -113,6 +113,12 @@ export function codemodeLearnMethods(deps: CodemodeLearnMethodDeps) {
     return store.chains()
   }
 
+  /** Stops the worker, then deletes the store file and its -wal/-shm. */
+  const removeStore = async (service: LearnService) => {
+    await service.closeLearnStore()
+    await deps.removeStoreFiles()
+  }
+
   return [
     defineMethod({
       name: 'codemode.learn.status',
@@ -169,12 +175,25 @@ export function codemodeLearnMethods(deps: CodemodeLearnMethodDeps) {
       handler: async (_params, ctx): Promise<Record<string, never>> => {
         const service = await open(ctx)
         if (service.learnEnabled()) {
-          await service.learnStore().clear()
+          const store = service.learnStore()
+          try {
+            await store.clear()
+          } catch (error) {
+            // Why: a store that will not open (a damaged file) or answer must still go when asked.
+            deps.log('Learn could not empty its store; deleting the file instead', error)
+            await removeStore(service)
+            return {}
+          }
+          // Why: the rows are gone, so Clear has worked; VACUUM on a big store can outlast a call.
+          void store
+            .compact()
+            .catch((error: unknown) =>
+              deps.log('Learn could not shrink its file after Clear', error)
+            )
         } else if (await deps.storeExists()) {
           // Why: with the switch off nothing should stay on disk, and a leftover file would start
           // the worker on every Settings visit; stop the worker first so the file is not in use.
-          await service.closeLearnStore()
-          await deps.removeStoreFiles()
+          await removeStore(service)
         }
         return {}
       }

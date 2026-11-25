@@ -3,7 +3,7 @@
 import type { AgentJournalToolCallItem } from '../../../shared/agent-session/journal/agent-session-journal-types'
 import type { CodemodeRepeatedChain } from '../../../shared/codemode/codemode-learn-types'
 import { isCodemodeRunCall } from '../../../shared/codemode/codemode-run-match'
-import { LEARN_RETENTION_MS } from './store/codemode-learn-rows'
+import { LEARN_RETENTION_MS, learnChainKey } from './store/codemode-learn-rows'
 
 /** Fewest consecutive direct calls that make a chain. */
 export const LEARN_CHAIN_MIN_CALLS = 3
@@ -80,7 +80,8 @@ function chainsInTurn(tools: readonly (string | null)[]): string[][] {
 type Tally = { tools: string[]; sessions: Set<string>; occurrences: number; lastSeen: number }
 
 /** Chains seen in 2+ chats within 30 days of `now` and not `dismissed`: most chats, then most
- *  occurrences, then newest. `signature` is the stored and dismiss key; `tools` reads `server.tool`. */
+ *  occurrences, then newest. `signature` is the stored and dismiss key (`learnChainKey`); `tools`
+ *  reads `server.tool`. */
 export function findRepeatedChains(
   sessions: readonly ChainSession[],
   now: number,
@@ -94,7 +95,7 @@ export function findRepeatedChains(
         continue
       }
       for (const run of chainsInTurn(tools)) {
-        const signature = run.join(CALL_SEPARATOR)
+        const signature = learnChainKey(run.join(CALL_SEPARATOR))
         const tally = tallies.get(signature) ?? {
           tools: run,
           sessions: new Set<string>(),

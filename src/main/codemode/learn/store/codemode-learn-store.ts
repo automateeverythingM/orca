@@ -21,7 +21,9 @@ import {
   LEARN_STORE_BUDGET_BYTES,
   callColumns,
   clampLimit,
+  clampShapeRunsLimit,
   callOf,
+  learnChainKey,
   chainOf,
   runColumns,
   runOf
@@ -29,19 +31,28 @@ import {
 
 /** Byte budgets; tests pass small ones. */
 export type CodemodeLearnBudgets = { runCallBytes: number; storeBytes: number }
+/** Budgets, and the clock that reads without a `now` of their own use; tests pass their own. */
+export type CodemodeLearnStoreOptions = Partial<CodemodeLearnBudgets> & { clock?: () => number }
 
 export type CodemodeLearnRecorded = { shape: string; otherSessions: number; dismissed: boolean }
 
-/** The runs that count toward a repeat: ok, at least 2 inner calls, inside the window. */
-const COUNTED = 'ok = 1 AND call_count >= 2 AND started_at >= ?'
+/** The runs (of table or alias `runs`) that count toward a repeat: ok, at least 2 inner calls,
+ *  inside the window, and no call to a saved function (`lib.*`), as for the nudge. */
+const counted = (runs: string) =>
+  `${runs}.ok = 1 AND ${runs}.call_count >= 2 AND ${runs}.started_at >= ? AND NOT EXISTS
+     (SELECT 1 FROM learn_calls lib WHERE lib.run_id = ${runs}.run_id AND substr(lib.tool, 1, 4) = 'lib.')`
+const COUNTED = counted('learn_runs')
 
 export class CodemodeLearnStore {
   private constructor(
     private readonly db: SyncDatabase,
-    private readonly budgets: CodemodeLearnBudgets
+    private readonly budgets: CodemodeLearnBudgets,
+    private readonly clock: () => number
   ) {}
 
-  static open(path: string, budgets: Partial<CodemodeLearnBudgets> = {}): CodemodeLearnStore {
+  /** Opens (or creates) the store and applies retention, so data past 30 days goes even when Learn
+   *  stays idle or off. */
+  static open(path: string, options: CodemodeLearnStoreOptions = {}): CodemodeLearnStore {
     mkdirSync(dirname(path), { recursive: true })
     const db = new SyncDatabase(path)
     db.pragma('journal_mode = WAL')
@@ -49,10 +60,21 @@ export class CodemodeLearnStore {
     db.pragma('foreign_keys = ON')
     db.exec(LEARN_SCHEMA)
     hardenSqliteDatabaseFiles(path)
-    return new CodemodeLearnStore(db, {
-      runCallBytes: budgets.runCallBytes ?? LEARN_RUN_CALL_BUDGET_BYTES,
-      storeBytes: budgets.storeBytes ?? LEARN_STORE_BUDGET_BYTES
-    })
+    const store = new CodemodeLearnStore(
+      db,
+      {
+        runCallBytes: options.runCallBytes ?? LEARN_RUN_CALL_BUDGET_BYTES,
+        storeBytes: options.storeBytes ?? LEARN_STORE_BUDGET_BYTES
+      },
+      options.clock ?? Date.now
+    )
+    try {
+      store.prune(store.clock())
+    } catch (error) {
+      db.close()
+      throw error
+    }
+    return store
   }
 
   /** Releases the file, so its folder can be removed. */
@@ -81,6 +103,7 @@ export class CodemodeLearnStore {
 
   /** Shapes run ok with 2+ calls in 2+ chats within 30 days, not dismissed; most chats first. */
   repeatedScripts(now: number, limit: number): CodemodeRepeatedScript[] {
+    this.prune(now)
     const since = now - LEARN_RETENTION_MS
     const groups = this.db
       .prepare(
@@ -102,7 +125,7 @@ export class CodemodeLearnStore {
       const tools = this.db
         .prepare(
           `SELECT DISTINCT c.tool AS tool FROM learn_calls c JOIN learn_runs r ON r.run_id = c.run_id
-            WHERE r.shape = ? AND r.ok = 1 AND r.call_count >= 2 AND r.started_at >= ? ORDER BY c.tool`
+            WHERE r.shape = ? AND ${counted('r')} ORDER BY c.tool`
         )
         .all(shape, since)
       const roots = this.db
@@ -124,14 +147,15 @@ export class CodemodeLearnStore {
     })
   }
 
-  /** Every stored run of this shape, newest first, with its calls. */
+  /** The newest stored runs of this shape (at most 20), newest first, with their calls. */
   runsForShape(shape: string, limit: number): CodemodeLearnRun[] {
+    this.prune(this.clock())
     const rows = this.db
       .prepare(
         `SELECT run_id, session_id, project_root, started_at, ms, ok, code, code_truncated
            FROM learn_runs WHERE shape = ? ORDER BY started_at DESC, rowid DESC LIMIT ?`
       )
-      .all(shape, clampLimit(limit))
+      .all(shape, clampShapeRunsLimit(limit))
     const calls = this.db.prepare(
       `SELECT seq, tool, ok, input, input_truncated, output, output_truncated, error, ms
          FROM learn_calls WHERE run_id = ? ORDER BY seq`
@@ -153,7 +177,7 @@ export class CodemodeLearnStore {
       chains.forEach((chain, position) => {
         insert.run(
           position,
-          String(chain.signature),
+          learnChainKey(String(chain.signature)),
           JSON.stringify(chain.tools.map(String)),
           chain.sessions,
           chain.occurrences,
@@ -187,7 +211,8 @@ export class CodemodeLearnStore {
       .map((row) => String(row.key))
   }
 
-  /** Forgets everything, shrinks the file, and refuses runs that started before now. */
+  /** Forgets everything and refuses runs that started before now. Leaves the file's size to
+   *  `compact`, which can take far longer on a big store. */
   clear(now: number = Date.now()): void {
     this.transaction(() => {
       for (const table of [
@@ -201,11 +226,16 @@ export class CodemodeLearnStore {
       }
       this.setMeta('cleared_at', now)
     })
+  }
+
+  /** Gives the space of deleted rows back to the disk, after a clear. */
+  compact(): void {
     this.db.exec('VACUUM')
     this.db.pragma('wal_checkpoint(TRUNCATE)')
   }
 
   stats(): CodemodeLearnStats {
+    this.prune(this.clock())
     const runs = this.db
       .prepare('SELECT COUNT(1) AS n, MIN(started_at) AS oldest FROM learn_runs')
       .get()
@@ -243,6 +273,11 @@ export class CodemodeLearnStore {
     for (const row of calls.rows) {
       insertCall.run(...row)
     }
+  }
+
+  /** Retention on its own, for reads and opening. */
+  private prune(now: number): void {
+    this.transaction(() => this.applyRetention(now))
   }
 
   /** Past 30 days, past 5000 runs, or past the byte budget: the oldest runs go, calls with them. */

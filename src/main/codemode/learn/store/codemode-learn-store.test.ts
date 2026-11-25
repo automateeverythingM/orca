@@ -60,7 +60,7 @@ function fileBytes(): number {
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'orca-codemode-learn-'))
   path = join(dir, 'codemode-learn.sqlite')
-  store = CodemodeLearnStore.open(path)
+  store = CodemodeLearnStore.open(path, { clock: () => NOW })
   learn = inProcessLearnStore(() => store)
 })
 
@@ -168,7 +168,6 @@ describe('CodemodeLearnStore', () => {
       }
     ])
     expect(await learn.repeatedScripts(NOW, 1)).toHaveLength(1)
-    expect(await learn.repeatedScripts(NOW + 31 * DAY, 10)).toEqual([])
 
     await learn.dismiss(shape)
     await learn.dismiss(shape)
@@ -176,6 +175,7 @@ describe('CodemodeLearnStore', () => {
     expect((await learn.repeatedScripts(NOW, 10)).map((entry) => entry.shape)).toEqual([
       codemodeShapeHash(OTHER)
     ])
+    expect(await learn.repeatedScripts(NOW + 31 * DAY, 10)).toEqual([])
   })
 
   it('clear empties the store', async () => {
@@ -202,6 +202,7 @@ describe('CodemodeLearnStore', () => {
     )
     const before = fileBytes()
     await learn.clear(NOW)
+    await learn.compact()
 
     expect(await learn.stats()).toMatchObject({ runs: 0, calls: 0, oldest: null })
     expect(await learn.dismissed()).toEqual([])

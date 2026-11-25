@@ -87,8 +87,10 @@ export class CodemodeService {
     return this.learnStores.store()
   }
 
-  /** Stops the Learn worker so its file can be deleted; the next `learnStore()` starts a new one. */
+  /** Stops the Learn worker so its file can be deleted, dropping runs in flight so none lands in a
+   *  new file; the next `learnStore()` starts a new one. */
   closeLearnStore(): Promise<void> {
+    this.learn.dropPending()
     return this.learnStores.close()
   }
 
