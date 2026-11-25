@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Save } from 'lucide-react'
 import { cn } from '@/lib/class-names'
 import { useTranslate } from '@/i18n/use-translate'
 import type {
@@ -16,6 +16,8 @@ import { NativeChatToolIcon } from '../lines/NativeChatToolIcon'
 import { NativeChatToolOutput } from '../lines/NativeChatToolOutput'
 import { CodemodeInnerCallLine } from './CodemodeInnerCallLine'
 import { codemodeCodePreview, codemodeInnerCallRows, codemodeRunCall } from './codemode-run-rows'
+import { askToSaveAsFunction } from './codemode-save-as-function'
+import { useNativeChatVisualOwner } from '../../media/visuals/native-chat-visual-owner'
 import { useCodemodeRun } from './use-codemode-run'
 
 /** A run_js call: the script behind its own disclosure, then each call it made as it happens. */
@@ -39,6 +41,14 @@ export function CodemodeRunView({
   const duration = formatToolDuration(run?.ms ?? block.durationMs, (value0) =>
     t('components.native-chat.tool.milliseconds', '{{value0}}ms', { value0 })
   )
+  const sessionId = useNativeChatVisualOwner()?.sessionId
+  const canSave =
+    sessionId !== undefined &&
+    code !== null &&
+    !failed &&
+    block.state !== 'running' &&
+    run?.state !== 'running' &&
+    run?.codeTruncated !== true
   const callCount = calls.length + (run?.omittedCalls ?? 0)
 
   return (
@@ -88,6 +98,16 @@ export function CodemodeRunView({
             <NativeChatHighlightedCode code={code ?? ''} language="javascript" />
           </pre>
           {result ? <NativeChatToolOutput body={result} /> : null}
+          {canSave ? (
+            <button
+              type="button"
+              onClick={() => askToSaveAsFunction(sessionId, code)}
+              className="flex items-center gap-1.5 rounded-md py-1 font-sans text-xs text-chat-foreground-faint transition-colors hover:text-chat-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Save className="size-3.5" />
+              {t('components.native-chat.codemode.saveAsFunction', 'Save as function')}
+            </button>
+          ) : null}
         </div>
       </NativeChatExpandable>
       {calls.length > 0 || (run?.omittedCalls ?? 0) > 0 ? (

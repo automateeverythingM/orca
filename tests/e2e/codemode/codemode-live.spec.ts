@@ -22,6 +22,13 @@ const PROMPT_MARKER = 'through code mode'
 const CONNECTOR_PROMPT =
   'Connector check: first call the fake MCP server\'s echo tool directly with text "direct-ok". Then run one run_js script that returns await mcp.fake.echo({ text: "script-ok" }). Reply with both results.'
 const CONNECTOR_MARKER = 'Connector check'
+// Scenario 5: two chats in one workspace; the first saves a function, the second calls it.
+const SAVE_PROMPT =
+  'Save-function check: using the fake-crm MCP server through code mode, save a saved function with lib.save named addCreditsByEmail(email, amount) that finds the user by email and adds that many credits. Do not call it yet. Then say saved.'
+const SAVE_MARKER = 'Save-function check'
+const USE_PROMPT =
+  'Saved-function check: using the saved functions in code mode (lib.*), add 10 credits to x@y.com. Then tell me their final credits.'
+const USE_MARKER = 'Saved-function check'
 const SHOTS =
   process.env.ORCA_CODEMODE_LIVE_SHOTS ?? path.join(os.tmpdir(), 'orca-codemode-live-shots')
 
@@ -126,6 +133,12 @@ async function startClaudeChat(
   cleanup(() => rm(folder, { recursive: true, force: true }))
   await configureChat(page, mode)
   await openFolderWorkspace(page, folder)
+  await sendInNewClaudeChat(page, prompt)
+  return stateFile
+}
+
+/** Opens another native Claude chat tab in the active workspace and sends the prompt. */
+async function sendInNewClaudeChat(page: Page, prompt: string): Promise<void> {
   await page.getByRole('button', { name: 'New tab' }).click({ force: true })
   const claude = page.getByRole('menuitem', { name: /^Claude(?:\s|$)/i }).first()
   await expect(claude).toBeVisible({ timeout: 15_000 })
@@ -135,7 +148,6 @@ async function startClaudeChat(
   await field.click({ force: true })
   await page.keyboard.insertText(prompt)
   await page.keyboard.press('Enter')
-  return stateFile
 }
 
 async function listJsonl(dir: string): Promise<string[]> {
@@ -246,12 +258,16 @@ async function shootRunJsRow(page: Page, name: string): Promise<void> {
   console.log(`[codemode-live] screenshot: ${file}`)
 }
 
-/** Answers the card on screen, if any: Deny the add_credits call, allow everything else once. */
-async function answerShownCard(page: Page, seen: string[]): Promise<boolean> {
+/** Answers the card on screen, if any: Deny what `deny` matches (default add_credits), allow the rest. */
+async function answerShownCard(
+  page: Page,
+  seen: string[],
+  deny: RegExp | null = /add_credits/
+): Promise<boolean> {
   const question = page.locator('[data-native-chat-question-card]').first()
   if (await question.isVisible().catch(() => false)) {
     const text = (await question.innerText()).replace(/\s+/g, ' ')
-    const choice = /add_credits/.test(text) ? 'Deny' : 'Allow once'
+    const choice = deny?.test(text) ? 'Deny' : 'Allow(?: once)?'
     if (seen.at(-1) !== text) {
       seen.push(text)
       await page.screenshot({ path: path.join(SHOTS, `claude-ask-card-${seen.length}.png`) })
@@ -274,12 +290,17 @@ async function answerShownCard(page: Page, seen: string[]): Promise<boolean> {
 }
 
 /** Answers every card the turn shows until it ends in text with no card for three checks. */
-async function answerCards(page: Page, home: string): Promise<string[]> {
+async function answerCards(
+  page: Page,
+  home: string,
+  { deny = /add_credits/, marker = PROMPT_MARKER }: { deny?: RegExp | null; marker?: string } = {}
+): Promise<string[]> {
   const seen: string[] = []
   let quiet = 0
   await expect(async () => {
-    const answered = await answerShownCard(page, seen)
-    quiet = answered || (await readClaudeTranscript(home)).finalText === null ? 0 : quiet + 1
+    const answered = await answerShownCard(page, seen, deny)
+    quiet =
+      answered || (await readClaudeTranscript(home, marker)).finalText === null ? 0 : quiet + 1
     expect(quiet, `cards seen: ${JSON.stringify(seen)}`).toBeGreaterThanOrEqual(3)
   }).toPass({ timeout: 5 * 60_000, intervals: [1_000, 2_000] })
   return seen
@@ -461,5 +482,39 @@ test.describe('code mode with a real agent', () => {
       isError: false,
       text: expect.stringContaining('script-ok')
     })
+  })
+
+  test('Claude saves a function in one chat and calls it from another', async ({
+    orcaPage,
+    electronApp,
+    registerPostElectronShutdownCleanup
+  }) => {
+    await mkdir(SHOTS, { recursive: true })
+    // Full access still asks the person for lib.save, so the card is the one being answered.
+    const stateFile = await startClaudeChat(
+      orcaPage,
+      'full-access',
+      registerPostElectronShutdownCleanup,
+      SAVE_PROMPT
+    )
+    const home = await appHome(electronApp)
+    const saveCards = await answerCards(orcaPage, home, { deny: null, marker: SAVE_MARKER })
+    expect(saveCards.some((card) => /addCreditsByEmail/.test(card))).toBe(true)
+
+    await sendInNewClaudeChat(orcaPage, USE_PROMPT)
+    // The first call of a saved function may also ask the person to trust it; allow that card.
+    const useCards = await answerCards(orcaPage, home, { deny: null, marker: USE_MARKER })
+    console.log(
+      `[codemode-live:lib] cards: ${JSON.stringify([...saveCards, ...useCards], null, 2)}`
+    )
+
+    const transcript = await readClaudeTranscript(home, USE_MARKER)
+    const crm = await readCrm(stateFile)
+    logEvidence('lib', transcript, crm)
+    const scripts = transcript.toolUses
+      .filter((use) => use.name === 'mcp__orca__run_js')
+      .map((use) => String(use.input.code))
+    expect(scripts.some((code) => code.includes('lib.addCreditsByEmail'))).toBe(true)
+    expect(crm).toMatchObject({ email: 'x@y.com', credits: 10 })
   })
 })

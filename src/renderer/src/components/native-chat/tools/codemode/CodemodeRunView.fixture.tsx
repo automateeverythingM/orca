@@ -7,7 +7,17 @@ import type {
   CodemodeInnerCallRecord,
   CodemodeRunRecord
 } from '../../../../../../shared/codemode/codemode-run-wire'
+import {
+  NativeChatVisualOwnerContext,
+  type NativeChatVisualOwner
+} from '../../media/visuals/native-chat-visual-owner'
 import { CodemodeRunView } from './CodemodeRunView'
+
+const owner: NativeChatVisualOwner = {
+  target: { kind: 'local' },
+  sessionId: 'fixture-session',
+  worktreeId: 'fixture-worktree'
+}
 
 const CODE = `const user = JSON.parse(await mcp['fake-crm'].find_user({ email: 'dana@example.com' }))
 await mcp['fake-crm'].add_to_group({ user_id: user.id, group: 'beta' })
@@ -57,7 +67,9 @@ const Frame = ({
   record: CodemodeRunRecord
 }) => (
   <div className="native-chat-appearance bg-chat-canvas p-4">
-    <CodemodeRunView block={{ ...block, state }} result={result} run={record} />
+    <NativeChatVisualOwnerContext.Provider value={owner}>
+      <CodemodeRunView block={{ ...block, state }} result={result} run={record} />
+    </NativeChatVisualOwnerContext.Provider>
   </div>
 )
 

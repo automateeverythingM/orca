@@ -72,10 +72,13 @@ export function CodemodeFunctionRow({
     setBusy(null)
   }
 
-  // The hash of what the person last saw: the dialog's read once opened, else the listed bytes.
+  // The hash of the bytes the person read in View; Allow trusts only those, never unseen ones.
   const [viewedSha, setViewedSha] = useState<string | null>(null)
-  const trust = (): void =>
-    void run('trust', () => trustCodemodeFunction(projectRoot, name, scope, viewedSha ?? fn.sha256))
+  const trust = (): void => {
+    if (viewedSha !== null) {
+      void run('trust', () => trustCodemodeFunction(projectRoot, name, scope, viewedSha))
+    }
+  }
   const move = (): void =>
     void run('move', async () => {
       await moveCodemodeFunction(projectRoot, name, scope)
@@ -120,7 +123,17 @@ export function CodemodeFunctionRow({
             {t('settings.codemode.functions.view', 'View')}
           </Button>
           {fn.trusted ? null : (
-            <Button variant="outline" size="xs" disabled={busy === 'trust'} onClick={trust}>
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={busy === 'trust' || viewedSha === null}
+              title={
+                viewedSha === null
+                  ? t('settings.codemode.functions.allowViewFirst', 'Open View to read it first')
+                  : undefined
+              }
+              onClick={trust}
+            >
               {busy === 'trust' ? <Loader2 className="animate-spin" /> : null}
               {t('settings.codemode.functions.allow', 'Allow')}
             </Button>

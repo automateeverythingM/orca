@@ -2145,7 +2145,8 @@
         "noHistory": "No earlier versions.",
         "title": "Functions",
         "description": "Saved functions agents call as lib.<name>: view, allow, move between project and global, or delete them.",
-        "sourceTitle": "Saved function {{name}}"
+        "sourceTitle": "Saved function {{name}}",
+        "allowViewFirst": "Open View to read it first"
       }
     }
   },
@@ -23081,7 +23082,8 @@
         "output": "Output",
         "error": "Error",
         "omitted_one": "{{count}} more call not shown",
-        "omitted_other": "{{count}} more calls not shown"
+        "omitted_other": "{{count}} more calls not shown",
+        "saveAsFunction": "Save as function"
       }
     },
     "tab": {
