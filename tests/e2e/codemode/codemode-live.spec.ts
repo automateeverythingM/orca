@@ -29,6 +29,14 @@ const SAVE_MARKER = 'Save-function check'
 const USE_PROMPT =
   'Saved-function check: using the saved functions in code mode (lib.*), add 10 credits to x@y.com. Then tell me their final credits.'
 const USE_MARKER = 'Saved-function check'
+// Scenario 7a: Learn on; the same script shape (other literals) in a second chat gets the nudge.
+const learnPrompt = (marker: string, amount: number) =>
+  `${marker}: call run_js exactly once with this code and nothing else, then reply done.\n` +
+  "const user = JSON.parse(await mcp['fake-crm'].find_user({ email: 'x@y.com' }))\n" +
+  `return JSON.parse(await mcp['fake-crm'].add_credits({ user_id: user.id, amount: ${amount} })).credits`
+const LEARN_ONE = 'Learn check one'
+const LEARN_TWO = 'Learn check two'
+const LEARN_NUDGE = 'you have run this same script in 1 other chat'
 const SHOTS =
   process.env.ORCA_CODEMODE_LIVE_SHOTS ?? path.join(os.tmpdir(), 'orca-codemode-live-shots')
 
@@ -539,5 +547,39 @@ test.describe('code mode with a real agent', () => {
         .first()
     ).toBeVisible({ timeout: 30_000 })
     expect(crm).toMatchObject({ email: 'x@y.com', credits: 10 })
+  })
+
+  test('Claude: the same task in two chats gets the Learn nudge', async ({
+    orcaPage,
+    electronApp,
+    registerPostElectronShutdownCleanup
+  }) => {
+    // Learn is off by default; record this app's runs.
+    await orcaPage.evaluate(async () => {
+      await window.__store!.getState().updateSettings({ codemodeLearnEnabled: true })
+    })
+    const home = await appHome(electronApp)
+    const runJsResult = async (marker: string): Promise<string | null> => {
+      const transcript = await readClaudeTranscript(home, marker)
+      const use = transcript.toolUses.find((entry) => entry.name === 'mcp__orca__run_js')
+      return use ? (transcript.outcomes.get(use.id)?.text ?? null) : null
+    }
+
+    await startClaudeChat(
+      orcaPage,
+      'full-access',
+      registerPostElectronShutdownCleanup,
+      learnPrompt(LEARN_ONE, 5)
+    )
+    await expect
+      .poll(() => runJsResult(LEARN_ONE), { timeout: 5 * 60_000, intervals: [2_000] })
+      .not.toBeNull()
+    expect(await runJsResult(LEARN_ONE)).not.toContain('Note: you have run this same script')
+
+    await sendInNewClaudeChat(orcaPage, learnPrompt(LEARN_TWO, 9))
+    await expect
+      .poll(() => runJsResult(LEARN_TWO), { timeout: 5 * 60_000, intervals: [2_000] })
+      .not.toBeNull()
+    expect(await runJsResult(LEARN_TWO)).toContain(LEARN_NUDGE)
   })
 })
