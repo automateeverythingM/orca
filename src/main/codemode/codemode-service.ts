@@ -25,6 +25,8 @@ import {
   readConnectorsOff
 } from './connectors/codemode-connector-session-switch'
 import type { InnerCallEvent } from './host/codemode-run-host'
+import { CodemodeLearnRecorder, workerLearnStore } from './learn/codemode-learn-recorder'
+import type { CodemodeLearnRemote } from './learn/store/codemode-learn-ops'
 import { type CodemodeLibRecords, createLibRecords, openChatLib } from './lib/codemode-lib-access'
 import { readCodemodeServerSpecs } from './mcp-pool/codemode-mcp-config'
 import { type CodemodeRunStore, processCodemodeRunStore } from './runs/codemode-run-store'
@@ -56,6 +58,8 @@ export class CodemodeService {
   private removeRelayRoute: (() => void) | null = null
   private orcaRpc: CodemodeOrcaRpc | undefined
   private readonly lib: CodemodeLibRecords
+  private readonly learnStores: ReturnType<typeof workerLearnStore>
+  private readonly learn: CodemodeLearnRecorder
 
   constructor(private readonly opts: CodemodeServiceOptions = {}) {
     this.server = opts.server ?? new CodemodeHttpServer()
@@ -65,6 +69,22 @@ export class CodemodeService {
     this.log = opts.log ?? ((message, error) => console.warn(`[codemode] ${message}`, error ?? ''))
     this.orcaRpc = opts.orcaRpc
     this.lib = createLibRecords(opts.libHomeDir)
+    this.learnStores = workerLearnStore(opts.learnStore)
+    this.learn = new CodemodeLearnRecorder({
+      enabled: () => this.learnEnabled(),
+      store: () => this.learnStore(),
+      log: this.log
+    })
+  }
+
+  /** The Learn switch as the settings say now. */
+  learnEnabled(): boolean {
+    return this.opts.learnEnabled?.() === true
+  }
+
+  /** The profile's Learn store; its worker starts on the first call and stops with the service. */
+  learnStore(): CodemodeLearnRemote {
+    return this.learnStores.store()
   }
 
   /** The saved-function trust and usage records all chats share; Settings must use these too. */
@@ -119,6 +139,10 @@ export class CodemodeService {
         lib,
         onEvent: (event) => this.emit(sessionId, event),
         onRun: (event) => this.runs.run(sessionId, event),
+        learn: {
+          recorder: this.learn,
+          annotate: (runId, patch) => this.runs.annotate(sessionId, runId, patch)
+        },
         ...(this.opts.workerPath ? { workerPath: this.opts.workerPath } : {})
       })
       const previous = this.sessions.get(sessionId)
@@ -273,6 +297,7 @@ export class CodemodeService {
     this.removeRelayRoute?.()
     this.removeRelayRoute = null
     await this.connectorWiring?.pool.closeAll()
+    await this.learnStores.close()
   }
 
   connectorsOff(sessionId: string): Set<string> {

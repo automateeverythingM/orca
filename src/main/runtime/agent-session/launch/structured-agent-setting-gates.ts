@@ -16,6 +16,7 @@ export function structuredAgentSettingGates(
   | 'sharedCodexServers'
   | 'codemodeEnabled'
   | 'codemodeTrustedServers'
+  | 'codemodeLearnEnabled'
 > {
   return {
     resolveAgentFullAccess: (agent) =>
@@ -32,6 +33,9 @@ export function structuredAgentSettingGates(
     codemodeTrustedServers: () => {
       const names = getSettings().codemodeTrustedServers
       return Array.isArray(names) ? names.filter((name) => typeof name === 'string') : []
-    }
+    },
+    // Read per run: switching Learn off stops recording from the next run on.
+    codemodeLearnEnabled: () =>
+      process.versions.electron !== undefined && getSettings().codemodeLearnEnabled === true
   }
 }

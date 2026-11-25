@@ -14,9 +14,11 @@ import {
   type CodemodeSessionOptions,
   type InnerCallEvent
 } from './host/codemode-run-host'
+import { type CodemodeLearnRecorder, learnSessionHooks } from './learn/codemode-learn-recorder'
 import type { CodemodeLibAccess } from './lib/codemode-lib-host-plan'
 import type { CodemodeServerSpec } from './mcp-pool/codemode-mcp-config'
 import { createOrcaRpcAccess } from './orca/codemode-orca-dispatch'
+import type { CodemodeRunStore } from './runs/codemode-run-store'
 
 export type CodemodeLaunchSessionDeps = {
   input: CodemodeLaunchInput
@@ -32,6 +34,11 @@ export type CodemodeLaunchSessionDeps = {
   lib?: CodemodeLibAccess
   onEvent: (event: InnerCallEvent) => void
   onRun: NonNullable<CodemodeSessionOptions['onRun']>
+  /** Learn's recorder and where a nudged run is marked; absent, runs are not recorded. */
+  learn?: {
+    recorder: CodemodeLearnRecorder
+    annotate: (runId: string, patch: Parameters<CodemodeRunStore['annotate']>[2]) => void
+  }
   workerPath?: string
 }
 
@@ -52,6 +59,13 @@ export function createLaunchSession(deps: CodemodeLaunchSessionDeps): CodemodeSe
         context: () => sessionContext?.(sessionId) ?? {}
       })
     : undefined
+  const learn = deps.learn
+    ? learnSessionHooks(deps.learn.recorder, {
+        sessionId,
+        projectRoot: root,
+        annotate: deps.learn.annotate
+      })
+    : undefined
   return new CodemodeSession({
     sessionId,
     root,
@@ -68,7 +82,14 @@ export function createLaunchSession(deps: CodemodeLaunchSessionDeps): CodemodeSe
     ...(deps.lib ? { lib: deps.lib } : {}),
     limits: CODEMODE_LIMITS,
     onEvent: deps.onEvent,
-    onRun: deps.onRun,
+    onRun: (event) => {
+      // Before the run's first inner call, which Learn would otherwise drop.
+      if (event.state === 'running') {
+        learn?.begin(event.runId, event.code)
+      }
+      deps.onRun(event)
+    },
+    ...(learn ? { onCall: learn.onCall, onFinish: learn.onFinish } : {}),
     ...(deps.workerPath ? { workerPath: deps.workerPath } : {})
   })
 }

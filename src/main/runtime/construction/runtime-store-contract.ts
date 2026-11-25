@@ -231,6 +231,7 @@ export type RuntimeStore = {
     nativeChatInlineVisuals?: GlobalSettings['nativeChatInlineVisuals']
     codemodeEnabled?: GlobalSettings['codemodeEnabled']
     codemodeTrustedServers?: GlobalSettings['codemodeTrustedServers']
+    codemodeLearnEnabled?: GlobalSettings['codemodeLearnEnabled']
     nativeChatPromptSuggestions?: GlobalSettings['nativeChatPromptSuggestions']
     experimentalSharedCodexServers?: GlobalSettings['experimentalSharedCodexServers']
     nativeChatInheritShellEnvironment?: GlobalSettings['nativeChatInheritShellEnvironment']

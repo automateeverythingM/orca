@@ -91,6 +91,8 @@ export type StructuredAgentSessionRuntimeDeps = StructuredAgentSessionTransportO
   codemodeEnabled?: () => boolean
   /** Local MCP server names whose code-mode calls need no approval, read per call. */
   codemodeTrustedServers?: () => readonly string[]
+  /** This host's code-mode Learn switch, read at each run's start; absent: runs are not recorded. */
+  codemodeLearnEnabled?: () => boolean
   /** See `StructuredAgentSessionHostDeps.quietTurnEnd`. */
   quietTurnEnd?: StructuredAgentSessionHostDeps['quietTurnEnd']
   /** See `StructuredAgentSessionHostDeps.isBotHome`. */

@@ -3,4 +3,6 @@ export type CodemodeSettings = {
   codemodeEnabled?: boolean
   /** Local MCP server names whose tool calls run without asking; connectors carry their own flag. */
   codemodeTrustedServers?: string[]
+  /** Learn: record run_js runs on this computer to spot work repeated across chats; absent means off. */
+  codemodeLearnEnabled?: boolean
 }

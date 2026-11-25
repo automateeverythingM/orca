@@ -58,6 +58,7 @@ export async function installOnJournal(
         service: processCodemodeService({
           log: (message, error) => deps.logger.warn(message, { scope: 'codemode', error }),
           ...(deps.codemodeTrustedServers ? { trustedServers: deps.codemodeTrustedServers } : {}),
+          ...(deps.codemodeLearnEnabled ? { learnEnabled: deps.codemodeLearnEnabled } : {}),
           sessionOptions: codemodeRecordOptions(store),
           sessionContext: codemodeRecordContext(store)
         })

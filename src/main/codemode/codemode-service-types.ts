@@ -6,6 +6,7 @@ import type { CodemodeSessionOptionsAccess } from './connectors/codemode-connect
 import type { CodemodeConnectorStore } from './connectors/codemode-connector-store'
 import type { GateMode } from './gate/codemode-gate'
 import type { CodemodeSession, InnerCallEvent } from './host/codemode-run-host'
+import type { CodemodeLearnRemote } from './learn/store/codemode-learn-ops'
 import type { OrcaRpcAccessDeps } from './orca/codemode-orca-dispatch'
 import type { CodemodeRunStore } from './runs/codemode-run-store'
 import type { CodemodeHttpServer } from './server/codemode-http-server'
@@ -69,6 +70,10 @@ export type CodemodeServiceOptions = {
   sessionContext?: CodemodeSessionContext
   /** Tests only: home for global saved functions and their trust/usage files. */
   libHomeDir?: string
+  /** The Learn switch, read at each run's start; absent: Learn is off. */
+  learnEnabled?: () => boolean
+  /** Tests only; default is the profile's Learn store behind its worker. */
+  learnStore?: CodemodeLearnRemote
 }
 
 export type CodemodeConnectorWiring = {

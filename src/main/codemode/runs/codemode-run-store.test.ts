@@ -66,4 +66,34 @@ describe('CodemodeRunStore', () => {
     store.run('s1', { runId: 'r2', code: 'return 2', state: 'running' })
     expect(seen).toHaveLength(3)
   })
+
+  it('annotates a run and tells its subscribers; an unknown run is left alone', () => {
+    const store = new CodemodeRunStore(() => 1000)
+    store.run('s1', { runId: 'r', code: 'return 1', state: 'running' })
+    const seen: CodemodeRunsEvent[] = []
+    store.subscribe('s1', (event) => seen.push(event))
+
+    store.annotate('s1', 'r', { seenInChats: 3 })
+    expect(store.runs('s1')[0].seenInChats).toBe(3)
+    expect(seen.at(-1)).toEqual({
+      type: 'run',
+      sessionId: 's1',
+      run: {
+        runId: 'r',
+        code: 'return 1',
+        state: 'running',
+        startedAt: 1000,
+        omittedCalls: 0,
+        seenInChats: 3
+      }
+    })
+
+    store.run('s1', { runId: 'r', code: 'return 1', state: 'ok', ms: 5 })
+    expect(seen.at(-1)).toMatchObject({ type: 'run', run: { state: 'ok', seenInChats: 3 } })
+
+    const count = seen.length
+    store.annotate('s1', 'missing', { seenInChats: 2 })
+    store.annotate('s2', 'r', { seenInChats: 2 })
+    expect(seen).toHaveLength(count)
+  })
 })

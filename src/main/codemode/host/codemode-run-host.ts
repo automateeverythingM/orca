@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
+import type { CodemodeLearnCall } from '../../../shared/codemode/codemode-learn-types'
 import type { CodemodeLimits } from '../codemode-limits'
 import type { GateMode } from '../gate/codemode-gate'
 import type { CodemodeLibAccess } from '../lib/codemode-lib-host-plan'
@@ -40,6 +41,9 @@ export type CodemodeRunEvent = {
   ms?: number
 }
 
+/** A run's end as Learn records it: `startedAt` is the host clock at its start. */
+export type CodemodeRunFinish = { runId: string; ok: boolean; ms: number; startedAt: number }
+
 export type CodemodeSessionOptions = {
   sessionId: string
   root: string
@@ -56,6 +60,10 @@ export type CodemodeSessionOptions = {
   limits: CodemodeLimits
   onEvent: (event: InnerCallEvent) => void
   onRun?: (event: CodemodeRunEvent) => void
+  /** Each settled inner call with its whole reply, uncut. */
+  onCall?: (runId: string, call: CodemodeLearnCall) => void
+  /** Once a run's result is ready; text it returns is appended to that result. Must not throw. */
+  onFinish?: (run: CodemodeRunFinish) => Promise<string | null>
   /** Bundled worker entry; tests pass their own build. */
   workerPath?: string
 }
@@ -158,8 +166,10 @@ export class CodemodeSession {
     }
     this.pool.newTurn()
     const started = performance.now()
+    const startedAt = Date.now()
     this.reportRun({ runId: run.runId, code, state: 'running' })
-    let failed = true
+    let formatted: { text: string; isError: boolean } | null = null
+    let ms = 0
     try {
       const result = await runScriptInWorker(
         code,
@@ -168,17 +178,21 @@ export class CodemodeSession {
         controller.signal,
         this.opts.workerPath
       )
-      const formatted = formatScriptResult(result, this.opts.limits.outputBytes, run.calls)
-      failed = formatted.isError
-      return formatted
+      formatted = formatScriptResult(result, this.opts.limits.outputBytes, run.calls)
     } finally {
-      const ms = Math.round(performance.now() - started)
-      this.reportRun({ runId: run.runId, code, state: failed ? 'error' : 'ok', ms })
+      ms = Math.round(performance.now() - started)
+      const ok = formatted?.isError === false
+      this.reportRun({ runId: run.runId, code, state: ok ? 'ok' : 'error', ms })
       opts.signal.removeEventListener('abort', forwardAbort)
       // Why: a script may return while host work it never awaited (bash, MCP, approval) is still running.
       controller.abort()
       this.activeRuns.delete(controller)
+      if (!formatted) {
+        void this.finishNote({ runId: run.runId, ok: false, ms, startedAt })
+      }
     }
+    const note = await this.finishNote({ runId: run.runId, ok: !formatted.isError, ms, startedAt })
+    return note ? { ...formatted, text: `${formatted.text}${note}` } : formatted
   }
 
   async close(): Promise<void> {
@@ -187,6 +201,14 @@ export class CodemodeSession {
       controller.abort()
     }
     await this.pool.close()
+  }
+
+  private async finishNote(finish: CodemodeRunFinish): Promise<string | null> {
+    try {
+      return (await this.opts.onFinish?.(finish)) ?? null
+    } catch {
+      return null
+    }
   }
 
   private reportRun(event: CodemodeRunEvent): void {
@@ -201,7 +223,8 @@ export class CodemodeSession {
     const seq = ++run.seq
     const started = performance.now()
     const shown = hostCallLabel(call)
-    const emit = (state: InnerCallEvent['state'], output?: string): void => {
+    /** Returns the call's time once it settled. */
+    const emit = (state: InnerCallEvent['state'], output?: string): number => {
       const timing = state === 'running' ? {} : { ms: Math.round(performance.now() - started) }
       if (timing.ms !== undefined) {
         run.calls.push({ tool: shown.tool, ok: state === 'ok', ms: timing.ms })
@@ -211,6 +234,7 @@ export class CodemodeSession {
       } catch {
         // A failing listener must not fail the script's call.
       }
+      return timing.ms ?? 0
     }
     emit('running')
     const executed = await this.execute(run, call)
@@ -219,12 +243,24 @@ export class CodemodeSession {
       !executed.ok && executed.error === DENIED_TEXT
         ? { ok: false, error: deniedCallText(shown.tool) }
         : executed
-    if (reply.ok) {
-      emit('ok', eventOutput(reply.value))
-    } else {
-      emit('error', reply.error)
-    }
+    const ms = reply.ok ? emit('ok', eventOutput(reply.value)) : emit('error', reply.error)
+    this.reportCall(run.runId, {
+      seq,
+      tool: shown.tool,
+      input: shown.input,
+      ok: reply.ok,
+      ...(reply.ok ? { output: reply.value } : { error: reply.error }),
+      ms
+    })
     return reply
+  }
+
+  private reportCall(runId: string, call: CodemodeLearnCall): void {
+    try {
+      this.opts.onCall?.(runId, call)
+    } catch {
+      // Learn must not fail the script's call.
+    }
   }
 
   private async execute(run: RunState, call: HostCall): Promise<HostReply> {

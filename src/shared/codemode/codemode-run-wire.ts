@@ -33,6 +33,8 @@ export type CodemodeRunHeader = {
   ms?: number
   /** Calls past `callsPerRun`, counted but not kept. */
   omittedCalls: number
+  /** Learn: chats (this one included) that ran this same script; set only when the agent was nudged. */
+  seenInChats?: number
 }
 
 export type CodemodeRunRecord = CodemodeRunHeader & { calls: CodemodeInnerCallRecord[] }

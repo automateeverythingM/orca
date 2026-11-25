@@ -10,6 +10,15 @@ function codemodeGate(enabled: boolean): () => boolean {
   return () => gates.codemodeEnabled?.() === true
 }
 
+function learnGate(learn: boolean | undefined): () => boolean {
+  const gates = structuredAgentSettingGates(() => ({
+    ...getDefaultSettings('/home/user'),
+    codemodeEnabled: true,
+    ...(learn === undefined ? {} : { codemodeLearnEnabled: learn })
+  }))
+  return () => gates.codemodeLearnEnabled?.() === true
+}
+
 const hostElectron = process.versions.electron
 
 function runningUnderElectron(electron: string | undefined): void {
@@ -32,5 +41,16 @@ describe('code mode setting gate', () => {
   it('is off on a remote or WSL host, whose server runs plain Node, whatever the setting', () => {
     runningUnderElectron(undefined)
     expect(codemodeGate(true)()).toBe(false)
+  })
+})
+
+describe('code mode Learn gate', () => {
+  it('is on only when the setting is exactly true, in the Electron app', () => {
+    runningUnderElectron('43.0.0')
+    expect(learnGate(true)()).toBe(true)
+    expect(learnGate(false)()).toBe(false)
+    expect(learnGate(undefined)()).toBe(false)
+    runningUnderElectron(undefined)
+    expect(learnGate(true)()).toBe(false)
   })
 })
