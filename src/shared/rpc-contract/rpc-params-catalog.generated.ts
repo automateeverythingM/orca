@@ -363,6 +363,12 @@ import {
   CodemodeSessionConnectors
 } from './codemode/codemode-connectors-params'
 import {
+  CodemodeLibList,
+  CodemodeLibMove,
+  CodemodeLibRead,
+  CodemodeLibTarget
+} from './codemode/codemode-lib-params'
+import {
   ComputerCapabilitiesParams,
   ComputerPermissionsStatusParams
 } from './computer/computer-params'
@@ -1533,6 +1539,12 @@ export const RPC_PARAMS_BY_METHOD = {
   'codemode.connectors.signIn.start': CodemodeConnectorTarget,
   'codemode.connectors.signIn.status': CodemodeConnectorTarget,
   'codemode.connectors.update': CodemodeConnectorUpdate,
+  'codemode.lib.delete': CodemodeLibTarget,
+  'codemode.lib.history': CodemodeLibTarget,
+  'codemode.lib.list': CodemodeLibList,
+  'codemode.lib.move': CodemodeLibMove,
+  'codemode.lib.read': CodemodeLibRead,
+  'codemode.lib.trust': CodemodeLibTarget,
   'computer.capabilities': ComputerCapabilitiesParams,
   'computer.click': Click,
   'computer.drag': DragOfComputerSchemasParams,

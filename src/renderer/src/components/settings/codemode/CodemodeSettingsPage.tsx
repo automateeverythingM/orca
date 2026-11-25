@@ -5,6 +5,7 @@ import { CodemodeEnabledSetting } from '../chat/CodemodeEnabledSetting'
 import type { SettingsSearchEntry } from '../search/settings-search'
 import { SettingsSection } from '../section-layout/SettingsSection'
 import { CodemodeConnectorList } from './CodemodeConnectorList'
+import { CodemodeFunctionList } from './CodemodeFunctionList'
 import { CodemodeTrustedServersSetting } from './CodemodeTrustedServersSetting'
 
 export function CodemodeSettingsPage({
@@ -33,6 +34,7 @@ export function CodemodeSettingsPage({
         forceVisible
       />
       <CodemodeConnectorList />
+      <CodemodeFunctionList />
       <CodemodeTrustedServersSetting settings={settings} updateSettings={updateSettings} />
     </SettingsSection>
   )

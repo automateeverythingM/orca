@@ -31,3 +31,18 @@ export const CODEMODE_LIB_RESERVED: ReadonlySet<string> = new Set([
   'constructor'
 ])
 export const CODEMODE_LIB_MAX_BYTES = 256 * 1024
+
+/** A saved function as Settings › Functions shows it; no file path, the source comes from `read`. */
+export type CodemodeLibEntryView = CodemodeLibMeta & {
+  scope: CodemodeLibScope
+  uses: number
+  lastUsedAt?: number
+  /** The file's current bytes match the hash the person allowed. */
+  trusted: boolean
+  /** A global function a project function of the same name hides. */
+  shadowed: boolean
+}
+
+export type CodemodeLibListView = { functions: CodemodeLibEntryView[]; problems: string[] }
+
+export type CodemodeLibVersion = { version: string; savedAt: number }

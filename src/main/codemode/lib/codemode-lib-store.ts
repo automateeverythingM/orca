@@ -110,7 +110,8 @@ export class CodemodeLibStore {
     }
   }
 
-  private async listScope(scope: CodemodeLibScope): Promise<{
+  /** One scope's functions, a global hidden by a project one included: Settings shows both. */
+  async listScope(scope: CodemodeLibScope): Promise<{
     functions: CodemodeLibFunction[]
     problems: string[]
   }> {

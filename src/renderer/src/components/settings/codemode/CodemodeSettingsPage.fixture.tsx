@@ -1,6 +1,8 @@
 import { defineFixture } from '../../../component-fixtures/component-fixture'
 import { useAppStore } from '@/store/index'
+import { makeWorktree } from '@/store/slices/worktrees/worktree.test-fixture'
 import type { CodemodeConnectorView } from '../../../../../shared/codemode/codemode-connector-types'
+import type { CodemodeLibEntryView } from '../../../../../shared/codemode/codemode-lib-types'
 import { ActiveSettingsSectionProvider } from '../section-layout/SettingsSection'
 import { CodemodeSettingsPage } from './CodemodeSettingsPage'
 import type { CodemodeRegistryEntry } from './codemode-connectors-client'
@@ -62,8 +64,86 @@ const REGISTRY: CodemodeRegistryEntry[] = [
   }
 ]
 
-function stubRuntime(connectors: CodemodeConnectorView[], trusted: string[]): void {
+const DAY = 86_400_000
+const FUNCTIONS: CodemodeLibEntryView[] = [
+  {
+    name: 'addCreditsByEmail',
+    description: 'Find an FC Urban user by email and add credits.',
+    params: [{ name: 'email', type: 'string' }],
+    savedBy: 'agent',
+    scope: 'project',
+    uses: 0,
+    trusted: false,
+    shadowed: false
+  },
+  {
+    name: 'openPullRequests',
+    description: 'List open pull requests with their review state.',
+    params: [],
+    savedBy: 'user',
+    scope: 'project',
+    uses: 12,
+    lastUsedAt: Date.now() - 2 * 3_600_000,
+    trusted: true,
+    shadowed: false
+  },
+  {
+    name: 'openPullRequests',
+    description: 'List open pull requests across every repo.',
+    params: [],
+    savedBy: 'learn',
+    scope: 'global',
+    uses: 3,
+    lastUsedAt: Date.now() - 9 * DAY,
+    trusted: true,
+    shadowed: true
+  }
+]
+const SOURCE = `/**
+ * @name addCreditsByEmail
+ * @description Find an FC Urban user by email and add credits.
+ * @param {string} email
+ * @saved-by agent
+ */
+async function addCreditsByEmail({ email, amount }) {
+  const user = await tools.fcu.search_contacts({ query: email })
+  return tools.fcu.run_action({ action: 'add_credits', id: user.id, amount })
+}
+`
+const HISTORY = [
+  { version: '20261120T101500000Z', savedAt: Date.now() - 5 * DAY },
+  { version: '20261124T083000000Z', savedAt: Date.now() - DAY }
+]
+const WORKTREE = makeWorktree({
+  id: 'repo-1::/code/platform',
+  repoId: 'repo-1',
+  path: '/code/platform',
+  displayName: 'platform',
+  hostId: 'local'
+})
+
+function libResult(method: string, functions: CodemodeLibEntryView[]): unknown {
+  switch (method) {
+    case 'codemode.lib.list':
+      return { functions, problems: [] }
+    case 'codemode.lib.read':
+      return { source: SOURCE }
+    case 'codemode.lib.history':
+      return { versions: HISTORY }
+    default:
+      return undefined
+  }
+}
+
+function stubRuntime(
+  connectors: CodemodeConnectorView[],
+  trusted: string[],
+  functions: CodemodeLibEntryView[] = []
+): void {
   useAppStore.setState((state) => ({
+    worktreesByRepo: { 'repo-1': [WORKTREE] },
+    activeWorktreeId: functions.length > 0 ? WORKTREE.id : null,
+    activeWorkspaceExecutionHostId: 'local',
     settings: state.settings
       ? {
           ...state.settings,
@@ -81,8 +161,10 @@ function stubRuntime(connectors: CodemodeConnectorView[], trusted: string[]): vo
           return { ok: true, result: { connectors } }
         case 'codemode.connectors.registry.search':
           return { ok: true, result: { entries: REGISTRY } }
-        default:
-          return call(args)
+        default: {
+          const result = libResult(args.method, functions)
+          return result === undefined ? call(args) : { ok: true, result }
+        }
       }
     }
   })
@@ -172,6 +254,32 @@ export const rowPanels = defineFixture({
   setup: () => stubRuntime(CONNECTORS, TRUSTED),
   render: () => <Preview />,
   interact: openRowPanels
+})
+
+async function openSource(): Promise<void> {
+  await settle(100)
+  clickButton('View')
+  await settle(300)
+}
+
+async function openDelete(): Promise<void> {
+  await settle(100)
+  clickButton('Delete')
+  await settle(150)
+}
+
+export const functions = defineFixture({
+  width: 820,
+  setup: () => stubRuntime([], [], FUNCTIONS),
+  render: () => <Preview />,
+  interact: openDelete
+})
+
+export const functionSource = defineFixture({
+  width: 820,
+  setup: () => stubRuntime([], [], FUNCTIONS),
+  render: () => <Preview tall />,
+  interact: openSource
 })
 
 export const narrow = defineFixture({

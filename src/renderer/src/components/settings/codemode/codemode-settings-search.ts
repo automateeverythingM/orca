@@ -5,6 +5,7 @@ import { translateSearchKeyword } from '../search/settings-search-keywords'
 
 export const CODEMODE_CONNECTORS_TARGET_ID = 'code-mode-connectors'
 export const CODEMODE_TRUSTED_SERVERS_TARGET_ID = 'code-mode-trusted-servers'
+export const CODEMODE_FUNCTIONS_TARGET_ID = 'code-mode-functions'
 
 export const getCodemodeConnectorsSearchEntry = createLocalizedCatalog((): SettingsSearchEntry => ({
   targetSectionId: CODEMODE_CONNECTORS_TARGET_ID,
@@ -19,6 +20,20 @@ export const getCodemodeConnectorsSearchEntry = createLocalizedCatalog((): Setti
     ...translateSearchKeyword('settings.codemode.search.remote', 'remote server'),
     ...translateSearchKeyword('settings.codemode.search.signIn', 'sign in'),
     ...translateSearchKeyword('settings.codemode.search.token', 'token')
+  ]
+}))
+
+export const getCodemodeFunctionsSearchEntry = createLocalizedCatalog((): SettingsSearchEntry => ({
+  targetSectionId: CODEMODE_FUNCTIONS_TARGET_ID,
+  title: translate('settings.codemode.functions.title', 'Functions'),
+  description: translate(
+    'settings.codemode.functions.description',
+    'Saved functions agents call as lib.<name>: view, allow, move between project and global, or delete them.'
+  ),
+  keywords: [
+    ...translateSearchKeyword('settings.codemode.search.lib', 'lib', { englishOnly: true }),
+    ...translateSearchKeyword('settings.codemode.search.savedFunction', 'saved function'),
+    ...translateSearchKeyword('settings.codemode.search.history', 'history')
   ]
 }))
 
@@ -41,5 +56,9 @@ export const getCodemodeTrustedServersSearchEntry = createLocalizedCatalog(
 )
 
 export function getCodemodeSettingsSearchEntries(): SettingsSearchEntry[] {
-  return [getCodemodeConnectorsSearchEntry(), getCodemodeTrustedServersSearchEntry()]
+  return [
+    getCodemodeConnectorsSearchEntry(),
+    getCodemodeFunctionsSearchEntry(),
+    getCodemodeTrustedServersSearchEntry()
+  ]
 }
