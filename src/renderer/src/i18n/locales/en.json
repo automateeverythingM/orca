@@ -2119,6 +2119,7 @@
       "functions": {
         "projectFrom": "Project functions come from {{name}} (the open worktree).",
         "noProject": "No worktree is open, so only global functions show.",
+        "remoteProject": "Project functions aren’t available for remote worktrees, so only global functions show.",
         "reading": "Reading saved functions…",
         "retry": "Try again",
         "empty": "No saved functions yet. Agents save them with lib.save, or use “Save as function” on a finished script.",

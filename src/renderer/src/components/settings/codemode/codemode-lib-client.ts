@@ -1,6 +1,10 @@
 // Saved functions (`lib.*`), read and changed on this computer's runtime (code mode is desktop-only).
 import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
+import {
+  type ExecutionHostId,
+  LOCAL_EXECUTION_HOST_ID
+} from '../../../../../shared/execution-host/execution-host'
 import type {
   CodemodeLibEntryView,
   CodemodeLibListView,
@@ -12,6 +16,21 @@ const LOCAL: RuntimeClientTarget = { kind: 'local' }
 
 /** The worktree whose `.orca/lib` is the project scope; null shows global functions only. */
 export type CodemodeLibProject = string | null
+
+/**
+ * The open worktree's project scope. An SSH or paired-runtime worktree lives on another machine,
+ * so this computer's runtime has no project scope for it and lists global functions only.
+ */
+export function functionsProject(worktree: { path: string; hostId?: ExecutionHostId } | null): {
+  projectRoot: CodemodeLibProject
+  remote: boolean
+} {
+  if (!worktree) {
+    return { projectRoot: null, remote: false }
+  }
+  const local = worktree.hostId === undefined || worktree.hostId === LOCAL_EXECUTION_HOST_ID
+  return local ? { projectRoot: worktree.path, remote: false } : { projectRoot: null, remote: true }
+}
 
 const withProject = (projectRoot: CodemodeLibProject): { projectRoot?: string } =>
   projectRoot ? { projectRoot } : {}

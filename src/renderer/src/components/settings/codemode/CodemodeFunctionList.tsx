@@ -6,7 +6,7 @@ import { useActiveWorktree } from '@/store/workspaces/selection/use-selected-wor
 import type { CodemodeLibListView } from '../../../../../shared/codemode/codemode-lib-types'
 import { SettingsGroup } from '../section-layout/SettingsGroup'
 import { codemodeConnectorErrorMessage } from './codemode-connectors-client'
-import { listCodemodeFunctions } from './codemode-lib-client'
+import { functionsProject, listCodemodeFunctions } from './codemode-lib-client'
 import { CodemodeFunctionRow } from './CodemodeFunctionRow'
 import {
   CODEMODE_FUNCTIONS_TARGET_ID,
@@ -23,7 +23,7 @@ export function CodemodeFunctionList(): React.JSX.Element {
   const t = useTranslate()
   const entry = getCodemodeFunctionsSearchEntry()
   const worktree = useActiveWorktree()
-  const projectRoot = worktree?.path ?? null
+  const { projectRoot, remote } = functionsProject(worktree ?? null)
   const [state, setState] = useState<ListState>({ kind: 'loading' })
   const reads = useRef(0)
 
@@ -57,16 +57,21 @@ export function CodemodeFunctionList(): React.JSX.Element {
       description={entry.description}
     >
       <p data-settings-row="" className="py-2 text-xs text-muted-foreground">
-        {worktree
+        {remote
           ? t(
-              'settings.codemode.functions.projectFrom',
-              'Project functions come from {{name}} (the open worktree).',
-              { name: worktree.displayName }
+              'settings.codemode.functions.remoteProject',
+              'Project functions aren’t available for remote worktrees, so only global functions show.'
             )
-          : t(
-              'settings.codemode.functions.noProject',
-              'No worktree is open, so only global functions show.'
-            )}
+          : worktree
+            ? t(
+                'settings.codemode.functions.projectFrom',
+                'Project functions come from {{name}} (the open worktree).',
+                { name: worktree.displayName }
+              )
+            : t(
+                'settings.codemode.functions.noProject',
+                'No worktree is open, so only global functions show.'
+              )}
       </p>
       {state.kind === 'loading' ? (
         <p data-settings-row="" role="status" className="py-3 text-xs text-muted-foreground">
