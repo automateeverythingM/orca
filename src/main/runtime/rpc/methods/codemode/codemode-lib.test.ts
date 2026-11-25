@@ -7,6 +7,7 @@ import {
   type CodemodeLibRecords
 } from '../../../../codemode/lib/codemode-lib-access'
 import { CodemodeLibStore, libTrustKey } from '../../../../codemode/lib/codemode-lib-store'
+import { libSourceHash } from '../../../../codemode/lib/codemode-lib-trust'
 import { OrcaRuntimeService } from '../../../orca-runtime'
 import { eraseRpcMethods, type RpcContext } from '../../core'
 import { codemodeLibMethods, requireKnownProject, type CodemodeLibMethodDeps } from './codemode-lib'
@@ -81,7 +82,8 @@ describe('codemode.lib.* RPC methods', () => {
           uses: 2,
           lastUsedAt: 2_000,
           trusted: true,
-          shadowed: false
+          shadowed: false,
+          sha256: libSourceHash(project.source)
         },
         expect.objectContaining({ name: 'shared', scope: 'global', uses: 0, shadowed: true }),
         expect.objectContaining({ name: 'tidy', scope: 'global', trusted: false, shadowed: false })
@@ -124,6 +126,21 @@ describe('codemode.lib.* RPC methods', () => {
     await expect(requireKnownProject(list, '/repo')).rejects.toThrow('unknown project')
   })
 
+  it('refuses a worktree that lives on another host', async () => {
+    const list = async () => ({
+      worktrees: [
+        { path: '/repo/local', hostId: 'local' },
+        { path: '/repo/legacy' },
+        { path: '/repo/remote', hostId: 'ssh:box' },
+        { path: '/repo/paired', hostId: 'runtime:env-1' }
+      ]
+    })
+    await expect(requireKnownProject(list, '/repo/local')).resolves.toBeUndefined()
+    await expect(requireKnownProject(list, '/repo/legacy')).resolves.toBeUndefined()
+    await expect(requireKnownProject(list, '/repo/remote')).rejects.toThrow('unknown project')
+    await expect(requireKnownProject(list, '/repo/paired')).rejects.toThrow('unknown project')
+  })
+
   it('reads the current source and a past version', async () => {
     await save('f', 'project', ' + 1')
     const current = await save('f', 'project', ' + 2')
@@ -140,14 +157,14 @@ describe('codemode.lib.* RPC methods', () => {
     expect(history).toEqual({ versions: [{ version, savedAt: expect.any(Number) }] })
     expect(
       await call('codemode.lib.read', { name: 'f', scope: 'project', projectRoot: root })
-    ).toEqual({ source: current.source })
+    ).toEqual({ source: current.source, sha256: libSourceHash(current.source) })
     const old = await call('codemode.lib.read', {
       name: 'f',
       scope: 'project',
       version,
       projectRoot: root
     })
-    expect(old).toEqual({ source: expect.stringContaining('a + 1') })
+    expect(old).toEqual({ source: expect.stringContaining('a + 1'), sha256: expect.any(String) })
   })
 
   it('read rejects a bad version', async () => {
@@ -178,7 +195,7 @@ describe('codemode.lib.* RPC methods', () => {
     expect(await records.trust.state(key, 'f', saved.source)).toBe('unknown')
   })
 
-  it('move records trust under the new key and forgets the old', async () => {
+  it('move keeps a trusted function trusted under the new key and forgets the old', async () => {
     const saved = await save('f', 'project')
     const projectKey = await libTrustKey('project', root)
     await records.trust.record(projectKey, 'f', saved.source)
@@ -188,6 +205,19 @@ describe('codemode.lib.* RPC methods', () => {
     const text = await readFile(join(home, '.orca', 'lib', 'f.js'), 'utf8')
     expect(await records.trust.state('~', 'f', text)).toBe('trusted')
     expect(await records.trust.state(projectKey, 'f', saved.source)).toBe('unknown')
+  })
+
+  it('moving an untrusted function leaves it untrusted at the new scope', async () => {
+    const saved = await save('f', 'project')
+    const projectKey = await libTrustKey('project', root)
+    // Allowed once, then edited on disk: changed, so not trusted.
+    await records.trust.record(projectKey, 'f', `${saved.source}// before`)
+    const { call } = methodsFor()
+    const moved = await call('codemode.lib.move', { name: 'f', from: 'project', projectRoot: root })
+    expect(moved).toMatchObject({ name: 'f', scope: 'global', trusted: false })
+    const text = await readFile(join(home, '.orca', 'lib', 'f.js'), 'utf8')
+    expect(await records.trust.state('~', 'f', text)).toBe('unknown')
+    expect(await records.trust.state(projectKey, 'f', `${saved.source}// before`)).toBe('unknown')
   })
 
   it('move refuses an existing target', async () => {
@@ -202,18 +232,38 @@ describe('codemode.lib.* RPC methods', () => {
     )
   })
 
-  it('trust records the current file as allowed', async () => {
+  it('trust records the file the person viewed as allowed', async () => {
     const saved = await save('big', 'project')
     const key = await libTrustKey('project', root)
     const { call } = methodsFor()
+    const target = { name: 'big', scope: 'project', projectRoot: root }
+    const viewed = await call('codemode.lib.read', target)
+    expect(viewed).toEqual({ source: saved.source, sha256: libSourceHash(saved.source) })
     expect(await records.trust.state(key, 'big', saved.source)).toBe('unknown')
     expect(
-      await call('codemode.lib.trust', { name: 'big', scope: 'project', projectRoot: root })
+      await call('codemode.lib.trust', { ...target, sha256: libSourceHash(saved.source) })
     ).toEqual({})
     expect(await records.trust.state(key, 'big', saved.source)).toBe('trusted')
     await expect(
-      call('codemode.lib.trust', { name: 'gone', scope: 'project', projectRoot: root })
+      call('codemode.lib.trust', { ...target, name: 'gone', sha256: libSourceHash('x') })
     ).rejects.toThrow('no function gone in project scope')
+  })
+
+  it('trust refuses a stale hash and records nothing', async () => {
+    const before = await save('big', 'project', ' + 1')
+    const after = await save('big', 'project', ' + 2')
+    const key = await libTrustKey('project', root)
+    const { call } = methodsFor()
+    await expect(
+      call('codemode.lib.trust', {
+        name: 'big',
+        scope: 'project',
+        projectRoot: root,
+        sha256: libSourceHash(before.source)
+      })
+    ).rejects.toThrow('function changed since you viewed it; open it again')
+    expect(await records.trust.state(key, 'big', after.source)).toBe('unknown')
+    expect(await records.trust.state(key, 'big', before.source)).toBe('unknown')
   })
 
   it('works only in the desktop app', async () => {

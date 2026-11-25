@@ -33,12 +33,15 @@ export function CodemodeFunctionSourceDialog({
   fn,
   projectRoot,
   open,
-  onOpenChange
+  onOpenChange,
+  onViewedCurrent
 }: {
   fn: CodemodeLibEntryView
   projectRoot: CodemodeLibProject
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** The hash of the current file as shown, so Allow trusts exactly what was read. */
+  onViewedCurrent: (sha256: string) => void
 }): React.JSX.Element {
   const t = useTranslate()
   const { name, scope } = fn
@@ -71,14 +74,22 @@ export function CodemodeFunctionSourceDialog({
     let live = true
     setSource({ kind: 'loading' })
     void readCodemodeFunction(projectRoot, name, scope, version ?? undefined).then(
-      (text) => live && setSource({ kind: 'ready', text }),
+      (read) => {
+        if (!live) {
+          return
+        }
+        setSource({ kind: 'ready', text: read.source })
+        if (version === null) {
+          onViewedCurrent(read.sha256)
+        }
+      },
       (caught: unknown) =>
         live && setSource({ kind: 'error', message: codemodeConnectorErrorMessage(caught) })
     )
     return () => {
       live = false
     }
-  }, [open, projectRoot, name, scope, version])
+  }, [open, projectRoot, name, scope, version, onViewedCurrent])
 
   const choice = (value: string | null, label: string, title?: string): React.JSX.Element => (
     <Button

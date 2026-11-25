@@ -366,7 +366,8 @@ import {
   CodemodeLibList,
   CodemodeLibMove,
   CodemodeLibRead,
-  CodemodeLibTarget
+  CodemodeLibTarget,
+  CodemodeLibTrust
 } from './codemode/codemode-lib-params'
 import {
   ComputerCapabilitiesParams,
@@ -1544,7 +1545,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'codemode.lib.list': CodemodeLibList,
   'codemode.lib.move': CodemodeLibMove,
   'codemode.lib.read': CodemodeLibRead,
-  'codemode.lib.trust': CodemodeLibTarget,
+  'codemode.lib.trust': CodemodeLibTrust,
   'computer.capabilities': ComputerCapabilitiesParams,
   'computer.click': Click,
   'computer.drag': DragOfComputerSchemasParams,

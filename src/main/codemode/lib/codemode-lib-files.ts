@@ -1,6 +1,7 @@
-import { lstat, mkdir, readdir, rename, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, realpath, rename, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
+import type { CodemodeLibScope } from '../../../shared/codemode/codemode-lib-types'
 
 export const VERSION_RE = /^\d{8}T\d{9}Z$/
 
@@ -58,4 +59,53 @@ export async function isSymlink(file: string): Promise<boolean> {
     }
     throw err
   }
+}
+
+/** Whether anything, a dangling symlink included, sits at `path`. */
+export async function lexists(path: string): Promise<boolean> {
+  try {
+    await lstat(path)
+    return true
+  } catch (err) {
+    if (isNotFound(err)) {
+      return false
+    }
+    throw err
+  }
+}
+
+/**
+ * Refuses a lib dir reached through a symlink: `<root>/.orca`, `<root>/.orca/lib` or its
+ * `.history`. A cloned repo could point any of them outside, and every read, copy and write
+ * below would follow it. Missing is fine.
+ */
+export async function refuseSymlinkedLibDirs(libDir: string): Promise<void> {
+  const problem = await symlinkedLibDirProblem(libDir)
+  if (problem) {
+    throw new Error(problem)
+  }
+}
+
+/** The refusal `refuseSymlinkedLibDirs` would throw, or null; other read errors still throw. */
+export async function symlinkedLibDirProblem(libDir: string): Promise<string | null> {
+  for (const dir of [dirname(libDir), libDir, join(libDir, '.history')]) {
+    if (await isSymlink(dir)) {
+      return `symlinked lib directories are not allowed: ${dir}`
+    }
+  }
+  return null
+}
+
+/** The trust and usage key: `~` for global, the project root's real path for project. */
+export async function libTrustKey(
+  scope: CodemodeLibScope,
+  projectRoot: string | null
+): Promise<string> {
+  if (scope === 'global') {
+    return '~'
+  }
+  if (!projectRoot) {
+    throw new Error('no project root for project scope')
+  }
+  return realpath(projectRoot)
 }

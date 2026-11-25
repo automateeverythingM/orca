@@ -9,12 +9,15 @@ import {
   CodemodeLibList,
   CodemodeLibMove,
   CodemodeLibRead,
-  CodemodeLibTarget
+  CodemodeLibTarget,
+  CodemodeLibTrust
 } from '../../../../../shared/rpc-contract/codemode/codemode-lib-params'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../../shared/execution-host/execution-host'
 import { installedCodemodeService } from '../../../../codemode/codemode-process-service'
 import { libAccessFor, type CodemodeLibRecords } from '../../../../codemode/lib/codemode-lib-access'
 import type { CodemodeLibAccess } from '../../../../codemode/lib/codemode-lib-host-plan'
 import { CodemodeLibStore, libTrustKey } from '../../../../codemode/lib/codemode-lib-store'
+import { libSourceHash } from '../../../../codemode/lib/codemode-lib-trust'
 import { defineMethod, type RpcContext } from '../../core'
 
 export type CodemodeLibMethodDeps = {
@@ -26,12 +29,17 @@ export type CodemodeLibMethodDeps = {
   projectAccess: (ctx: RpcContext, projectRoot: string) => Promise<void>
 }
 
-type WorktreeList = () => Promise<{ worktrees: readonly { path: string }[] }>
+type WorktreeList = () => Promise<{ worktrees: readonly { path: string; hostId?: string }[] }>
 
-/** A project root must be exactly the path of a worktree Orca manages; `..` or a parent is not. */
+/**
+ * A project root must be exactly the path of a worktree Orca manages on this computer; `..`, a
+ * parent, or an SSH or paired-runtime worktree's path (another machine's file system) is not.
+ */
 export async function requireKnownProject(list: WorktreeList, projectRoot: string): Promise<void> {
   const { worktrees } = await list()
-  if (!worktrees.some((worktree) => worktree.path === projectRoot)) {
+  const local = (hostId: string | undefined): boolean =>
+    hostId === undefined || hostId === LOCAL_EXECUTION_HOST_ID
+  if (!worktrees.some((worktree) => worktree.path === projectRoot && local(worktree.hostId))) {
     throw new Error('unknown project')
   }
 }
@@ -77,7 +85,8 @@ async function viewOf(
     uses: usage.uses,
     ...(usage.lastUsedAt !== undefined ? { lastUsedAt: usage.lastUsedAt } : {}),
     trusted: state === 'trusted',
-    shadowed
+    shadowed,
+    sha256: libSourceHash(fn.source)
   }
 }
 
@@ -147,12 +156,13 @@ export function codemodeLibMethods(deps: CodemodeLibMethodDeps) {
       name: 'codemode.lib.read',
       permission: 'workspace',
       params: CodemodeLibRead,
-      handler: async (params, ctx): Promise<{ source: string }> => {
+      handler: async (params, ctx): Promise<{ source: string; sha256: string }> => {
         const lib = await open(ctx, params.projectRoot)
-        if (params.version !== undefined) {
-          return { source: await lib.store.readVersion(params.name, params.scope, params.version) }
-        }
-        return { source: (await requireFunction(lib, params.name, params.scope)).source }
+        const source =
+          params.version !== undefined
+            ? await lib.store.readVersion(params.name, params.scope, params.version)
+            : (await requireFunction(lib, params.name, params.scope)).source
+        return { source, sha256: libSourceHash(source) }
       }
     }),
     defineMethod({
@@ -182,10 +192,15 @@ export function codemodeLibMethods(deps: CodemodeLibMethodDeps) {
       params: CodemodeLibMove,
       handler: async (params, ctx): Promise<CodemodeLibEntryView> => {
         const lib = await open(ctx, params.projectRoot)
+        const before = await requireFunction(lib, params.name, params.from)
+        const oldKey = await keyFor(lib, params.from)
+        const was = await lib.trust.state(oldKey, before.name, before.source)
         const moved = await lib.store.move(params.name, params.from)
-        // Why: the person moved it, so the copy under its new key is theirs; the old file is gone.
-        await lib.trust.record(await keyFor(lib, moved.scope), moved.name, moved.source)
-        await lib.trust.forget(await keyFor(lib, params.from), params.name)
+        // Why: a move carries trust over, never grants it; Allow is the only way to trust here.
+        if (was === 'trusted') {
+          await lib.trust.record(await keyFor(lib, moved.scope), moved.name, moved.source)
+        }
+        await lib.trust.forget(oldKey, params.name)
         return viewOf(lib, moved, false)
       }
     }),
@@ -193,10 +208,14 @@ export function codemodeLibMethods(deps: CodemodeLibMethodDeps) {
       // Why: a function too long for a chat card can only be allowed here, after reading it in View.
       name: 'codemode.lib.trust',
       permission: 'workspace',
-      params: CodemodeLibTarget,
+      params: CodemodeLibTrust,
       handler: async (params, ctx): Promise<Record<string, never>> => {
         const lib = await open(ctx, params.projectRoot)
         const fn = await requireFunction(lib, params.name, params.scope)
+        // Why: allow only the bytes the person read; a file edited since then asks again.
+        if (libSourceHash(fn.source) !== params.sha256) {
+          throw new Error('function changed since you viewed it; open it again')
+        }
         await lib.trust.record(await keyFor(lib, fn.scope), fn.name, fn.source)
         return {}
       }

@@ -22,6 +22,14 @@ export const CodemodeLibRead = z.strictObject({
   projectRoot: ProjectRoot
 })
 
+// The hash of the bytes the person viewed; main refuses when the file no longer matches it.
+export const CodemodeLibTrust = z.strictObject({
+  name: Name,
+  scope: Scope,
+  sha256: z.string().regex(/^[0-9a-f]{64}$/, 'Open the function again'),
+  projectRoot: ProjectRoot
+})
+
 export const CodemodeLibMove = z.strictObject({
   name: Name,
   from: Scope,

@@ -72,7 +72,10 @@ export function CodemodeFunctionRow({
     setBusy(null)
   }
 
-  const trust = (): void => void run('trust', () => trustCodemodeFunction(projectRoot, name, scope))
+  // The hash of what the person last saw: the dialog's read once opened, else the listed bytes.
+  const [viewedSha, setViewedSha] = useState<string | null>(null)
+  const trust = (): void =>
+    void run('trust', () => trustCodemodeFunction(projectRoot, name, scope, viewedSha ?? fn.sha256))
   const move = (): void =>
     void run('move', async () => {
       await moveCodemodeFunction(projectRoot, name, scope)
@@ -171,6 +174,7 @@ export function CodemodeFunctionRow({
         projectRoot={projectRoot}
         open={viewing}
         onOpenChange={setViewing}
+        onViewedCurrent={setViewedSha}
       />
     </div>
   )

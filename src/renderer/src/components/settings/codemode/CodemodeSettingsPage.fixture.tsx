@@ -74,7 +74,8 @@ const FUNCTIONS: CodemodeLibEntryView[] = [
     scope: 'project',
     uses: 0,
     trusted: false,
-    shadowed: false
+    shadowed: false,
+    sha256: 'a'.repeat(64)
   },
   {
     name: 'openPullRequests',
@@ -85,7 +86,8 @@ const FUNCTIONS: CodemodeLibEntryView[] = [
     uses: 12,
     lastUsedAt: Date.now() - 2 * 3_600_000,
     trusted: true,
-    shadowed: false
+    shadowed: false,
+    sha256: 'a'.repeat(64)
   },
   {
     name: 'openPullRequests',
@@ -96,7 +98,8 @@ const FUNCTIONS: CodemodeLibEntryView[] = [
     uses: 3,
     lastUsedAt: Date.now() - 9 * DAY,
     trusted: true,
-    shadowed: true
+    shadowed: true,
+    sha256: 'b'.repeat(64)
   }
 ]
 const SOURCE = `/**
@@ -127,7 +130,7 @@ function libResult(method: string, functions: CodemodeLibEntryView[]): unknown {
     case 'codemode.lib.list':
       return { functions, problems: [] }
     case 'codemode.lib.read':
-      return { source: SOURCE }
+      return { source: SOURCE, sha256: 'a'.repeat(64) }
     case 'codemode.lib.history':
       return { versions: HISTORY }
     default:

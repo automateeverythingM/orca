@@ -27,14 +27,13 @@ export async function readCodemodeFunction(
   name: string,
   scope: CodemodeLibScope,
   version?: string
-): Promise<string> {
-  const { source } = await callRuntimeRpc<{ source: string }>(LOCAL, 'codemode.lib.read', {
+): Promise<{ source: string; sha256: string }> {
+  return callRuntimeRpc<{ source: string; sha256: string }>(LOCAL, 'codemode.lib.read', {
     name,
     scope,
     ...(version ? { version } : {}),
     ...withProject(projectRoot)
   })
-  return source
 }
 
 export async function codemodeFunctionHistory(
@@ -70,11 +69,17 @@ export function moveCodemodeFunction(
   })
 }
 
-/** Allows the file as it is now, the way the chat's trust card does. */
+/** Allows the bytes the person viewed (their `sha256`); main refuses if the file changed since. */
 export async function trustCodemodeFunction(
   projectRoot: CodemodeLibProject,
   name: string,
-  scope: CodemodeLibScope
+  scope: CodemodeLibScope,
+  sha256: string
 ): Promise<void> {
-  await callRuntimeRpc(LOCAL, 'codemode.lib.trust', { name, scope, ...withProject(projectRoot) })
+  await callRuntimeRpc(LOCAL, 'codemode.lib.trust', {
+    name,
+    scope,
+    sha256,
+    ...withProject(projectRoot)
+  })
 }

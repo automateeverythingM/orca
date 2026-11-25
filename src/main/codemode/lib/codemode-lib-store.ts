@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, readFile, realpath, stat, unlink } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, unlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -15,10 +15,17 @@ import {
   VERSION_RE,
   isNotFound,
   isSymlink,
+  lexists,
   listHistory,
+  refuseSymlinkedLibDirs,
+  symlinkedLibDirProblem,
   versionStamp,
   writeFileAtomic
 } from './codemode-lib-files'
+
+export { libTrustKey } from './codemode-lib-files'
+
+type CodemodeLibListing = { functions: CodemodeLibFunction[]; problems: string[] }
 
 export type CodemodeLibSaveInput = {
   name: string
@@ -32,19 +39,6 @@ function assertName(name: string): void {
   if (!CODEMODE_LIB_NAME.test(name) || CODEMODE_LIB_RESERVED.has(name)) {
     throw new Error(`invalid function name: ${JSON.stringify(name)}`)
   }
-}
-
-export async function libTrustKey(
-  scope: CodemodeLibScope,
-  projectRoot: string | null
-): Promise<string> {
-  if (scope === 'global') {
-    return '~'
-  }
-  if (!projectRoot) {
-    throw new Error('no project root for project scope')
-  }
-  return realpath(projectRoot)
 }
 
 export class CodemodeLibStore {
@@ -63,8 +57,17 @@ export class CodemodeLibStore {
     return this.projectRoot ? join(this.projectRoot, '.orca', 'lib') : null
   }
 
-  private requireDir(scope: CodemodeLibScope): string {
+  /** The scope's dir once no part of it is a symlink; every file operation goes through here. */
+  private async guardedDir(scope: CodemodeLibScope): Promise<string | null> {
     const dir = this.dir(scope)
+    if (dir) {
+      await refuseSymlinkedLibDirs(dir)
+    }
+    return dir
+  }
+
+  private async requireDir(scope: CodemodeLibScope): Promise<string> {
+    const dir = await this.guardedDir(scope)
     if (!dir) {
       throw new Error('no project root for project scope')
     }
@@ -111,16 +114,16 @@ export class CodemodeLibStore {
   }
 
   /** One scope's functions, a global hidden by a project one included: Settings shows both. */
-  async listScope(scope: CodemodeLibScope): Promise<{
-    functions: CodemodeLibFunction[]
-    problems: string[]
-  }> {
+  async listScope(scope: CodemodeLibScope): Promise<CodemodeLibListing> {
     const dir = this.dir(scope)
-    const result: { functions: CodemodeLibFunction[]; problems: string[] } = {
-      functions: [],
-      problems: []
-    }
+    const result: CodemodeLibListing = { functions: [], problems: [] }
     if (!dir) {
+      return result
+    }
+    // Why: a symlinked scope is reported, not fatal; the other scope still lists.
+    const symlinked = await symlinkedLibDirProblem(dir)
+    if (symlinked) {
+      result.problems.push(symlinked)
       return result
     }
     let entries
@@ -164,7 +167,7 @@ export class CodemodeLibStore {
 
   async read(name: string, scope: CodemodeLibScope): Promise<CodemodeLibFunction | null> {
     assertName(name)
-    const dir = this.dir(scope)
+    const dir = await this.guardedDir(scope)
     if (!dir) {
       return null
     }
@@ -185,7 +188,7 @@ export class CodemodeLibStore {
     input: CodemodeLibSaveInput
   ): Promise<{ text: string; meta: CodemodeLibMeta; exists: boolean }> {
     assertName(input.name)
-    const dir = this.requireDir(input.scope)
+    const dir = await this.requireDir(input.scope)
     const { meta: header } = parseLibHeader(input.source)
     const description = (input.description ?? header.description ?? '').trim()
     if (!description) {
@@ -204,27 +207,26 @@ export class CodemodeLibStore {
     if (Buffer.byteLength(text, 'utf8') > CODEMODE_LIB_MAX_BYTES) {
       throw new Error('function is over the 256 KiB size limit')
     }
-    const exists = await stat(join(dir, `${input.name}.js`)).then(
-      () => true,
-      (err: unknown) => {
-        if (isNotFound(err)) {
-          return false
-        }
-        throw err
-      }
-    )
+    const file = join(dir, `${input.name}.js`)
+    if (await isSymlink(file)) {
+      throw new Error('symlinked function files are not allowed')
+    }
+    const exists = await lexists(file)
     return { text, meta, exists }
   }
 
   private async toHistory(dir: string, name: string): Promise<void> {
     const historyDir = join(dir, '.history')
+    if (await isSymlink(join(dir, `${name}.js`))) {
+      throw new Error('symlinked function files are not allowed')
+    }
     await mkdir(historyDir, { recursive: true })
     await copyFile(join(dir, `${name}.js`), join(historyDir, `${name}.${versionStamp()}.js`))
   }
 
   async save(input: CodemodeLibSaveInput): Promise<CodemodeLibFunction> {
     const { text, meta, exists } = await this.prepare(input)
-    const dir = this.requireDir(input.scope)
+    const dir = await this.requireDir(input.scope)
     if (exists) {
       await this.toHistory(dir, input.name)
     }
@@ -235,7 +237,7 @@ export class CodemodeLibStore {
 
   async remove(name: string, scope: CodemodeLibScope): Promise<void> {
     assertName(name)
-    const dir = this.requireDir(scope)
+    const dir = await this.requireDir(scope)
     try {
       await this.toHistory(dir, name)
       await unlink(join(dir, `${name}.js`))
@@ -253,7 +255,9 @@ export class CodemodeLibStore {
     if (!fn) {
       throw new Error(`no function ${name} in ${from} scope`)
     }
-    if (await this.read(name, to)) {
+    // A symlink at the target counts as taken: read() skips it, but moving onto it would follow it.
+    const toDir = await this.guardedDir(to)
+    if (toDir && (await lexists(join(toDir, `${name}.js`)))) {
       throw new Error(`${name} already exists in ${to} scope`)
     }
     const moved = await this.save({
@@ -272,7 +276,7 @@ export class CodemodeLibStore {
     scope: CodemodeLibScope
   ): Promise<{ version: string; savedAt: number }[]> {
     assertName(name)
-    const dir = this.dir(scope)
+    const dir = await this.guardedDir(scope)
     if (!dir) {
       return []
     }
@@ -284,7 +288,7 @@ export class CodemodeLibStore {
     if (!VERSION_RE.test(version)) {
       throw new Error('invalid version')
     }
-    const file = join(this.requireDir(scope), '.history', `${name}.${version}.js`)
+    const file = join(await this.requireDir(scope), '.history', `${name}.${version}.js`)
     if (await isSymlink(file)) {
       throw new Error('invalid version')
     }

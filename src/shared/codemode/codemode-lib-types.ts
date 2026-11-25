@@ -41,6 +41,8 @@ export type CodemodeLibEntryView = CodemodeLibMeta & {
   trusted: boolean
   /** A global function a project function of the same name hides. */
   shadowed: boolean
+  /** SHA-256 hex of the listed bytes; `trust` must send the hash of what the person viewed. */
+  sha256: string
 }
 
 export type CodemodeLibListView = { functions: CodemodeLibEntryView[]; problems: string[] }
