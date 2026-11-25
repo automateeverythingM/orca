@@ -8,6 +8,7 @@ import type {
 import type { CodemodeRunHeader } from '../../../shared/codemode/codemode-run-wire'
 import { getProfileUserDataPath } from '../../orca-profiles/profile-storage-paths'
 import type { CodemodeRunFinish } from '../host/codemode-run-host'
+import { capLearnCall, LearnCallBudget } from './codemode-learn-caps'
 import { CodemodeLearnWorkerClient } from './db-worker/codemode-learn-worker-client'
 import type { CodemodeLearnRemote } from './store/codemode-learn-ops'
 
@@ -25,7 +26,8 @@ export type CodemodeLearnRecorderDeps = {
 
 export type CodemodeLearnFinish = { note: string | null; seenInChats: number | null }
 
-type Pending = Omit<CodemodeLearnRun, 'startedAt' | 'ms' | 'ok'>
+/** A run in flight: its calls are cut as they settle, so only what the store would keep is held. */
+type Pending = { run: Omit<CodemodeLearnRun, 'startedAt' | 'ms' | 'ok'>; budget: LearnCallBudget }
 
 const NO_NUDGE: CodemodeLearnFinish = { note: null, seenInChats: null }
 
@@ -42,17 +44,22 @@ function mayNudge(run: CodemodeLearnRun): boolean {
 export class CodemodeLearnRecorder {
   private readonly pending = new Map<string, Pending>()
   private failureLogged = false
+  private timeoutLogged = false
 
   constructor(private readonly deps: CodemodeLearnRecorderDeps) {}
 
   begin(sessionId: string, projectRoot: string, runId: string, code: string): void {
     if (this.deps.enabled()) {
-      this.pending.set(runId, { runId, sessionId, projectRoot, code, calls: [] })
+      this.pending.set(runId, {
+        run: { runId, sessionId, projectRoot, code, calls: [] },
+        budget: new LearnCallBudget()
+      })
     }
   }
 
   call(runId: string, call: CodemodeLearnCall): void {
-    this.pending.get(runId)?.calls.push(call)
+    const pending = this.pending.get(runId)
+    pending?.run.calls.push(capLearnCall(call, pending.budget))
   }
 
   async finish(
@@ -64,7 +71,7 @@ export class CodemodeLearnRecorder {
       return NO_NUDGE
     }
     this.pending.delete(runId)
-    const run: CodemodeLearnRun = { ...pending, ...end }
+    const run: CodemodeLearnRun = { ...pending.run, ...end }
     let recorded: ReturnType<CodemodeLearnRemote['record']>
     try {
       recorded = this.deps.store().record(run, Date.now())
@@ -82,7 +89,11 @@ export class CodemodeLearnRecorder {
     let timer: ReturnType<typeof setTimeout> | undefined
     const timedOut = new Promise<null>((resolve) => {
       timer = setTimeout(() => {
-        this.failed(new Error(`the Learn store did not answer within ${FINISH_WAIT_MS}ms`))
+        // Why: logged apart from failures, so a slow worker never hides a later real failure.
+        if (!this.timeoutLogged) {
+          this.timeoutLogged = true
+          this.log(`the Learn store did not answer within ${FINISH_WAIT_MS}ms; no nudge`, null)
+        }
         resolve(null)
       }, FINISH_WAIT_MS)
     })

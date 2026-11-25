@@ -107,28 +107,71 @@ describe('CodemodeLearnRecorder', () => {
 
   it('worker failure or slow worker never fails the run', async () => {
     vi.useFakeTimers()
-    let mode: 'reject' | 'hang' = 'reject'
+    let mode: 'reject' | 'hang' = 'hang'
     const h = makeRecorder({
       record: () =>
         mode === 'reject' ? Promise.reject(new Error('worker died')) : new Promise(() => {})
     })
-    h.feed('r1', ['mcp.crm.a', 'mcp.crm.b'])
-    expect(await h.recorder.finish('r1', finished)).toEqual({ note: null, seenInChats: null })
+    const slow = async (runId: string): Promise<void> => {
+      h.feed(runId, ['mcp.crm.a', 'mcp.crm.b'])
+      let settled: unknown = 'pending'
+      void h.recorder.finish(runId, finished).then((result) => (settled = result))
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(settled).toBe('pending')
+      await vi.advanceTimersByTimeAsync(1)
+      expect(settled).toEqual({ note: null, seenInChats: null })
+    }
+    await slow('r1')
+    expect(h.log).toHaveBeenCalledTimes(1)
+    expect(h.log.mock.calls[0][0]).toContain('did not answer within 2000ms')
 
-    mode = 'hang'
+    // A timeout does not use up the failure log: a later real failure is still logged, once.
+    mode = 'reject'
     h.feed('r2', ['mcp.crm.a', 'mcp.crm.b'])
-    let settled: unknown = 'pending'
-    void h.recorder.finish('r2', finished).then((result) => (settled = result))
-    await vi.advanceTimersByTimeAsync(1999)
-    expect(settled).toBe('pending')
-    await vi.advanceTimersByTimeAsync(1)
-    expect(settled).toEqual({ note: null, seenInChats: null })
+    expect(await h.recorder.finish('r2', finished)).toEqual({ note: null, seenInChats: null })
+    expect(h.log).toHaveBeenCalledTimes(2)
+    expect(h.log.mock.calls[1][1]).toEqual(new Error('worker died'))
+    h.feed('r3', ['mcp.crm.a', 'mcp.crm.b'])
+    await h.recorder.finish('r3', finished)
+    mode = 'hang'
+    await slow('r4')
+    expect(h.log).toHaveBeenCalledTimes(2)
 
     // A run the nudge can't apply to never waits on the worker at all.
-    h.feed('r3', ['mcp.crm.a'])
-    expect(await h.recorder.finish('r3', finished)).toEqual({ note: null, seenInChats: null })
-    expect(h.log).toHaveBeenCalledTimes(1)
+    h.feed('r5', ['mcp.crm.a'])
+    expect(await h.recorder.finish('r5', finished)).toEqual({ note: null, seenInChats: null })
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('cuts each call as it arrives and applies the per-run budget', async () => {
+    const h = makeRecorder({})
+    h.recorder.begin('s1', '/project', 'r', 'code')
+    const reply = 'y'.repeat(100 * 1024)
+    for (let seq = 1; seq <= 40; seq++) {
+      h.recorder.call('r', { ...call(seq), input: { note: 'z'.repeat(20 * 1024) }, output: reply })
+    }
+    h.recorder.call('r', { ...call(41), ok: false, output: undefined, error: 'boom' })
+    await h.recorder.finish('r', finished)
+    const [run] = h.store.record.mock.calls[0]
+    const [first] = run.calls
+    expect(first.inputTruncated).toBe(true)
+    expect(first.outputTruncated).toBe(true)
+    expect(Buffer.byteLength(String(first.input))).toBeLessThanOrEqual(16 * 1024)
+    expect(Buffer.byteLength(String(first.output))).toBeLessThanOrEqual(64 * 1024)
+    expect(String(first.output).startsWith('"yyy')).toBe(true)
+    // 16 + 64 KiB a call: 25 calls fit 2 MiB; the 26th and every later one keep nothing.
+    const kept = run.calls.filter((entry) => entry.input !== null)
+    expect(kept).toHaveLength(25)
+    for (const dropped of run.calls.slice(25)) {
+      expect(dropped).toMatchObject({ input: null, inputTruncated: true, outputTruncated: true })
+      expect(dropped).not.toHaveProperty('output')
+    }
+    expect(run.calls.at(-1)).toMatchObject({ seq: 41, ok: false, error: 'boom' })
+    // A small call keeps its values as they were, unmarked.
+    const small = makeRecorder({})
+    small.feed('s', ['mcp.crm.a'])
+    await small.recorder.finish('s', finished)
+    expect(small.store.record.mock.calls[0][0].calls).toEqual([call(1, 'mcp.crm.a')])
   })
 
   it('a call after finish or for an unknown run is ignored', async () => {

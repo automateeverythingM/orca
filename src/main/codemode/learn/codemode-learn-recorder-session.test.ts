@@ -46,14 +46,14 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-function launch(opts: { enabled: boolean; recorded?: Recorded }) {
+function launch(opts: { enabled: boolean | (() => boolean); recorded?: Recorded }) {
   const store = fakeLearnStore(
     async () => opts.recorded ?? { shape: 'h', otherSessions: 0, dismissed: false }
   )
   const storeFactory = vi.fn(() => store)
   const runs = new CodemodeRunStore()
   const recorder = new CodemodeLearnRecorder({
-    enabled: () => opts.enabled,
+    enabled: typeof opts.enabled === 'function' ? opts.enabled : () => opts.enabled === true,
     store: storeFactory,
     log: () => {}
   })
@@ -106,9 +106,15 @@ describe('Learn recording in a code-mode session', () => {
       [1, 'mcp.fake-crm.big', true],
       [2, 'mcp.fake-crm.find_user', true]
     ])
-    // Capping is the store's job: the whole 5 MB reply reaches it.
-    expect(run.calls[0].output).toBe('x'.repeat(5 * 1024 * 1024))
-    expect(run.calls[1].input).toEqual({ email: 'x@y.com' })
+    // Cut as it settles, by the store's own rule: main never holds or sends the 5 MB.
+    const [big, user] = run.calls
+    expect(big.outputTruncated).toBe(true)
+    expect(Buffer.byteLength(String(big.output))).toBeLessThanOrEqual(64 * 1024)
+    expect(Buffer.byteLength(String(big.output))).toBeGreaterThan(60 * 1024)
+    expect(String(big.output).startsWith('"xxxx')).toBe(true)
+    expect(big.inputTruncated).toBeUndefined()
+    expect(user.input).toEqual({ email: 'x@y.com' })
+    expect(user.outputTruncated).toBeUndefined()
   })
 
   it('records a failed inner call with its error', async () => {
@@ -144,5 +150,17 @@ describe('Learn recording in a code-mode session', () => {
     expect(text).not.toContain('Note:')
     expect(h.storeFactory).not.toHaveBeenCalled()
     expect(h.runs.runs('s1')[0].seenInChats).toBeUndefined()
+  })
+
+  it('a Learn failure never hides a run from the run view', async () => {
+    const h = launch({
+      enabled: () => {
+        throw new Error('settings unreadable')
+      }
+    })
+    const { text, isError } = await h.run(twoCalls)
+    expect({ text: text.split('\n')[0], isError }).toEqual({ text: '=> 5', isError: false })
+    expect(h.runs.runs('s1')).toMatchObject([{ state: 'ok', calls: [] }])
+    expect(h.store.record).not.toHaveBeenCalled()
   })
 })

@@ -83,11 +83,18 @@ export function createLaunchSession(deps: CodemodeLaunchSessionDeps): CodemodeSe
     limits: CODEMODE_LIMITS,
     onEvent: deps.onEvent,
     onRun: (event) => {
-      // Before the run's first inner call, which Learn would otherwise drop.
-      if (event.state === 'running') {
-        learn?.begin(event.runId, event.code)
+      try {
+        deps.onRun(event)
+      } finally {
+        // Before the run's first inner call, which Learn would otherwise drop; never in the run's way.
+        if (event.state === 'running') {
+          try {
+            learn?.begin(event.runId, event.code)
+          } catch {
+            // The run goes on unrecorded.
+          }
+        }
       }
-      deps.onRun(event)
     },
     ...(learn ? { onCall: learn.onCall, onFinish: learn.onFinish } : {}),
     ...(deps.workerPath ? { workerPath: deps.workerPath } : {})
