@@ -40,6 +40,14 @@ describe('codemode lib header', () => {
     expect(out.match(/\/\*\*/g)).toHaveLength(1)
   })
 
+  it('keeps a leading doc block without @name as body', () => {
+    const src = '/** Helper notes */\nfunction foo() {}\n'
+    expect(parseLibHeader(src)).toEqual({ meta: {}, body: src })
+    const out = renderLibFile({ name: 'foo', description: 'd', params: [], savedBy: 'user' }, src)
+    expect(out).toContain('@name foo')
+    expect(out.endsWith(src)).toBe(true)
+  })
+
   it('libSignature renders params as an object pattern', () => {
     expect(libSignature({ name: 'f', params: [{ name: 'a' }, { name: 'b' }] })).toBe('f({a, b})')
     expect(libSignature({ name: 'f', params: [] })).toBe('f()')

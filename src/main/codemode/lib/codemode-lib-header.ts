@@ -28,7 +28,8 @@ function parseParam(rest: string): CodemodeLibParam | null {
 
 export function parseLibHeader(source: string): { meta: Partial<CodemodeLibMeta>; body: string } {
   const block = BLOCK.exec(source)
-  if (!block) {
+  // Only a block that names the function is the lib header; any other doc block is body.
+  if (!block || !/^\s*\*?\s*@name\s+\S/m.test(block[1])) {
     return { meta: {}, body: source }
   }
   const meta: Partial<CodemodeLibMeta> = {}

@@ -1,7 +1,7 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CodemodeLibStore, libTrustKey } from './codemode-lib-store'
 
 const fn = (name: string, extra = ''): string =>
@@ -19,6 +19,7 @@ beforeEach(async () => {
   store = new CodemodeLibStore({ projectRoot: root, homeDir: home })
 })
 afterEach(async () => {
+  vi.useRealTimers()
   await rm(root, { recursive: true, force: true })
   await rm(home, { recursive: true, force: true })
 })
@@ -32,7 +33,8 @@ describe('CodemodeLibStore', () => {
     expect(text.startsWith('/**')).toBe(true)
     expect(text).toContain('@saved-by agent')
     expect(saved).toMatchObject({ name: 'foo', scope: 'project', savedBy: 'agent' })
-    expect(saved.source).toBe(fn('foo'))
+    expect(saved.source).toBe(text)
+    expect((await store.get('foo'))?.source).toBe(text)
     expect((await store.get('foo'))?.description).toBe('does a thing')
   })
 
@@ -107,14 +109,41 @@ describe('CodemodeLibStore', () => {
   })
 
   it('history is newest first and readVersion rejects bad versions', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
     await store.save({ ...base, name: 'foo', source: fn('foo', ' + 1') })
     await store.save({ ...base, name: 'foo', source: fn('foo', ' + 2') })
-    await new Promise((r) => setTimeout(r, 5))
+    vi.setSystemTime(Date.now() + 5000)
     await store.save({ ...base, name: 'foo', source: fn('foo', ' + 3') })
     const hist = await store.history('foo', 'project')
     expect(hist).toHaveLength(2)
     expect(hist[0].savedAt).toBeGreaterThan(hist[1].savedAt)
     await expect(store.readVersion('foo', 'project', '../../x')).rejects.toThrow('invalid version')
+  })
+
+  it('move keeps params, description and saved-by', async () => {
+    const src = `/**\n * @name foo\n * @description d\n * @param {string} a The a\n * @param b\n * @saved-by learn\n */\n${fn('foo')}`
+    await store.save({ ...base, name: 'foo', source: src, savedBy: 'learn' })
+    const before = await store.read('foo', 'project')
+    const moved = await store.move('foo', 'project')
+    expect(moved.params).toEqual([
+      { name: 'a', type: 'string', description: 'The a' },
+      { name: 'b' }
+    ])
+    expect(moved).toMatchObject({ description: 'does a thing', savedBy: 'learn', scope: 'global' })
+    expect(moved.source).toBe(before?.source)
+  })
+
+  it('refuses symlinked function files', async () => {
+    const dir = join(root, '.orca', 'lib')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(root, 'real.js'), described('lnk'))
+    await symlink(join(root, 'real.js'), join(dir, 'lnk.js'))
+    expect(await store.get('lnk')).toBeNull()
+    expect(await store.read('lnk', 'project')).toBeNull()
+    const { functions, problems } = await store.list()
+    expect(functions).toEqual([])
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toContain('lnk.js')
   })
 
   it('libTrustKey is ~ for global and the realpath for project', async () => {

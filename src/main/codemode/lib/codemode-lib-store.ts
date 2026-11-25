@@ -14,6 +14,7 @@ import { definesFunction, parseLibHeader, renderLibFile } from './codemode-lib-h
 import {
   VERSION_RE,
   isNotFound,
+  isSymlink,
   listHistory,
   versionStamp,
   writeFileAtomic
@@ -77,10 +78,15 @@ export class CodemodeLibStore {
   ): Promise<CodemodeLibFunction> {
     const file = join(dir, fileName)
     const expected = fileName.slice(0, -'.js'.length)
-    if ((await stat(file)).size > CODEMODE_LIB_MAX_BYTES) {
+    if (await isSymlink(file)) {
+      throw new Error('symlinked function files are not allowed')
+    }
+    const bytes = await readFile(file)
+    if (Buffer.byteLength(bytes) > CODEMODE_LIB_MAX_BYTES) {
       throw new Error('file is over the size limit')
     }
-    const { meta, body } = parseLibHeader(await readFile(file, 'utf8'))
+    const text = bytes.toString('utf8')
+    const { meta, body } = parseLibHeader(text)
     if (!meta.name) {
       throw new Error('missing @name header')
     }
@@ -100,7 +106,7 @@ export class CodemodeLibStore {
       savedBy: meta.savedBy ?? 'user',
       scope,
       file,
-      source: body
+      source: text
     }
   }
 
@@ -126,7 +132,7 @@ export class CodemodeLibStore {
       throw err
     }
     for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith('.js')) {
+      if (!(entry.isFile() || entry.isSymbolicLink()) || !entry.name.endsWith('.js')) {
         continue
       }
       try {
@@ -162,6 +168,9 @@ export class CodemodeLibStore {
       return null
     }
     try {
+      if (await isSymlink(join(dir, `${name}.js`))) {
+        return null
+      }
       return await this.parseFile(dir, scope, `${name}.js`)
     } catch (err) {
       if (isNotFound(err)) {
@@ -220,7 +229,7 @@ export class CodemodeLibStore {
     }
     const file = join(dir, `${input.name}.js`)
     await writeFileAtomic(file, text)
-    return { ...meta, scope: input.scope, file, source: parseLibHeader(text).body }
+    return { ...meta, scope: input.scope, file, source: text }
   }
 
   async remove(name: string, scope: CodemodeLibScope): Promise<void> {
@@ -274,6 +283,10 @@ export class CodemodeLibStore {
     if (!VERSION_RE.test(version)) {
       throw new Error('invalid version')
     }
-    return readFile(join(this.requireDir(scope), '.history', `${name}.${version}.js`), 'utf8')
+    const file = join(this.requireDir(scope), '.history', `${name}.${version}.js`)
+    if (await isSymlink(file)) {
+      throw new Error('invalid version')
+    }
+    return readFile(file, 'utf8')
   }
 }

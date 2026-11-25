@@ -1,4 +1,4 @@
-import { mkdir, readdir, rename, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, rename, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 
@@ -47,4 +47,15 @@ export async function listHistory(
     }
   }
   return out.sort((a, b) => b.version.localeCompare(a.version))
+}
+
+export async function isSymlink(file: string): Promise<boolean> {
+  try {
+    return (await lstat(file)).isSymbolicLink()
+  } catch (err) {
+    if (isNotFound(err)) {
+      return false
+    }
+    throw err
+  }
 }
