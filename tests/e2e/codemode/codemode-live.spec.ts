@@ -232,8 +232,8 @@ function logEvidence(label: string, transcript: Transcript, crm: CrmUser | null)
   )
 }
 
-/** Opens the turn's tool rows and screenshots the run_js row with the calls it made. */
-async function shootRunJsRow(page: Page, name: string): Promise<void> {
+/** Opens the turn's details and its tool run so the run_js row and its inner calls are mounted. */
+async function openRunJsRows(page: Page): Promise<void> {
   const later = page.getByRole('button', { name: 'Later' })
   if (await later.isVisible().catch(() => false)) {
     await later.click({ force: true })
@@ -246,6 +246,11 @@ async function shootRunJsRow(page: Page, name: string): Promise<void> {
       await closed.first().click({ force: true })
     }
   }
+}
+
+/** Opens the turn's tool rows and screenshots the run_js row with the calls it made. */
+async function shootRunJsRow(page: Page, name: string): Promise<void> {
+  await openRunJsRows(page)
   const row = page.getByRole('button', { name: /^Script/ }).first()
   await expect(row).toBeVisible({ timeout: 30_000 })
   // The inner-call rows sit under the run_js row (not the approval cards' text).
@@ -267,12 +272,18 @@ async function answerShownCard(
   const question = page.locator('[data-native-chat-question-card]').first()
   if (await question.isVisible().catch(() => false)) {
     const text = (await question.innerText()).replace(/\s+/g, ' ')
-    const choice = deny?.test(text) ? 'Deny' : 'Allow(?: once)?'
+    const choice = deny?.test(text) ? 'Deny' : 'Allow once'
     if (seen.at(-1) !== text) {
       seen.push(text)
       await page.screenshot({ path: path.join(SHOTS, `claude-ask-card-${seen.length}.png`) })
     }
-    await question.getByRole('button', { name: new RegExp(`${choice}$`) }).click({ force: true })
+    const choose = question.getByRole('button', { name: new RegExp(`${choice}$`) })
+    // Fixed-option cards (lib.save, lib.trust) offer a plain Allow instead of Allow once.
+    const button =
+      choice === 'Allow once' && (await choose.count()) === 0
+        ? question.getByRole('button', { name: /^Allow$/ })
+        : choose
+    await button.click({ force: true })
     const submit = question.getByRole('button', { name: /^Submit/ })
     if (await submit.isEnabled().catch(() => false)) {
       await submit.click({ force: true })
@@ -515,6 +526,14 @@ test.describe('code mode with a real agent', () => {
       .filter((use) => use.name === 'mcp__orca__run_js')
       .map((use) => String(use.input.code))
     expect(scripts.some((code) => code.includes('lib.addCreditsByEmail'))).toBe(true)
+    // The run view's inner-call rows: the host labels a saved function's load `lib.<name>`.
+    await openRunJsRows(orcaPage)
+    await expect(
+      orcaPage
+        .locator('li')
+        .filter({ hasText: /^lib\.addCreditsByEmail/ })
+        .first()
+    ).toBeVisible({ timeout: 30_000 })
     expect(crm).toMatchObject({ email: 'x@y.com', credits: 10 })
   })
 })

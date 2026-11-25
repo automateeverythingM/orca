@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useId, useState } from 'react'
 import type React from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -72,8 +72,20 @@ export function CodemodeFunctionRow({
     setBusy(null)
   }
 
-  // The hash of the bytes the person read in View; Allow trusts only those, never unseen ones.
-  const [viewedSha, setViewedSha] = useState<string | null>(null)
+  // The bytes the person read in View, tied to the listed hash they were read against: a reloaded
+  // list with a changed file drops it, so Allow needs View again and never trusts unseen bytes.
+  const [viewed, setViewed] = useState<{ listed: string; sha: string } | null>(null)
+  const viewedSha = viewed?.listed === fn.sha256 ? viewed.sha : null
+  const listedSha = fn.sha256
+  const onViewedCurrent = useCallback(
+    (sha: string) => setViewed({ listed: listedSha, sha }),
+    [listedSha]
+  )
+  const allowHintId = useId()
+  const allowViewFirst = t(
+    'settings.codemode.functions.allowViewFirst',
+    'Open View to read it first'
+  )
   const trust = (): void => {
     if (viewedSha !== null) {
       void run('trust', () => trustCodemodeFunction(projectRoot, name, scope, viewedSha))
@@ -127,16 +139,18 @@ export function CodemodeFunctionRow({
               variant="outline"
               size="xs"
               disabled={busy === 'trust' || viewedSha === null}
-              title={
-                viewedSha === null
-                  ? t('settings.codemode.functions.allowViewFirst', 'Open View to read it first')
-                  : undefined
-              }
+              title={viewedSha === null ? allowViewFirst : undefined}
+              aria-describedby={viewedSha === null ? allowHintId : undefined}
               onClick={trust}
             >
               {busy === 'trust' ? <Loader2 className="animate-spin" /> : null}
               {t('settings.codemode.functions.allow', 'Allow')}
             </Button>
+          )}
+          {fn.trusted || viewedSha !== null ? null : (
+            <span id={allowHintId} className="sr-only">
+              {allowViewFirst}
+            </span>
           )}
           <Button
             variant="ghost"
@@ -187,7 +201,7 @@ export function CodemodeFunctionRow({
         projectRoot={projectRoot}
         open={viewing}
         onOpenChange={setViewing}
-        onViewedCurrent={setViewedSha}
+        onViewedCurrent={onViewedCurrent}
       />
     </div>
   )
