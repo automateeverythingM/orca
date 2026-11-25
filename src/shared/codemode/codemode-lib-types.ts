@@ -37,11 +37,11 @@ export type CodemodeLibEntryView = CodemodeLibMeta & {
   scope: CodemodeLibScope
   uses: number
   lastUsedAt?: number
-  /** The file's current bytes match the hash the person allowed. */
+  /** The file's current text (as UTF-8) matches the hash the person allowed. */
   trusted: boolean
   /** A global function a project function of the same name hides. */
   shadowed: boolean
-  /** SHA-256 hex of the listed bytes; `trust` must send the hash of what the person viewed. */
+  /** SHA-256 hex of the listed UTF-8 text; `trust` must send the hash of what the person viewed. */
   sha256: string
 }
 

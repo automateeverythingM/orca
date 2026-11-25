@@ -1,8 +1,15 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import type * as NodeFsPromises from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CodemodeLibStore, libTrustKey } from './codemode-lib-store'
+
+// Pass-through, so a test can see which files the store reads.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeFsPromises>()
+  return { ...actual, readFile: vi.fn(actual.readFile) }
+})
 
 const fn = (name: string, extra = ''): string =>
   `async function ${name}({ a }) { return a${extra} }\n`
@@ -91,6 +98,18 @@ describe('CodemodeLibStore', () => {
     }
   })
 
+  it('never reads an oversized file', async () => {
+    const dir = join(root, '.orca', 'lib')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'big.js'), `${described('big')}//${'x'.repeat(256 * 1024)}\n`)
+    vi.mocked(readFile).mockClear()
+    const { problems } = await store.list()
+    await expect(store.read('big', 'project')).rejects.toThrow('over the size limit')
+    expect(problems).toEqual([expect.stringContaining('big.js: file is over the size limit')])
+    const paths = vi.mocked(readFile).mock.calls.map(([file]) => String(file))
+    expect(paths.filter((file) => file.endsWith('big.js'))).toEqual([])
+  })
+
   it('remove keeps the last version in history', async () => {
     await store.save({ ...base, name: 'foo', source: fn('foo') })
     await store.remove('foo', 'project')
@@ -103,8 +122,9 @@ describe('CodemodeLibStore', () => {
     await store.save({ ...base, scope: 'global', name: 'foo', source: fn('foo') })
     await expect(store.move('foo', 'project')).rejects.toThrow('already exists')
     await store.remove('foo', 'global')
-    const moved = await store.move('foo', 'project')
-    expect(moved.scope).toBe('global')
+    const { from, to } = await store.move('foo', 'project')
+    expect(from.scope).toBe('project')
+    expect(to.scope).toBe('global')
     expect(await store.read('foo', 'project')).toBeNull()
   })
 
@@ -120,11 +140,27 @@ describe('CodemodeLibStore', () => {
     await expect(store.readVersion('foo', 'project', '../../x')).rejects.toThrow('invalid version')
   })
 
+  it('two saves in the same millisecond keep both versions', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    for (const n of [1, 2, 3, 4]) {
+      await store.save({ ...base, name: 'foo', source: fn('foo', ` + ${n}`) })
+    }
+    const hist = await store.history('foo', 'project')
+    expect(hist.map((h) => h.version.slice(19))).toEqual(['-2', '-1', ''])
+    expect(new Set(hist.map((h) => h.savedAt)).size).toBe(1)
+    const texts = await Promise.all(hist.map((h) => store.readVersion('foo', 'project', h.version)))
+    expect(texts.map((t) => /a \+ (\d)/.exec(t)?.[1])).toEqual(['3', '2', '1'])
+    await expect(store.readVersion('foo', 'project', `${hist[2].version}-x`)).rejects.toThrow(
+      'invalid version'
+    )
+  })
+
   it('move keeps params, description and saved-by', async () => {
     const src = `/**\n * @name foo\n * @description d\n * @param {string} a The a\n * @param b\n * @saved-by learn\n */\n${fn('foo')}`
     await store.save({ ...base, name: 'foo', source: src, savedBy: 'learn' })
     const before = await store.read('foo', 'project')
-    const moved = await store.move('foo', 'project')
+    const { from, to: moved } = await store.move('foo', 'project')
+    expect(from.source).toBe(before?.source)
     expect(moved.params).toEqual([
       { name: 'a', type: 'string', description: 'The a' },
       { name: 'b' }

@@ -110,10 +110,46 @@ describe('CodemodeLibStore and symlinks', () => {
     expect(await readdir(join(outside, 'lib'))).toEqual(['evil.js'])
   })
 
-  it('refuses a symlinked .orca in the home dir', async () => {
-    await symlink(outside, join(home, '.orca'))
-    await expect(save('tidy', 'global')).rejects.toThrow('symlinked lib directories')
-    await expect(store.read('tidy', 'global')).rejects.toThrow('symlinked lib directories')
-    expect(await readdir(outside)).toEqual(['id_rsa'])
+  it('allows a symlinked .orca in the home dir (the person’s own dotfiles)', async () => {
+    const dotfiles = await mkdtemp(join(tmpdir(), 'lib-ln-dotfiles-'))
+    try {
+      await symlink(dotfiles, join(home, '.orca'))
+      await save('tidy', 'global')
+      await save('tidy', 'global')
+      expect((await store.read('tidy', 'global'))?.name).toBe('tidy')
+      expect(await store.history('tidy', 'global')).toHaveLength(1)
+      expect((await store.list()).problems).toEqual([])
+      expect(await readdir(join(dotfiles, 'lib'))).toEqual(['.history', 'tidy.js'])
+    } finally {
+      await rm(dotfiles, { recursive: true, force: true })
+    }
+  })
+
+  it('still refuses a symlinked lib or .history under a symlinked home .orca', async () => {
+    const dotfiles = await mkdtemp(join(tmpdir(), 'lib-ln-dotfiles-'))
+    try {
+      await symlink(dotfiles, join(home, '.orca'))
+      await symlink(outside, join(dotfiles, 'lib'))
+      await expect(save('tidy', 'global')).rejects.toThrow('symlinked lib directories')
+      await rm(join(dotfiles, 'lib'))
+      await mkdir(join(dotfiles, 'lib'))
+      await symlink(outside, join(dotfiles, 'lib', '.history'))
+      await expect(store.history('tidy', 'global')).rejects.toThrow('symlinked lib directories')
+      expect(await readdir(outside)).toEqual(['id_rsa'])
+    } finally {
+      await rm(dotfiles, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses a symlinked .orca in the project root, and list reports it', async () => {
+    await mkdir(join(outside, 'lib'))
+    await writeFile(join(outside, 'lib', 'evil.js'), `/** @name evil */\n${fn('evil')}`)
+    await symlink(outside, join(root, '.orca'))
+    await expect(store.read('evil', 'project')).rejects.toThrow('symlinked lib directories')
+    await expect(save('tidy', 'project')).rejects.toThrow('symlinked lib directories')
+    expect((await store.list()).problems).toEqual([
+      expect.stringContaining('symlinked lib directories')
+    ])
+    expect(await readdir(join(outside, 'lib'))).toEqual(['evil.js'])
   })
 })

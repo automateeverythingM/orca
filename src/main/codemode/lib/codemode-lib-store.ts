@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, readFile, unlink } from 'node:fs/promises'
+import { readdir, readFile, unlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -13,13 +13,14 @@ import {
 import { definesFunction, parseLibHeader, renderLibFile } from './codemode-lib-header'
 import {
   VERSION_RE,
+  copyToHistory,
   isNotFound,
   isSymlink,
   lexists,
   listHistory,
+  readLibFileText,
   refuseSymlinkedLibDirs,
   symlinkedLibDirProblem,
-  versionStamp,
   writeFileAtomic
 } from './codemode-lib-files'
 
@@ -61,7 +62,7 @@ export class CodemodeLibStore {
   private async guardedDir(scope: CodemodeLibScope): Promise<string | null> {
     const dir = this.dir(scope)
     if (dir) {
-      await refuseSymlinkedLibDirs(dir)
+      await refuseSymlinkedLibDirs(dir, scope)
     }
     return dir
   }
@@ -81,14 +82,7 @@ export class CodemodeLibStore {
   ): Promise<CodemodeLibFunction> {
     const file = join(dir, fileName)
     const expected = fileName.slice(0, -'.js'.length)
-    if (await isSymlink(file)) {
-      throw new Error('symlinked function files are not allowed')
-    }
-    const bytes = await readFile(file)
-    if (Buffer.byteLength(bytes) > CODEMODE_LIB_MAX_BYTES) {
-      throw new Error('file is over the size limit')
-    }
-    const text = bytes.toString('utf8')
+    const text = await readLibFileText(file)
     const { meta, body } = parseLibHeader(text)
     if (!meta.name) {
       throw new Error('missing @name header')
@@ -121,7 +115,7 @@ export class CodemodeLibStore {
       return result
     }
     // Why: a symlinked scope is reported, not fatal; the other scope still lists.
-    const symlinked = await symlinkedLibDirProblem(dir)
+    const symlinked = await symlinkedLibDirProblem(dir, scope)
     if (symlinked) {
       result.problems.push(symlinked)
       return result
@@ -216,12 +210,10 @@ export class CodemodeLibStore {
   }
 
   private async toHistory(dir: string, name: string): Promise<void> {
-    const historyDir = join(dir, '.history')
     if (await isSymlink(join(dir, `${name}.js`))) {
       throw new Error('symlinked function files are not allowed')
     }
-    await mkdir(historyDir, { recursive: true })
-    await copyFile(join(dir, `${name}.js`), join(historyDir, `${name}.${versionStamp()}.js`))
+    await copyToHistory(dir, name)
   }
 
   async save(input: CodemodeLibSaveInput): Promise<CodemodeLibFunction> {
@@ -249,7 +241,11 @@ export class CodemodeLibStore {
     }
   }
 
-  async move(name: string, from: CodemodeLibScope): Promise<CodemodeLibFunction> {
+  /** `from` is the file as read; `to` is the file written from exactly that text. */
+  async move(
+    name: string,
+    from: CodemodeLibScope
+  ): Promise<{ from: CodemodeLibFunction; to: CodemodeLibFunction }> {
     const to: CodemodeLibScope = from === 'project' ? 'global' : 'project'
     const fn = await this.read(name, from)
     if (!fn) {
@@ -268,7 +264,7 @@ export class CodemodeLibStore {
       savedBy: fn.savedBy
     })
     await this.remove(name, from)
-    return moved
+    return { from: fn, to: moved }
   }
 
   async history(

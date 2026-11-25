@@ -5,6 +5,10 @@ import { CodemodeLibJsonFile } from './codemode-lib-json-file'
 
 export type CodemodeLibTrustState = 'trusted' | 'unknown' | 'changed'
 
+/**
+ * SHA-256 hex of the UTF-8 text that is evaluated: the file decoded as UTF-8, then re-encoded.
+ * Not the raw file bytes; invalid UTF-8 decodes to U+FFFD, which is what runs.
+ */
 export function libSourceHash(source: string): string {
   return createHash('sha256').update(source, 'utf8').digest('hex')
 }

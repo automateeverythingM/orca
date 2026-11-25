@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createLibRecords,
   type CodemodeLibRecords
@@ -27,6 +27,7 @@ beforeEach(async () => {
   store = new CodemodeLibStore({ projectRoot: root, homeDir: home })
 })
 afterEach(async () => {
+  vi.restoreAllMocks()
   await rm(root, { recursive: true, force: true })
   await rm(home, { recursive: true, force: true })
 })
@@ -218,6 +219,29 @@ describe('codemode.lib.* RPC methods', () => {
     const text = await readFile(join(home, '.orca', 'lib', 'f.js'), 'utf8')
     expect(await records.trust.state('~', 'f', text)).toBe('unknown')
     expect(await records.trust.state(projectKey, 'f', `${saved.source}// before`)).toBe('unknown')
+  })
+
+  it('move does not carry trust onto text edited after the trust check', async () => {
+    const saved = await save('f', 'project')
+    const projectKey = await libTrustKey('project', root)
+    await records.trust.record(projectKey, 'f', saved.source)
+    const edited = saved.source.replace('return a', 'return a + 1')
+    const realMove = CodemodeLibStore.prototype.move
+    // The file changes on disk after the person saw it trusted, just before the move reads it.
+    vi.spyOn(CodemodeLibStore.prototype, 'move').mockImplementation(async function (
+      this: CodemodeLibStore,
+      name,
+      from
+    ) {
+      await writeFile(join(root, '.orca', 'lib', 'f.js'), edited)
+      return realMove.call(this, name, from)
+    })
+    const { call } = methodsFor()
+    const moved = await call('codemode.lib.move', { name: 'f', from: 'project', projectRoot: root })
+    expect(moved).toMatchObject({ name: 'f', scope: 'global', trusted: false })
+    const text = await readFile(join(home, '.orca', 'lib', 'f.js'), 'utf8')
+    expect(text).toContain('return a + 1')
+    expect(await records.trust.state('~', 'f', text)).toBe('unknown')
   })
 
   it('move refuses an existing target', async () => {

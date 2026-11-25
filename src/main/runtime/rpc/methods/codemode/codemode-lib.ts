@@ -192,11 +192,11 @@ export function codemodeLibMethods(deps: CodemodeLibMethodDeps) {
       params: CodemodeLibMove,
       handler: async (params, ctx): Promise<CodemodeLibEntryView> => {
         const lib = await open(ctx, params.projectRoot)
-        const before = await requireFunction(lib, params.name, params.from)
         const oldKey = await keyFor(lib, params.from)
-        const was = await lib.trust.state(oldKey, before.name, before.source)
-        const moved = await lib.store.move(params.name, params.from)
+        const { from, to: moved } = await lib.store.move(params.name, params.from)
         // Why: a move carries trust over, never grants it; Allow is the only way to trust here.
+        // The check uses the text the move read and wrote, not an earlier read of the file.
+        const was = await lib.trust.state(oldKey, from.name, from.source)
         if (was === 'trusted') {
           await lib.trust.record(await keyFor(lib, moved.scope), moved.name, moved.source)
         }
@@ -212,7 +212,7 @@ export function codemodeLibMethods(deps: CodemodeLibMethodDeps) {
       handler: async (params, ctx): Promise<Record<string, never>> => {
         const lib = await open(ctx, params.projectRoot)
         const fn = await requireFunction(lib, params.name, params.scope)
-        // Why: allow only the bytes the person read; a file edited since then asks again.
+        // Why: allow only the text the person read; a file edited since then asks again.
         if (libSourceHash(fn.source) !== params.sha256) {
           throw new Error('function changed since you viewed it; open it again')
         }
