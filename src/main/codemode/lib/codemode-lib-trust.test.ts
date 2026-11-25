@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile, mkdir, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -54,5 +54,18 @@ describe('CodemodeLibTrust', () => {
     await trust.record('~', 'f', 'src')
     expect(await readFile(`${file()}.bad`, 'utf8')).toBe('{not json')
     expect(await trust.state('~', 'f', 'src')).toBe('trusted')
+  })
+
+  it('an unreadable trust path makes record reject and leaves the path alone', async () => {
+    await mkdir(file(), { recursive: true })
+    await expect(trust.record('~', 'f', 'src')).rejects.toThrow()
+    expect((await stat(file())).isDirectory()).toBe(true)
+  })
+
+  it('a __proto__ key does not touch prototypes', async () => {
+    await trust.record('__proto__', '__proto__', 'src')
+    expect(await trust.state('__proto__', '__proto__', 'src')).toBe('trusted')
+    expect(Object.keys({})).toEqual([])
+    expect(await trust.state('other', 'f', 'src')).toBe('unknown')
   })
 })

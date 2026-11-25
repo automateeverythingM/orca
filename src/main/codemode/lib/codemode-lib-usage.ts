@@ -23,14 +23,14 @@ export class CodemodeLibUsage {
 
   recordUse(key: string, name: string, at: number = Date.now()): Promise<void> {
     return this.store.update((table) => {
-      const prev = Object.hasOwn(table[key] ?? {}, name) ? table[key][name] : { uses: 0 }
-      table[key] = { ...table[key], [name]: { uses: prev.uses + 1, lastUsedAt: at } }
+      const names = table.get(key) ?? new Map<string, Usage>()
+      names.set(name, { uses: (names.get(name)?.uses ?? 0) + 1, lastUsedAt: at })
+      table.set(key, names)
     })
   }
 
   async read(key: string, name: string): Promise<Usage> {
-    const { table } = await this.store.read()
-    const found = Object.hasOwn(table[key] ?? {}, name) ? table[key][name] : undefined
+    const found = (await this.store.read()).get(key)?.get(name)
     return found ? { uses: found.uses, lastUsedAt: found.lastUsedAt } : { uses: 0 }
   }
 }

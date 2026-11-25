@@ -21,8 +21,7 @@ export class CodemodeLibTrust {
   }
 
   async state(key: string, name: string, source: string): Promise<CodemodeLibTrustState> {
-    const { table } = await this.store.read()
-    const recorded = Object.hasOwn(table[key] ?? {}, name) ? table[key][name] : undefined
+    const recorded = (await this.store.read()).get(key)?.get(name)
     if (recorded === undefined) {
       return 'unknown'
     }
@@ -32,15 +31,15 @@ export class CodemodeLibTrust {
   record(key: string, name: string, source: string): Promise<void> {
     const sha = libSourceHash(source)
     return this.store.update((table) => {
-      table[key] = { ...table[key], [name]: sha }
+      const names = table.get(key) ?? new Map<string, string>()
+      names.set(name, sha)
+      table.set(key, names)
     })
   }
 
   forget(key: string, name: string): Promise<void> {
     return this.store.update((table) => {
-      if (table[key]) {
-        delete table[key][name]
-      }
+      table.get(key)?.delete(name)
     })
   }
 }
