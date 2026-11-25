@@ -1,7 +1,13 @@
 const PRELUDE_NAMES = new Set(['list', 'describe', 'call'])
 
+export type CodemodeToolDescriptionInput = {
+  servers: string[]
+  /** The chat can call Orca's own actions as `orca.*`; absent access, the line is left out. */
+  orca: boolean
+}
+
 /** The `run_js` description shown to the agent; at most ~150 words. */
-export function buildToolDescription(input: { servers: string[] }): string {
+export function buildToolDescription(input: CodemodeToolDescriptionInput): string {
   const servers = input.servers.length > 0 ? input.servers.join(', ') : 'none configured'
   const shadowed = input.servers.filter((name) => PRELUDE_NAMES.has(name))
   const lines = [
@@ -12,9 +18,13 @@ export function buildToolDescription(input: { servers: string[] }): string {
     'bash(cmd, {timeout?}) -> {exit_code, output} (timeout in seconds), print(...values).',
     'MCP tool results are an object when the tool returns structured content, otherwise text (JSON.parse it if it is JSON).',
     `MCP servers: ${servers}.`,
-    "Call mcp.describe(server) before using a server's tools for the first time.",
-    "orca.areas(), orca.describe(area or method), orca.<area>.<method>(params) for Orca's own actions; orca.context() for this chat's ids."
+    "Call mcp.describe(server) before using a server's tools for the first time."
   ]
+  if (input.orca) {
+    lines.push(
+      "orca.areas(), orca.describe(area or method), orca.<area>.<method>(params) for Orca's own actions; orca.context() for this chat's ids."
+    )
+  }
   if (shadowed.length > 0) {
     lines.push(`Call ${shadowed.join(', ')} through mcp.call(server, tool, args).`)
   }

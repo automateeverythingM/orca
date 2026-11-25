@@ -121,6 +121,11 @@ export class CodemodeSession {
     return this.pool.names()
   }
 
+  /** Whether this chat can call Orca's own actions as `orca.*`. */
+  hasOrca(): boolean {
+    return this.opts.orca !== undefined
+  }
+
   async run(
     code: string,
     opts: { signal: AbortSignal; approver: Approver; connection?: object }

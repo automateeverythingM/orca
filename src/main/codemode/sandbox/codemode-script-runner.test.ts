@@ -150,6 +150,20 @@ describe('runScript', () => {
     ])
   })
 
+  it('printing or stringifying orca itself sends no host call', async () => {
+    const { host, calls } = stubHost(() => ({ ok: true, value: 1 }))
+    const result = await run(
+      `print(orca)
+       return [String(orca), orca.toString(), \`\${orca}\`, String(orca.worktree)]`,
+      host
+    )
+    expect(result).toMatchObject({
+      ok: true,
+      value: ['[orca]', '[orca]', '[orca]', '[orca worktree]']
+    })
+    expect(calls).toEqual([])
+  })
+
   it('abort', async () => {
     const controller = new AbortController()
     const { host } = stubHost(() => {

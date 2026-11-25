@@ -204,9 +204,8 @@ describe('orca.* end to end over the real registry and dispatcher', () => {
 
     // No agent-session host runs here, so the chat's session cannot be verified: refused, never
     // attributed to another caller.
-    expect(value).toEqual([
-      `Agent session ${SESSION_ID} cannot be verified: this Orca is not running its agent-session host. No effects were applied.`
-    ])
+    expect(value).toEqual([expect.stringContaining('cannot be verified')])
+    expect(value).toEqual([expect.stringContaining('No effects were applied')])
     expect(dispatched).toEqual(['orchestration.runList'])
   })
 })

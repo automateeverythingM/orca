@@ -7,7 +7,10 @@ import type {
 } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import type { ApprovalDecision, Approver, CodemodeSession } from '../host/codemode-run-host'
-import { buildToolDescription } from './codemode-tool-description'
+import {
+  buildToolDescription,
+  type CodemodeToolDescriptionInput
+} from './codemode-tool-description'
 
 /** What the server needs from a session; the real `CodemodeSession` satisfies it. */
 export type CodemodeSessionHandle = Pick<CodemodeSession, 'run' | 'serverNames' | 'close'>
@@ -37,7 +40,7 @@ const DECISION_SCHEMA = {
 /** One agent connection's MCP server: the single `run_js` tool, bound to this connection. */
 export function createCodemodeMcpServer(
   session: CodemodeSessionHandle,
-  describeInput: () => { servers: string[] },
+  describeInput: () => CodemodeToolDescriptionInput,
   progressMs: number,
   connection: CodemodeConnectionState = { running: 0 }
 ): McpServer {

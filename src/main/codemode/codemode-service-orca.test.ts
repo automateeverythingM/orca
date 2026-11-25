@@ -164,6 +164,10 @@ describe('CodemodeService with Orca runtime access', () => {
     expect(result.isError).toBe(true)
     expect(result.text).toContain('Orca actions are not available in this chat')
     expect(sent).toEqual([])
+    const { tools } = await client.listTools()
+    const description = tools.find((tool) => tool.name === 'run_js')?.description ?? ''
+    expect(description).toContain('3 or more tool calls')
+    expect(description).not.toContain('orca.')
   })
 
   it('describes orca.* in the run_js tool within the word budget', async () => {

@@ -116,7 +116,8 @@ export class CodemodeService {
       }
       this.sessions.set(sessionId, { launchId: input.launchId, session, earlyEnds: new Set() })
       const token = this.server.register(sessionId, session, () => ({
-        servers: session.serverNames()
+        servers: session.serverNames(),
+        orca: session.hasOrca()
       }))
       void previous?.session.close()
       const authorization = `Bearer ${token}`

@@ -1,3 +1,4 @@
+// Guards scripts' orca.* surface, not the machine: bash remains a separate route (Part A gate).
 import type { ZodType } from 'zod'
 
 export type OrcaMethodLabel = 'read' | 'write' | 'destructive'

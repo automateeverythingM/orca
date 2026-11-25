@@ -55,6 +55,8 @@ export const CODEMODE_PRELUDE = String.raw`(() => {
   globalThis.orca = new Proxy({}, {
     get: (_target, name) => {
       if (typeof name !== 'string' || notMethods.has(name)) return undefined
+      // Like a chained path: printing or stringifying orca itself must not call the host.
+      if (name === 'toString') return () => '[orca]'
       return Object.hasOwn(orcaReserved, name) ? orcaReserved[name] : orcaPath(name)
     }
   })

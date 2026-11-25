@@ -223,6 +223,11 @@ describe('orca.* in scripts', () => {
       'Orca: worktree.remove',
       'Orca: worktree.remove'
     ])
+    // The destructive card explains why "Allow for this session" did not stick.
+    const destructive = asks[1]?.detail ?? ''
+    expect(destructive.startsWith('This asks every time.\n')).toBe(true)
+    expect(JSON.parse(destructive.slice('This asks every time.\n'.length))).toEqual({ id: 'w' })
+    expect(asks[0]?.detail.startsWith('This asks')).toBe(false)
     expect(requests).toHaveLength(4)
   })
 

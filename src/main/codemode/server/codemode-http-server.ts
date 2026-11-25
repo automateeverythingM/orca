@@ -10,6 +10,7 @@ import {
   type CodemodeSessionHandle
 } from './codemode-mcp-connection'
 import { CodemodeTokens } from './codemode-tokens'
+import type { CodemodeToolDescriptionInput } from './codemode-tool-description'
 
 export type { CodemodeSessionHandle } from './codemode-mcp-connection'
 
@@ -21,7 +22,7 @@ type Connection = {
 type Registration = {
   sessionId: string
   session: CodemodeSessionHandle
-  describeInput: () => { servers: string[] }
+  describeInput: () => CodemodeToolDescriptionInput
   connections: Map<string, Connection>
 }
 
@@ -84,7 +85,7 @@ export class CodemodeHttpServer {
   register(
     sessionId: string,
     session: CodemodeSessionHandle,
-    describeInput: () => { servers: string[] }
+    describeInput: () => CodemodeToolDescriptionInput
   ): string {
     const previous = this.registrations.get(sessionId)
     if (previous) {

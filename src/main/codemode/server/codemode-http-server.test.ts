@@ -33,7 +33,7 @@ function stubSession(run: RunImpl): CodemodeSessionHandle {
 }
 
 function register(run: RunImpl, sessionId = 'session-1'): string {
-  return server.register(sessionId, stubSession(run), () => ({ servers: ['crm'] }))
+  return server.register(sessionId, stubSession(run), () => ({ servers: ['crm'], orca: true }))
 }
 
 async function connect(
