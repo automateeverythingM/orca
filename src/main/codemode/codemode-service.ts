@@ -1,6 +1,10 @@
 import type { BotToolServer } from '../../shared/bot-tools'
 import { botToolRelay } from '../bots/tool-relay/bot-tool-relay'
-import { createLaunchSession } from './codemode-launch-session'
+import {
+  type CodemodeLibRecords,
+  createLaunchSession,
+  libAccessFor
+} from './codemode-launch-session'
 import type {
   CodemodeConnectorWiring,
   CodemodeInnerCallListener,
@@ -25,6 +29,9 @@ import {
   readConnectorsOff
 } from './connectors/codemode-connector-session-switch'
 import type { InnerCallEvent } from './host/codemode-run-host'
+import { libSignatures } from './lib/codemode-lib-host-plan'
+import { CodemodeLibTrust } from './lib/codemode-lib-trust'
+import { CodemodeLibUsage } from './lib/codemode-lib-usage'
 import { readCodemodeServerSpecs } from './mcp-pool/codemode-mcp-config'
 import { type CodemodeRunStore, processCodemodeRunStore } from './runs/codemode-run-store'
 import { CodemodeHttpServer } from './server/codemode-http-server'
@@ -54,6 +61,7 @@ export class CodemodeService {
   private readonly relay: ConnectorRelay
   private removeRelayRoute: (() => void) | null = null
   private orcaRpc: CodemodeOrcaRpc | undefined
+  private readonly lib: CodemodeLibRecords
 
   constructor(private readonly opts: CodemodeServiceOptions = {}) {
     this.server = opts.server ?? new CodemodeHttpServer()
@@ -62,6 +70,17 @@ export class CodemodeService {
     this.relay = opts.relay ?? botToolRelay
     this.log = opts.log ?? ((message, error) => console.warn(`[codemode] ${message}`, error ?? ''))
     this.orcaRpc = opts.orcaRpc
+    const homeDir = opts.libHomeDir
+    this.lib = {
+      trust: new CodemodeLibTrust({ homeDir }),
+      usage: new CodemodeLibUsage({ homeDir }),
+      ...(homeDir ? { homeDir } : {})
+    }
+  }
+
+  /** The saved-function trust and usage records all chats share; Settings must use these too. */
+  libRecords(): CodemodeLibRecords {
+    return this.lib
   }
 
   /** Orca's runtime for launches from now on; a launched chat keeps the access it opened with. */
@@ -97,6 +116,11 @@ export class CodemodeService {
         this.log(`MCP config problems for session ${sessionId}: ${problems.join('; ')}`)
       }
       const wiring = await this.openConnectors()
+      const lib = libAccessFor(input.root, this.lib)
+      const signatures = await libSignatures(lib.store).catch((error: unknown) => {
+        this.log(`saved functions could not be read for session ${sessionId}`, error)
+        return []
+      })
       const session = createLaunchSession({
         input,
         specs,
@@ -105,6 +129,7 @@ export class CodemodeService {
         trustedServers: this.opts.trustedServers ?? (() => []),
         ...(this.orcaRpc ? { orcaRpc: this.orcaRpc } : {}),
         ...(this.opts.sessionContext ? { sessionContext: this.opts.sessionContext } : {}),
+        lib,
         onEvent: (event) => this.emit(sessionId, event),
         onRun: (event) => this.runs.run(sessionId, event),
         ...(this.opts.workerPath ? { workerPath: this.opts.workerPath } : {})
@@ -117,7 +142,8 @@ export class CodemodeService {
       this.sessions.set(sessionId, { launchId: input.launchId, session, earlyEnds: new Set() })
       const token = this.server.register(sessionId, session, () => ({
         servers: session.serverNames(),
-        orca: session.hasOrca()
+        orca: session.hasOrca(),
+        lib: signatures
       }))
       void previous?.session.close()
       const authorization = `Bearer ${token}`

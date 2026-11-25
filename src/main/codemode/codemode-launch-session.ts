@@ -14,8 +14,30 @@ import {
   type CodemodeSessionOptions,
   type InnerCallEvent
 } from './host/codemode-run-host'
+import type { CodemodeLibAccess } from './lib/codemode-lib-host-plan'
+import { CodemodeLibStore } from './lib/codemode-lib-store'
+import type { CodemodeLibTrust } from './lib/codemode-lib-trust'
+import type { CodemodeLibUsage } from './lib/codemode-lib-usage'
 import type { CodemodeServerSpec } from './mcp-pool/codemode-mcp-config'
 import { createOrcaRpcAccess } from './orca/codemode-orca-dispatch'
+
+/** The trust and usage records every chat shares; one instance each, so their writes queue together. */
+export type CodemodeLibRecords = {
+  trust: CodemodeLibTrust
+  usage: CodemodeLibUsage
+  /** Home for global functions; default the user's home. */
+  homeDir?: string
+}
+
+/** A chat's saved functions: project scope at its root, global in the records' home. */
+export function libAccessFor(root: string, records: CodemodeLibRecords): CodemodeLibAccess {
+  return {
+    store: new CodemodeLibStore({ projectRoot: root, homeDir: records.homeDir }),
+    trust: records.trust,
+    usage: records.usage,
+    projectRoot: root
+  }
+}
 
 export type CodemodeLaunchSessionDeps = {
   input: CodemodeLaunchInput
@@ -27,6 +49,8 @@ export type CodemodeLaunchSessionDeps = {
   /** Absent: every `orca.*` call in this chat fails. */
   orcaRpc?: CodemodeOrcaRpc
   sessionContext?: CodemodeSessionContext
+  /** Absent: every `lib.*` call in this chat fails. */
+  lib?: CodemodeLibAccess
   onEvent: (event: InnerCallEvent) => void
   onRun: NonNullable<CodemodeSessionOptions['onRun']>
   workerPath?: string
@@ -62,6 +86,7 @@ export function createLaunchSession(deps: CodemodeLaunchSessionDeps): CodemodeSe
     specs: deps.specs,
     ...(connectors ? { connectors } : {}),
     ...(orca ? { orca } : {}),
+    ...(deps.lib ? { lib: deps.lib } : {}),
     limits: CODEMODE_LIMITS,
     onEvent: deps.onEvent,
     onRun: deps.onRun,

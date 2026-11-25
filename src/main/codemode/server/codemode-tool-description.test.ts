@@ -26,4 +26,31 @@ describe('buildToolDescription', () => {
       'MCP servers: none configured.'
     )
   })
+
+  const LIB_LINE =
+    'lib.<name>(args), lib.list(), lib.describe(name), lib.save({name, source, scope?, description?}) for saved functions.'
+
+  it('lists up to 60 signatures then a more note', () => {
+    const sigs = Array.from({ length: 65 }, (_, i) => `f${i}({a})`)
+    const text = buildToolDescription({ servers: [], orca: false, lib: sigs })
+    expect(text).toContain(LIB_LINE)
+    expect(text).toContain(
+      `Saved functions: ${sigs.slice(0, 60).join(', ')} (+5 more: lib.list()).`
+    )
+    expect(text).not.toContain('f60(')
+    const few = buildToolDescription({ servers: [], orca: false, lib: ['add({a, b})', 'ping()'] })
+    expect(few).toContain('Saved functions: add({a, b}), ping().')
+    expect(few).not.toContain('more:')
+  })
+
+  it('has the lib line but no saved list when there are none', () => {
+    const text = buildToolDescription({ servers: ['crm'], orca: true, lib: [] })
+    expect(text).toContain(LIB_LINE)
+    expect(text).not.toContain('Saved functions')
+    expect(words(text)).toBeLessThanOrEqual(150)
+  })
+
+  it('no lib line when the chat has no lib access', () => {
+    expect(buildToolDescription({ servers: ['crm'], orca: true })).not.toContain('lib.')
+  })
 })

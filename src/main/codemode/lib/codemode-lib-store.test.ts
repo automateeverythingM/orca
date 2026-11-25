@@ -59,7 +59,7 @@ describe('CodemodeLibStore', () => {
   })
 
   it('rejects unsafe names', async () => {
-    for (const name of ['../x', 'a/b', 'save', '1abc']) {
+    for (const name of ['../x', 'a/b', 'save', '1abc', 'lib', 'await', 'yield', 'let']) {
       await expect(store.save({ ...base, name, source: fn(name) })).rejects.toThrow()
       await expect(store.read(name, 'project')).rejects.toThrow()
     }

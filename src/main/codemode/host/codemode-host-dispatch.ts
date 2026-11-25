@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import type { CodemodeLimits } from '../codemode-limits'
+import { type LibHostContext, planLibHostCall } from '../lib/codemode-lib-host-plan'
 import { isConnectorIdentity } from '../mcp-pool/codemode-mcp-connector-access'
 import type { CodemodeMcpPool, CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
 import type { OrcaRpcAccess } from '../orca/codemode-orca-dispatch'
@@ -35,7 +36,7 @@ export type HostCallContext = {
   signal: AbortSignal
   /** Absent: the chat has no Orca access and every `orca.*` call fails. */
   orca?: OrcaRpcAccess
-}
+} & LibHostContext
 
 /** A validated inner call: what the gate judges, and how to run it once allowed. */
 export type PlannedHostCall = GateCheck & { execute: () => Promise<HostReply> }
@@ -56,6 +57,9 @@ export function hostCallLabel(call: HostCall): { tool: string; input: unknown } 
   }
   if (call.tool === 'orca.call' && isFields(call.input)) {
     return { tool: `orca.${String(call.input.method)}`, input: call.input.params }
+  }
+  if (call.tool === 'lib.load' && isFields(call.input)) {
+    return { tool: `lib.${String(call.input.name)}`, input: call.input }
   }
   return { tool: call.tool, input: call.input }
 }
@@ -241,6 +245,11 @@ export async function planHostCall(call: HostCall, ctx: HostCallContext): Promis
     case 'orca.context':
     case 'orca.call':
       return planOrcaHostCall(call.tool, fields, ctx.orca, ctx.signal)
+    case 'lib.list':
+    case 'lib.describe':
+    case 'lib.load':
+    case 'lib.save':
+      return planLibHostCall(call.tool, fields, ctx)
     default:
       throw new Error(`unknown host tool ${call.tool}`)
   }

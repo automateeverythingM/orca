@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import type { CodemodeLimits } from '../codemode-limits'
 import type { GateMode } from '../gate/codemode-gate'
+import type { CodemodeLibAccess } from '../lib/codemode-lib-host-plan'
 import type { CodemodeConnectorAccess } from '../mcp-pool/codemode-mcp-connector-access'
 import { CodemodeMcpPool, type CodemodeServerSpec } from '../mcp-pool/codemode-mcp-pool'
 import type { OrcaRpcAccess } from '../orca/codemode-orca-dispatch'
@@ -50,6 +51,8 @@ export type CodemodeSessionOptions = {
   connectors?: CodemodeConnectorAccess
   /** Orca runtime methods as `orca.*`; absent, every `orca.*` call fails. */
   orca?: OrcaRpcAccess
+  /** Saved functions as `lib.*`; absent, every `lib.*` call fails. */
+  lib?: CodemodeLibAccess
   limits: CodemodeLimits
   onEvent: (event: InnerCallEvent) => void
   onRun?: (event: CodemodeRunEvent) => void
@@ -68,6 +71,8 @@ type RunState = {
   refusedStarts: Map<string, string>
   /** This run's settled inner calls, listed in its text result. */
   calls: InnerCallLine[]
+  /** This run's `lib.*` loads by function and hash, so concurrent loads share one trust card. */
+  trustLoads: Map<string, Promise<HostReply>>
 }
 
 const EVENT_OUTPUT_BYTES = 8 * 1024
@@ -148,7 +153,8 @@ export class CodemodeSession {
       signal: controller.signal,
       seq: 0,
       refusedStarts: new Map(),
-      calls: []
+      calls: [],
+      trustLoads: new Map()
     }
     this.pool.newTurn()
     const started = performance.now()
@@ -230,7 +236,10 @@ export class CodemodeSession {
         pool: this.pool,
         trusted: this.opts.trusted,
         signal: run.signal,
-        orca: this.opts.orca
+        orca: this.opts.orca,
+        lib: this.opts.lib,
+        check: (check) => this.approvals.check(check, run),
+        trustLoads: run.trustLoads
       })
       const refusal = await this.approvals.check(planned, run)
       if (refusal !== null) {

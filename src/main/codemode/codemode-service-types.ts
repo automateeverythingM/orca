@@ -67,6 +67,8 @@ export type CodemodeServiceOptions = {
   orcaRpc?: CodemodeOrcaRpc
   /** A chat's worktree/workspace ids for `orca.context()`, read per call. */
   sessionContext?: CodemodeSessionContext
+  /** Tests only: home for global saved functions and their trust/usage files. */
+  libHomeDir?: string
 }
 
 export type CodemodeConnectorWiring = {

@@ -10,12 +10,17 @@ export type CodemodeLibMeta = {
 export type CodemodeLibFunction = CodemodeLibMeta & {
   scope: CodemodeLibScope
   file: string
-  /** Function body without the doc header. */
+  /** The whole file text: doc header and body. */
   source: string
 }
 
 export const CODEMODE_LIB_NAME = /^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/
+// Why: the sandbox wraps each file in `function (lib)`, and keywords can't name an async function.
 export const CODEMODE_LIB_RESERVED: ReadonlySet<string> = new Set([
+  'lib',
+  'await',
+  'yield',
+  'let',
   'list',
   'describe',
   'save',

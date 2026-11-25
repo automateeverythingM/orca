@@ -150,4 +150,16 @@ describe('lib in the sandbox', () => {
       }
     ])
   })
+
+  it('a syntax error in a function file names the file', async () => {
+    const source = '/** @name broken */\nasync function broken() {\n  return (\n}\n'
+    const result = await run('return await lib.broken()', libHost({ broken: source }))
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.error).toContain('lib/broken.js')
+  })
+
+  it('a missing function fails with a normal error', async () => {
+    const result = await run('return await lib.nope()', libHost({}))
+    expect(result.ok === false && result.error).toMatch(/^no saved function nope/)
+  })
 })

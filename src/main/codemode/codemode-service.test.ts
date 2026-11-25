@@ -47,7 +47,7 @@ beforeEach(async () => {
     join(root, '.orca', 'mcp.json'),
     JSON.stringify({ mcpServers: { 'fake-crm': crm } })
   )
-  service = new CodemodeService({ workerPath, log: () => {} })
+  service = new CodemodeService({ workerPath, log: () => {}, libHomeDir: root })
 })
 afterEach(async () => {
   await Promise.all(clients.splice(0).map((client) => client.close().catch(() => {})))
@@ -202,7 +202,11 @@ describe('CodemodeService', () => {
     const failing = new CodemodeHttpServer()
     failing.start = () => Promise.reject(new Error('EADDRINUSE'))
     const logged: string[] = []
-    const broken = new CodemodeService({ server: failing, log: (message) => logged.push(message) })
+    const broken = new CodemodeService({
+      server: failing,
+      log: (message) => logged.push(message),
+      libHomeDir: root
+    })
     const input = { launchId: 'launch-1', root, env: {}, mode: () => 'ask' as const }
     expect(await broken.launchServer({ sessionId: 's1', ...input })).toBe(null)
     expect(await broken.launchServer({ sessionId: 's2', ...input })).toBe(null)
@@ -216,7 +220,7 @@ describe('CodemodeService connectors as direct servers', () => {
   const env = setUpConnectorTestEnv(async () => {
     await Promise.all(clients.splice(0).map((client) => client.close().catch(() => {})))
     await service.stop()
-    service = new CodemodeService({ workerPath, log: () => {} })
+    service = new CodemodeService({ workerPath, log: () => {}, libHomeDir: root })
     relay?.close()
     relay = null
     await fake?.stop()
@@ -235,6 +239,7 @@ describe('CodemodeService connectors as direct servers', () => {
     service = new CodemodeService({
       workerPath,
       log: () => {},
+      libHomeDir: root,
       relay,
       connectors: async () => ({ store, auth, pool: new CodemodeConnectorPool(store, auth) })
     })

@@ -55,7 +55,7 @@ beforeEach(async () => {
     join(root, '.orca', 'mcp.json'),
     JSON.stringify({ mcpServers: { 'fake-crm': crm } })
   )
-  service = new CodemodeService({ workerPath, log: () => {} })
+  service = new CodemodeService({ workerPath, log: () => {}, libHomeDir: root })
 })
 afterEach(async () => {
   await Promise.all(clients.splice(0).map((client) => client.close().catch(() => {})))
@@ -180,5 +180,31 @@ describe('code mode end to end', () => {
       `[codemode tokens] tools/list bytes: code mode ${codeModeBytes}, fake-crm ${payloadBytes(fakeCrm)} x 5 = ${fiveServersBytes}`
     )
     expect(codeModeBytes).toBeLessThan(fiveServersBytes)
+  })
+
+  it('runs a saved function after one trust card and lists it in the description', async () => {
+    const libDir = join(root, '.orca', 'lib')
+    await mkdir(libDir)
+    await writeFile(
+      join(libDir, 'add.js'),
+      '/**\n * @name add\n * @description Adds.\n * @param {number} a\n * @param {number} b\n */\nasync function add({ a, b }) {\n  return a + b\n}\n'
+    )
+    const asked: string[] = []
+    const client = await agent('ask', (message) => {
+      asked.push(message)
+      return 'allow_once'
+    })
+    const { tools } = await client.listTools()
+    const description = tools.find((tool) => tool.name === 'run_js')?.description ?? ''
+    expect(description).toContain('Saved functions: add({a, b}).')
+
+    const code = 'return [await lib.add({ a: 1, b: 2 }), await lib.add({ a: 3, b: 4 })]'
+    const first = await runJsWithCalls(client, code)
+    expect(first.text).toBe('=> [3,7]')
+    expect(first.calls.join('\n')).toContain('lib.add')
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).toContain('Run saved function add (project, new)')
+    expect((await runJs(client, code)).text).toBe('=> [3,7]')
+    expect(asked).toHaveLength(1)
   })
 })
