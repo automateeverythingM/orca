@@ -5,6 +5,7 @@ import {
   type CodemodeLibMeta,
   type CodemodeLibScope
 } from '../../../shared/codemode/codemode-lib-types'
+import { fencedCode } from '../../../shared/codemode/codemode-fenced-code'
 import {
   DENIED_TEXT,
   type GateCheck,
@@ -26,6 +27,14 @@ export const LIB_UNAVAILABLE_TEXT = 'saved functions unavailable in this chat'
  * longer file gets no card (it can be allowed in Settings).
  */
 export const CODEMODE_LIB_CARD_MAX_BYTES = 16 * 1024
+
+/**
+ * A card's source as a fenced code block: the agent's client renders the card as Markdown, and
+ * outside a fence an HTML comment (`<!--`, which JS also reads as a line comment) hides code.
+ */
+export function fencedSource(text: string): string {
+  return fencedCode(text, 'js')
+}
 
 function fitsCard(text: string): boolean {
   return Buffer.byteLength(text, 'utf8') <= CODEMODE_LIB_CARD_MAX_BYTES
@@ -122,7 +131,10 @@ async function trustedLoad(
     const refusal = await ctx.check({
       gate: { kind: 'lib-trust' },
       allowKey: null,
-      prompt: { title: `Run saved function ${fn.name} (${fn.scope}, ${why})`, detail: fn.source }
+      prompt: {
+        title: `Run saved function ${fn.name} (${fn.scope}, ${why})`,
+        detail: fencedSource(fn.source)
+      }
     })
     const stopped = stoppedBy(refusal, ctx.signal)
     if (stopped !== null) {
@@ -208,7 +220,7 @@ async function planSave(
       allowKey: null,
       prompt: {
         title: `Save function ${name} to ${scope}${replaces}`,
-        detail: prepared.text
+        detail: fencedSource(prepared.text)
       }
     })
     const stopped = stoppedBy(refusal, ctx.signal)

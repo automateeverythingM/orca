@@ -11,9 +11,12 @@ function isOrigin(value: string): value is CodemodeLibOrigin {
   return ORIGINS.includes(value)
 }
 
+/** A param name reaches the agent's tool description, so a cloned file may only name identifiers. */
+const PARAM_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
 function parseParam(rest: string): CodemodeLibParam | null {
   const m = /^(?:\{([^}]*)\}\s*)?(\S+)(?:\s+(.*))?$/.exec(rest.trim())
-  if (!m) {
+  if (!m || !PARAM_NAME.test(m[2])) {
     return null
   }
   const param: CodemodeLibParam = { name: m[2] }

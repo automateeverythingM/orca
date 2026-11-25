@@ -28,7 +28,8 @@ describe('buildToolDescription', () => {
   })
 
   const LIB_LINE =
-    'lib.<name>(args), lib.list(), lib.describe(name), lib.save({name, source, scope?, description?}) for saved functions.'
+    'lib.<name>(args), lib.list(), lib.describe(name), lib.save({name, source, scope?, description?}) for saved functions;' +
+    ' `source` must declare `async function <name>({...})` taking one object argument.'
 
   it('lists up to 60 signatures then a more note', () => {
     const sigs = Array.from({ length: 65 }, (_, i) => `f${i}({a})`)

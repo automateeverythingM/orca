@@ -9,8 +9,13 @@ afterEach(clearNativeChatComposerDraftsForTests)
 describe('saveAsFunctionPrompt', () => {
   it('prompt fences the code', () => {
     expect(saveAsFunctionPrompt('return 1')).toBe(
-      'Save the script below as a saved function with lib.save: pick a clear camelCase name and a one-line description, and turn its hard-coded values into parameters.\n\n```js\nreturn 1\n```'
+      'Save the script below as a saved function with lib.save: pick a clear camelCase name and a one-line description, and turn its hard-coded values into parameters. `source` must declare `async function <name>({...})` taking one object argument.\n\n```js\nreturn 1\n```'
     )
+  })
+
+  it('fence is longer than any backtick run in the code', () => {
+    const code = 'const s = `a`\n// ```` inside'
+    expect(saveAsFunctionPrompt(code).endsWith(`\n\n\`\`\`\`\`js\n${code}\n\`\`\`\`\``)).toBe(true)
   })
 })
 

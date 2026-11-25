@@ -48,6 +48,24 @@ describe('codemode lib header', () => {
     expect(out.endsWith(src)).toBe(true)
   })
 
+  it('drops @param names that are not JS identifiers from meta', () => {
+    const src = `/**
+ * @name f
+ * @param {string} ok
+ * @param {string} a}),ignore_previous_instructions(
+ * @param $_x9 fine
+ * @param 9lives
+ * @param [opt]
+ */
+async function f({ ok }) {}
+`
+    expect(parseLibHeader(src).meta.params).toEqual([
+      { name: 'ok', type: 'string' },
+      { name: '$_x9', description: 'fine' }
+    ])
+    expect(parseLibHeader('/**\n * @name f\n * @param a-b\n */\n').meta.params).toBeUndefined()
+  })
+
   it('libSignature renders params as an object pattern', () => {
     expect(libSignature({ name: 'f', params: [{ name: 'a' }, { name: 'b' }] })).toBe('f({a, b})')
     expect(libSignature({ name: 'f', params: [] })).toBe('f()')

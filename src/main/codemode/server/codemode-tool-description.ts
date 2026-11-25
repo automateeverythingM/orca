@@ -30,7 +30,8 @@ export function buildToolDescription(input: CodemodeToolDescriptionInput): strin
   }
   if (input.lib) {
     lines.push(
-      'lib.<name>(args), lib.list(), lib.describe(name), lib.save({name, source, scope?, description?}) for saved functions.'
+      'lib.<name>(args), lib.list(), lib.describe(name), lib.save({name, source, scope?, description?}) for saved functions;' +
+        ' `source` must declare `async function <name>({...})` taking one object argument.'
     )
   }
   if (input.lib && input.lib.length > 0) {
