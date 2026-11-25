@@ -89,4 +89,30 @@ describe('codemode shape fingerprint', () => {
     }
     expect(codemodeShapeHash('')).toMatch(/^[0-9a-f]{64}$/)
   })
+
+  it('deeply nested templates do not overflow the stack', () => {
+    const tokens = codemodeShapeTokens('`${'.repeat(20000))
+    expect(tokens.length).toBeGreaterThan(0)
+    expect(() => codemodeShapeHash('`${'.repeat(5000))).not.toThrow()
+  })
+
+  it('signed exponents are one literal token', () => {
+    expect(codemodeShapeTokens('x = 1e-5 + 1E+5 + 1e5')).toEqual([
+      'x',
+      '=',
+      '_',
+      '+',
+      '_',
+      '+',
+      '_'
+    ])
+    expect(codemodeShapeTokens('0xe+1')).toEqual(['_', '+', '_'])
+  })
+
+  it('bracket keys normalize quote style', () => {
+    const h = codemodeShapeHash("m['a'].f()")
+    expect(codemodeShapeHash('m["a"].f()')).toBe(h)
+    expect(codemodeShapeHash('m[`a`].f()')).toBe(h)
+    expect(codemodeShapeHash('m[`a${x}`].f()')).not.toBe(h)
+  })
 })

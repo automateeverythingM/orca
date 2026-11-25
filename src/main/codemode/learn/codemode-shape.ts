@@ -56,6 +56,7 @@ const PUNCTUATORS = [
 const IDENT_START = /[A-Za-z_$\u0080-￿]/
 const IDENT_PART = /[A-Za-z0-9_$\u0080-￿]/
 const DIGIT = /[0-9]/
+const MAX_TEMPLATE_DEPTH = 64
 
 function isIdentifier(token: string | undefined): boolean {
   return token !== undefined && IDENT_START.test(token[0]) && !REGEX_PRECEDING_WORDS.has(token)
@@ -77,6 +78,7 @@ function regexAllowed(prev: string | undefined): boolean {
 class Scanner {
   readonly tokens: string[] = []
   private i = 0
+  private templateDepth = 0
 
   constructor(private readonly src: string) {}
 
@@ -143,12 +145,19 @@ class Scanner {
       this.i += src[this.i] === '\\' ? 2 : 1
     }
     this.i = Math.min(this.i + 1, src.length)
-    const text = src.slice(start, this.i)
-    this.tokens.push(this.isBracketKey(text) ? text : '_')
+    const closed = this.i - start >= 2 && src[this.i - 1] === quote
+    this.tokens.push(
+      closed && this.isBracketKey() ? this.keyToken(src.slice(start + 1, this.i - 1)) : '_'
+    )
   }
 
-  private isBracketKey(text: string): boolean {
-    const n = this.tokens.length
+  // Why: m["a"], m['a'] and m[`a`] are the same member, so they share one token.
+  private keyToken(inner: string): string {
+    return `'${inner}'`
+  }
+
+  private isBracketKey(placeholders = 0): boolean {
+    const n = this.tokens.length - placeholders
     if (this.tokens[n - 1] !== '[' || n < 2) {
       return false
     }
@@ -160,24 +169,37 @@ class Scanner {
     while (j < this.src.length && /\s/.test(this.src[j])) {
       j++
     }
-    return this.src[j] === ']' && text.length >= 2
+    return this.src[j] === ']'
   }
 
   private template(): void {
     const { src } = this
+    const start = this.i + 1
     this.i++
     this.tokens.push('_')
+    let plain = true
     while (this.i < src.length) {
       const c = src[this.i]
       if (c === '\\') {
         this.i += 2
       } else if (c === '`') {
         this.i++
+        if (plain && this.isBracketKey(1)) {
+          this.tokens[this.tokens.length - 1] = this.keyToken(src.slice(start, this.i - 1))
+        }
         return
       } else if (c === '$' && src[this.i + 1] === '{') {
+        plain = false
+        if (this.templateDepth >= MAX_TEMPLATE_DEPTH) {
+          // Why: bound recursion so pathological input can never overflow the stack.
+          this.i = src.length
+          return
+        }
         this.i += 2
         this.tokens.push('${')
+        this.templateDepth++
         this.scan(true)
+        this.templateDepth--
       } else {
         this.i++
       }
@@ -211,7 +233,14 @@ class Scanner {
 
   private number(): void {
     const { src } = this
-    while (this.i < src.length && (IDENT_PART.test(src[this.i]) || src[this.i] === '.')) {
+    const hex = /^0[xX]/.test(src.slice(this.i, this.i + 2))
+    while (this.i < src.length) {
+      const c = src[this.i]
+      const signedExp =
+        (c === '+' || c === '-') && !hex && /[eE]/.test(src[this.i - 1] ?? '') && this.i > 0
+      if (!IDENT_PART.test(c) && c !== '.' && !signedExp) {
+        break
+      }
       this.i++
     }
     this.tokens.push('_')
