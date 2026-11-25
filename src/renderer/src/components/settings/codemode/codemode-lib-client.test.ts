@@ -19,4 +19,16 @@ describe('functionsProject', () => {
     }
     expect(functionsProject(null)).toEqual({ projectRoot: null, remote: false })
   })
+
+  it('reads the host from the repo when the worktree has none', () => {
+    expect(functionsProject({ path: '/w/a' }, { connectionId: 'box' })).toEqual({
+      projectRoot: null,
+      remote: true
+    })
+    expect(functionsProject({ path: '/w/a' }, { executionHostId: 'ssh:box' })).toEqual({
+      projectRoot: null,
+      remote: true
+    })
+    expect(functionsProject({ path: '/w/a' }, {})).toEqual({ projectRoot: '/w/a', remote: false })
+  })
 })

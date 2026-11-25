@@ -3,8 +3,10 @@ import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
 import {
   type ExecutionHostId,
+  getWorktreeExecutionHostId,
   LOCAL_EXECUTION_HOST_ID
 } from '../../../../../shared/execution-host/execution-host'
+import type { Repo } from '../../../../../shared/repository/repo-types'
 import type {
   CodemodeLibEntryView,
   CodemodeLibListView,
@@ -19,16 +21,17 @@ export type CodemodeLibProject = string | null
 
 /**
  * The open worktree's project scope. An SSH or paired-runtime worktree lives on another machine,
- * so this computer's runtime has no project scope for it and lists global functions only.
+ * so this computer's runtime has no project scope for it and lists global functions only. The
+ * host is resolved like the sidebar does: the worktree's own host, else its repo's connection.
  */
-export function functionsProject(worktree: { path: string; hostId?: ExecutionHostId } | null): {
-  projectRoot: CodemodeLibProject
-  remote: boolean
-} {
+export function functionsProject(
+  worktree: { path: string; hostId?: ExecutionHostId } | null,
+  repo?: Pick<Repo, 'connectionId' | 'executionHostId'>
+): { projectRoot: CodemodeLibProject; remote: boolean } {
   if (!worktree) {
     return { projectRoot: null, remote: false }
   }
-  const local = worktree.hostId === undefined || worktree.hostId === LOCAL_EXECUTION_HOST_ID
+  const local = getWorktreeExecutionHostId(worktree, repo) === LOCAL_EXECUTION_HOST_ID
   return local ? { projectRoot: worktree.path, remote: false } : { projectRoot: null, remote: true }
 }
 

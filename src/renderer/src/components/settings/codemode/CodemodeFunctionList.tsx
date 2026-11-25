@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { Button } from '@/components/ui/button'
 import { useTranslate } from '@/i18n/use-translate'
+import { useRepoById } from '@/store/repos/use-repository-catalog'
 import { useActiveWorktree } from '@/store/workspaces/selection/use-selected-worktree'
 import type { CodemodeLibListView } from '../../../../../shared/codemode/codemode-lib-types'
 import { SettingsGroup } from '../section-layout/SettingsGroup'
@@ -23,7 +24,8 @@ export function CodemodeFunctionList(): React.JSX.Element {
   const t = useTranslate()
   const entry = getCodemodeFunctionsSearchEntry()
   const worktree = useActiveWorktree()
-  const { projectRoot, remote } = functionsProject(worktree ?? null)
+  const repo = useRepoById(worktree?.repoId ?? null)
+  const { projectRoot, remote } = functionsProject(worktree ?? null, repo ?? undefined)
   const [state, setState] = useState<ListState>({ kind: 'loading' })
   const reads = useRef(0)
 
