@@ -1,10 +1,15 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GateCheck } from '../host/codemode-approvals'
 import type { HostReply } from '../sandbox/codemode-host-tools'
-import { type CodemodeLibAccess, type LibHostTool, planLibHostCall } from './codemode-lib-host-plan'
+import {
+  CODEMODE_LIB_CARD_MAX_BYTES,
+  type CodemodeLibAccess,
+  type LibHostTool,
+  planLibHostCall
+} from './codemode-lib-host-plan'
 import { CodemodeLibStore, libTrustKey } from './codemode-lib-store'
 import { CodemodeLibTrust } from './codemode-lib-trust'
 import { CodemodeLibUsage } from './codemode-lib-usage'
@@ -35,6 +40,14 @@ const fn = (name: string, body = 'return 1'): string =>
 type Check = (c: GateCheck) => Promise<string | null>
 const allow: Check = async () => null
 const deny: Check = async () => 'denied by user'
+
+/** A card that stays open until the run stops, then answers as the gate does. */
+function waitForStop(controller: AbortController): Check {
+  return () =>
+    new Promise((resolve) => {
+      controller.signal.addEventListener('abort', () => resolve('Interrupted by user'))
+    })
+}
 
 function context(check: Check, signal = new AbortController().signal) {
   return { lib, check: vi.fn(check), signal, trustLoads: new Map<string, Promise<HostReply>>() }
@@ -157,6 +170,77 @@ describe('lib.load', () => {
     expect(ctx.check).not.toHaveBeenCalled()
   })
 
+  it('a transient trust read failure is not kept for the rest of the run', async () => {
+    const source = await writeUntrusted('add')
+    const trustFile = join(home, '.orca', 'lib-trust.json')
+    await mkdir(trustFile, { recursive: true })
+    const ctx = context(allow)
+    const first = await call('lib.load', { name: 'add' }, ctx)
+    expect(first.ok).toBe(false)
+    expect(ctx.check).not.toHaveBeenCalled()
+    await rm(trustFile, { recursive: true })
+    expect((await call('lib.load', { name: 'add' }, ctx)).ok).toBe(true)
+    expect(ctx.check).toHaveBeenCalledTimes(1)
+    expect(await trustState('add', source)).toBe('trusted')
+  })
+
+  it('a refusal by mode is not kept for the rest of the run', async () => {
+    await writeUntrusted('add')
+    const answers = ['not allowed in this chat mode', null]
+    const ctx = context(async () => answers.shift() ?? null)
+    expect((await call('lib.load', { name: 'add' }, ctx)).ok).toBe(false)
+    expect((await call('lib.load', { name: 'add' }, ctx)).ok).toBe(true)
+    expect(ctx.check).toHaveBeenCalledTimes(2)
+  })
+
+  it("the person's deny holds for the rest of the run", async () => {
+    await writeUntrusted('add')
+    const ctx = context(deny)
+    await call('lib.load', { name: 'add' }, ctx)
+    expect(await call('lib.load', { name: 'add' }, ctx)).toEqual({
+      ok: false,
+      error: 'lib.add: denied by user'
+    })
+    expect(ctx.check).toHaveBeenCalledTimes(1)
+  })
+
+  it('stop while the trust card is open records nothing', async () => {
+    const source = await writeUntrusted('add')
+    const controller = new AbortController()
+    const ctx = context(waitForStop(controller), controller.signal)
+    const pending = call('lib.load', { name: 'add' }, ctx)
+    await vi.waitFor(() => expect(ctx.check).toHaveBeenCalled())
+    controller.abort()
+    expect(await pending).toEqual({ ok: false, error: 'lib.add: Interrupted by user' })
+    expect(await trustState('add', source)).toBe('unknown')
+  })
+
+  it('an untrusted function too long for a card fails without a card', async () => {
+    const source = await writeUntrusted('big', `// ${'x'.repeat(CODEMODE_LIB_CARD_MAX_BYTES)}`)
+    const kib = Math.ceil(Buffer.byteLength(source, 'utf8') / 1024)
+    const ctx = context(allow)
+    expect(await call('lib.load', { name: 'big' }, ctx)).toEqual({
+      ok: false,
+      error: `lib.big: function is too long to review in a card (${kib} KiB); allow it in Settings › Code mode › Functions`
+    })
+    expect(ctx.check).not.toHaveBeenCalled()
+    expect(await trustState('big', source)).toBe('unknown')
+  })
+
+  it('a trusted function too long for a card still loads', async () => {
+    await saveTrusted('big', `// ${'x'.repeat(CODEMODE_LIB_CARD_MAX_BYTES)}`)
+    const ctx = context(allow)
+    expect((await call('lib.load', { name: 'big' }, ctx)).ok).toBe(true)
+    expect(ctx.check).not.toHaveBeenCalled()
+  })
+
+  it('the trust card shows the whole file up to the card limit', async () => {
+    const source = await writeUntrusted('mid', `// ${'x'.repeat(10 * 1024)}`)
+    const ctx = context(allow)
+    await call('lib.load', { name: 'mid' }, ctx)
+    expect(ctx.check.mock.calls[0][0].prompt.detail).toBe(source)
+  })
+
   it('a missing function fails with a normal error', async () => {
     await expect(planLibHostCall('lib.load', { name: 'nope' }, context(allow))).rejects.toThrow(
       'no saved function nope'
@@ -265,6 +349,16 @@ describe('lib.save', () => {
     expect(await pending).toEqual({ ok: false, error: 'lib.save: Interrupted by user' })
     expect(await readdir(root)).toEqual([])
     expect(await trustState('add', fn('add'))).toBe('unknown')
+  })
+
+  it('a function too long to review shows no save card and writes nothing', async () => {
+    const ctx = context(allow)
+    const source = fn('big', `// ${'x'.repeat(CODEMODE_LIB_CARD_MAX_BYTES)}`)
+    await expect(
+      planLibHostCall('lib.save', { name: 'big', source, description: 'd' }, ctx)
+    ).rejects.toThrow(/^lib\.save: function is too long to review \(max 16 KiB\)$/)
+    expect(ctx.check).not.toHaveBeenCalled()
+    expect(await readdir(root)).toEqual([])
   })
 
   it('allowed just as the run stops writes nothing', async () => {

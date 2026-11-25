@@ -55,7 +55,7 @@ beforeEach(async () => {
     join(root, '.orca', 'mcp.json'),
     JSON.stringify({ mcpServers: { 'fake-crm': crm } })
   )
-  service = new CodemodeService({ workerPath, log: () => {}, libHomeDir: root })
+  service = new CodemodeService({ workerPath, log: () => {}, libHomeDir: join(root, 'home') })
 })
 afterEach(async () => {
   await Promise.all(clients.splice(0).map((client) => client.close().catch(() => {})))

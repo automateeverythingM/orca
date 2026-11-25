@@ -71,7 +71,7 @@ type RunState = {
   refusedStarts: Map<string, string>
   /** This run's settled inner calls, listed in its text result. */
   calls: InnerCallLine[]
-  /** This run's `lib.*` loads by function and hash, so concurrent loads share one trust card. */
+  /** This run's in-flight `lib.*` loads and the person's trust answers, by function and hash. */
   trustLoads: Map<string, Promise<HostReply>>
 }
 

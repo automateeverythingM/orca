@@ -5,8 +5,13 @@ import {
   type CodemodeLibMeta,
   type CodemodeLibScope
 } from '../../../shared/codemode/codemode-lib-types'
-import { type GateCheck, INTERRUPTED_TEXT, READ_CHECK } from '../host/codemode-approvals'
-import { clipDetail, type Fields, optionalText, text } from '../host/codemode-host-call-fields'
+import {
+  DENIED_TEXT,
+  type GateCheck,
+  INTERRUPTED_TEXT,
+  READ_CHECK
+} from '../host/codemode-approvals'
+import { type Fields, optionalText, text } from '../host/codemode-host-call-fields'
 import type { PlannedHostCall } from '../host/codemode-host-dispatch'
 import type { HostReply } from '../sandbox/codemode-host-tools'
 import { libSignature } from './codemode-lib-header'
@@ -15,6 +20,19 @@ import { type CodemodeLibTrust, libSourceHash } from './codemode-lib-trust'
 import type { CodemodeLibUsage } from './codemode-lib-usage'
 
 export const LIB_UNAVAILABLE_TEXT = 'saved functions unavailable in this chat'
+
+/**
+ * Trust and save cards show the whole file, so nothing can hide past what the person reads; a
+ * longer file gets no card (it can be allowed in Settings).
+ */
+export const CODEMODE_LIB_CARD_MAX_BYTES = 16 * 1024
+
+function fitsCard(text: string): boolean {
+  return Buffer.byteLength(text, 'utf8') <= CODEMODE_LIB_CARD_MAX_BYTES
+}
+
+/** A load that came back with the person's answer (allow, deny, stop); only these are kept for the run. */
+type LoadOutcome = { reply: HostReply; answered: boolean }
 
 /** One chat's saved functions: its store, and the trust and usage records every chat shares. */
 export type CodemodeLibAccess = {
@@ -32,7 +50,7 @@ export type LibHostContext = {
   /** The run's gate: resolves null when allowed, otherwise the refusal text. */
   check: (c: GateCheck) => Promise<string | null>
   signal: AbortSignal
-  /** This run's loads by trust key, name and hash: concurrent loads share one trust card. */
+  /** This run's loads by trust key, name and hash: in-flight loads and the person's answers. */
   trustLoads: Map<string, Promise<HostReply>>
 }
 
@@ -83,30 +101,44 @@ async function trustedLoad(
   key: string,
   lib: CodemodeLibAccess,
   ctx: LibHostContext
-): Promise<HostReply> {
+): Promise<LoadOutcome> {
+  const failed = (error: string): LoadOutcome => ({
+    reply: { ok: false, error: `lib.${fn.name}: ${error}` },
+    answered: false
+  })
   try {
     // Why: an unreadable trust file rejects here, and that fails the load closed.
     const state = await lib.trust.state(key, fn.name, fn.source)
-    if (state !== 'trusted') {
-      const why = state === 'unknown' ? 'new' : 'changed since you allowed it'
-      const refusal = await ctx.check({
-        gate: { kind: 'lib-trust' },
-        allowKey: null,
-        prompt: {
-          title: `Run saved function ${fn.name} (${fn.scope}, ${why})`,
-          detail: clipDetail(fn.source)
-        }
-      })
-      const stopped = stoppedBy(refusal, ctx.signal)
-      if (stopped !== null) {
-        return { ok: false, error: `lib.${fn.name}: ${stopped}` }
-      }
-      await lib.trust.record(key, fn.name, fn.source)
+    if (state === 'trusted') {
+      return { reply: loaded(fn), answered: false }
     }
-    return { ok: true, value: { name: fn.name, file: `lib/${fn.name}.js`, source: fn.source } }
+    if (!fitsCard(fn.source)) {
+      const kib = Math.ceil(Buffer.byteLength(fn.source, 'utf8') / 1024)
+      return failed(
+        `function is too long to review in a card (${kib} KiB); allow it in Settings › Code mode › Functions`
+      )
+    }
+    const why = state === 'unknown' ? 'new' : 'changed since you allowed it'
+    const refusal = await ctx.check({
+      gate: { kind: 'lib-trust' },
+      allowKey: null,
+      prompt: { title: `Run saved function ${fn.name} (${fn.scope}, ${why})`, detail: fn.source }
+    })
+    const stopped = stoppedBy(refusal, ctx.signal)
+    if (stopped !== null) {
+      // Why: a mode refusal or a card the agent can't show may change within the run; the person's answer doesn't.
+      const answered = stopped === DENIED_TEXT || stopped === INTERRUPTED_TEXT
+      return { ...failed(stopped), answered }
+    }
+    await lib.trust.record(key, fn.name, fn.source)
+    return { reply: loaded(fn), answered: true }
   } catch (error) {
-    return { ok: false, error: `lib.${fn.name}: ${errorText(error)}` }
+    return failed(errorText(error))
   }
+}
+
+function loaded(fn: CodemodeLibFunction): HostReply {
+  return { ok: true, value: { name: fn.name, file: `lib/${fn.name}.js`, source: fn.source } }
 }
 
 async function planLoad(
@@ -120,8 +152,15 @@ async function planLoad(
     const loadKey = `${key}\0${name}\0${libSourceHash(fn.source)}`
     let loading = ctx.trustLoads.get(loadKey)
     if (!loading) {
-      loading = trustedLoad(fn, key, lib, ctx)
-      ctx.trustLoads.set(loadKey, loading)
+      const started: Promise<HostReply> = trustedLoad(fn, key, lib, ctx).then((outcome) => {
+        // Why: in flight, loads share one card; settled, only the person's answer is kept.
+        if (!outcome.answered && ctx.trustLoads.get(loadKey) === started) {
+          ctx.trustLoads.delete(loadKey)
+        }
+        return outcome.reply
+      })
+      loading = started
+      ctx.trustLoads.set(loadKey, started)
     }
     const reply = await loading
     if (reply.ok) {
@@ -157,6 +196,11 @@ async function planSave(
   }
   // Why: validation errors come back before any card is shown.
   const prepared = await lib.store.prepare(input)
+  if (!fitsCard(prepared.text)) {
+    throw new Error(
+      `lib.save: function is too long to review (max ${CODEMODE_LIB_CARD_MAX_BYTES / 1024} KiB)`
+    )
+  }
   return readOnly(async () => {
     const replaces = prepared.exists ? ' (replaces the current one)' : ''
     const refusal = await ctx.check({
@@ -164,7 +208,7 @@ async function planSave(
       allowKey: null,
       prompt: {
         title: `Save function ${name} to ${scope}${replaces}`,
-        detail: clipDetail(prepared.text)
+        detail: prepared.text
       }
     })
     const stopped = stoppedBy(refusal, ctx.signal)

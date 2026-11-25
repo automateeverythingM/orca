@@ -89,7 +89,12 @@ async function connect(server: { url: string; authorization: string }): Promise<
 
 /** A service with `opts`, one launched chat `s1`, and an agent connected to it. */
 async function agentFor(opts: Partial<CodemodeServiceOptions>): Promise<Client> {
-  service = new CodemodeService({ workerPath, log: () => {}, libHomeDir: root, ...opts })
+  service = new CodemodeService({
+    workerPath,
+    log: () => {},
+    libHomeDir: join(root, 'home'),
+    ...opts
+  })
   return connect(await launch())
 }
 
