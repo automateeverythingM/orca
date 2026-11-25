@@ -10,6 +10,21 @@ export const LEARN_MAX_RUNS = 5000
 const LEARN_INPUT_CAP_BYTES = 16 * 1024
 const LEARN_OUTPUT_CAP_BYTES = 64 * 1024
 const LEARN_CODE_CAP_BYTES = 64 * 1024
+/** One run's stored call bytes (input + output JSON); later calls keep no input or output. */
+export const LEARN_RUN_CALL_BUDGET_BYTES = 2 * 1024 * 1024
+/** The whole store's stored code + input + output bytes; the oldest runs go first past it. */
+export const LEARN_STORE_BUDGET_BYTES = 512 * 1024 * 1024
+const DEFAULT_LIMIT = 50
+const MAX_LIMIT = 500
+
+/** A list limit as an integer in [1, 500]; one that is not a number or below 1 is the default 50. */
+export function clampLimit(limit: unknown): number {
+  const value = Math.floor(Number(limit))
+  if (Number.isNaN(value) || value < 1) {
+    return DEFAULT_LIMIT
+  }
+  return Math.min(value, MAX_LIMIT)
+}
 
 export const LEARN_SCHEMA = `
 CREATE TABLE IF NOT EXISTS learn_runs (
@@ -22,7 +37,8 @@ CREATE TABLE IF NOT EXISTS learn_runs (
   code TEXT NOT NULL,
   code_truncated INTEGER NOT NULL,
   shape TEXT NOT NULL,
-  call_count INTEGER NOT NULL
+  call_count INTEGER NOT NULL,
+  stored_bytes INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS learn_runs_shape ON learn_runs (shape, started_at);
 CREATE INDEX IF NOT EXISTS learn_runs_started ON learn_runs (started_at);
@@ -31,7 +47,7 @@ CREATE TABLE IF NOT EXISTS learn_calls (
   seq INTEGER NOT NULL,
   tool TEXT NOT NULL,
   ok INTEGER NOT NULL,
-  input TEXT NOT NULL,
+  input TEXT,
   input_truncated INTEGER NOT NULL,
   output TEXT,
   output_truncated INTEGER NOT NULL,
@@ -50,6 +66,15 @@ CREATE TABLE IF NOT EXISTS learn_chains (
 CREATE TABLE IF NOT EXISTS learn_dismissed (key TEXT PRIMARY KEY, dismissed_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS learn_meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
 `
+
+/** Deletes the oldest runs past the newest `?`. */
+export const DELETE_PAST_RUN_COUNT = `DELETE FROM learn_runs WHERE run_id IN (SELECT run_id
+  FROM learn_runs ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET ?)`
+
+/** Deletes the oldest runs whose stored bytes, summed from the newest, pass `?`. */
+export const DELETE_PAST_BYTE_BUDGET = `DELETE FROM learn_runs WHERE run_id IN (SELECT run_id FROM
+  (SELECT run_id, SUM(stored_bytes) OVER (ORDER BY started_at DESC, rowid DESC) AS total
+     FROM learn_runs) WHERE total > ?)`
 
 /** Text cut to at most `cap` UTF-8 bytes, never inside a character. */
 function capText(text: string, cap: number): { text: string; truncated: boolean } {
@@ -80,8 +105,15 @@ function cappedJson(value: unknown, cap: number): { text: string; truncated: boo
 
 type Column = string | number | null
 
+const byteLength = (text: string | null): number => (text === null ? 0 : Buffer.byteLength(text))
+
 /** A run's `learn_runs` values in schema order, its code cut to the cap. */
-export function runColumns(run: CodemodeLearnRun, shape: string, callCount: number): Column[] {
+export function runColumns(
+  run: CodemodeLearnRun,
+  shape: string,
+  callCount: number,
+  callBytes: number
+): Column[] {
   const code = capText(String(run.code), LEARN_CODE_CAP_BYTES)
   return [
     String(run.runId),
@@ -93,26 +125,43 @@ export function runColumns(run: CodemodeLearnRun, shape: string, callCount: numb
     code.text,
     code.truncated ? 1 : 0,
     shape,
-    callCount
+    callCount,
+    byteLength(code.text) + callBytes
   ]
 }
 
-/** A call's `learn_calls` values in schema order, its input and output cut to their caps. */
-export function callColumns(runId: string, call: CodemodeLearnCall): Column[] {
-  const input = cappedJson(call.input, LEARN_INPUT_CAP_BYTES)
-  const output = call.output === undefined ? null : cappedJson(call.output, LEARN_OUTPUT_CAP_BYTES)
-  return [
-    runId,
-    Number(call.seq),
-    String(call.tool),
-    call.ok ? 1 : 0,
-    input.text,
-    input.truncated ? 1 : 0,
-    output?.text ?? null,
-    output?.truncated ? 1 : 0,
-    call.error === undefined ? null : String(call.error),
-    Number(call.ms)
-  ]
+/** A run's `learn_calls` values in schema order: inputs and outputs cut to their caps, and once the
+ * run's call budget is spent, that call and every later one keep no input or output. */
+export function callColumns(
+  runId: string,
+  calls: readonly CodemodeLearnCall[],
+  budget: number
+): { rows: Column[][]; bytes: number } {
+  let bytes = 0
+  let spent = false
+  const rows = calls.map((call): Column[] => {
+    const input = cappedJson(call.input, LEARN_INPUT_CAP_BYTES)
+    const output =
+      call.output === undefined ? null : cappedJson(call.output, LEARN_OUTPUT_CAP_BYTES)
+    const size = byteLength(input.text) + byteLength(output?.text ?? null)
+    spent = spent || bytes + size > budget
+    if (!spent) {
+      bytes += size
+    }
+    return [
+      runId,
+      Number(call.seq),
+      String(call.tool),
+      call.ok ? 1 : 0,
+      spent ? null : input.text,
+      spent || input.truncated ? 1 : 0,
+      spent ? null : (output?.text ?? null),
+      spent || output?.truncated ? 1 : 0,
+      call.error === undefined ? null : String(call.error),
+      Number(call.ms)
+    ]
+  })
+  return { rows, bytes }
 }
 
 /** Stored JSON back as its value; a cut one stays the text it was cut to. */
@@ -138,7 +187,8 @@ export function callOf(row: Row): CodemodeLearnCall {
   const call: CodemodeLearnCall = {
     seq: num(row.seq),
     tool: str(row.tool),
-    input: storedValue(str(row.input), inputCut),
+    input:
+      row.input === null || row.input === undefined ? null : storedValue(str(row.input), inputCut),
     ok: num(row.ok) === 1,
     ms: num(row.ms)
   }
@@ -148,8 +198,11 @@ export function callOf(row: Row): CodemodeLearnCall {
   if (row.error !== null && row.error !== undefined) {
     call.error = str(row.error)
   }
-  if (inputCut || outputCut) {
-    call.truncated = true
+  if (inputCut) {
+    call.inputTruncated = true
+  }
+  if (outputCut) {
+    call.outputTruncated = true
   }
   return call
 }
@@ -166,7 +219,7 @@ export function runOf(row: Row, calls: CodemodeLearnCall[]): CodemodeLearnRun {
     calls
   }
   if (num(row.code_truncated) === 1) {
-    run.truncated = true
+    run.codeTruncated = true
   }
   return run
 }

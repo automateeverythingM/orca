@@ -4,8 +4,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Worker } from 'node:worker_threads'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { CodemodeLearnRun } from '../../../../shared/codemode/codemode-learn-types'
+import { WorkerThreadRequestQueue } from '../../../worker-threads/worker-thread-request-queue'
 import { spawnWorkerThread } from '../../../worker-threads/worker-thread-spawn'
 import { codemodeShapeHash } from '../codemode-shape'
 import { CodemodeLearnWorkerClient } from './codemode-learn-worker-client'
@@ -89,5 +90,24 @@ describe('CodemodeLearnWorkerClient', () => {
     const learn = client.store(dir)
     await expect(learn.stats()).rejects.toThrow()
     await client.close()
+  })
+
+  it('close never rejects, and logs a failure once', async () => {
+    const retired = vi
+      .spyOn(WorkerThreadRequestQueue.prototype, 'retired')
+      .mockRejectedValue(new Error('stuck in SQLite'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const client = new CodemodeLearnWorkerClient(() =>
+        spawnWorkerThread(entryPath, { name: 'orca-codemode-learn' })
+      )
+      await client.store(join(dir, 'close.sqlite')).stats()
+      await expect(client.close()).resolves.toBeUndefined()
+      await expect(client.close()).resolves.toBeUndefined()
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally {
+      retired.mockRestore()
+      warn.mockRestore()
+    }
   })
 })

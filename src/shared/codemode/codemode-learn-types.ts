@@ -8,8 +8,10 @@ export type CodemodeLearnCall = {
   output?: unknown
   error?: string
   ms: number
-  /** Read back only: the stored input or output was cut to its cap and is its JSON text's start. */
-  truncated?: boolean
+  /** Read back only: the stored input was cut (it is the start of its JSON text) or dropped (null). */
+  inputTruncated?: true
+  /** Read back only: the stored output was cut (it is the start of its JSON text) or dropped (absent). */
+  outputTruncated?: true
 }
 
 export type CodemodeLearnRun = {
@@ -22,7 +24,7 @@ export type CodemodeLearnRun = {
   code: string
   calls: CodemodeLearnCall[]
   /** Read back only: the stored code was cut to its cap. */
-  truncated?: boolean
+  codeTruncated?: true
 }
 
 export type CodemodeRepeatedScript = {

@@ -11,15 +11,23 @@ import type {
 } from '../../../../shared/codemode/codemode-learn-types'
 import { codemodeShapeHash } from '../codemode-shape'
 import {
+  DELETE_PAST_BYTE_BUDGET,
+  DELETE_PAST_RUN_COUNT,
   LEARN_MAX_RUNS,
   LEARN_RETENTION_MS,
+  LEARN_RUN_CALL_BUDGET_BYTES,
   LEARN_SCHEMA,
+  LEARN_STORE_BUDGET_BYTES,
   callColumns,
+  clampLimit,
   callOf,
   chainOf,
   runColumns,
   runOf
 } from './codemode-learn-rows'
+
+/** Byte budgets; tests pass small ones. */
+export type CodemodeLearnBudgets = { runCallBytes: number; storeBytes: number }
 
 export type CodemodeLearnRecorded = { shape: string; otherSessions: number; dismissed: boolean }
 
@@ -34,9 +42,12 @@ export type CodemodeLearnStats = {
 const COUNTED = 'ok = 1 AND call_count >= 2 AND started_at >= ?'
 
 export class CodemodeLearnStore {
-  private constructor(private readonly db: SyncDatabase) {}
+  private constructor(
+    private readonly db: SyncDatabase,
+    private readonly budgets: CodemodeLearnBudgets
+  ) {}
 
-  static open(path: string): CodemodeLearnStore {
+  static open(path: string, budgets: Partial<CodemodeLearnBudgets> = {}): CodemodeLearnStore {
     mkdirSync(dirname(path), { recursive: true })
     const db = new SyncDatabase(path)
     db.pragma('journal_mode = WAL')
@@ -44,7 +55,10 @@ export class CodemodeLearnStore {
     db.pragma('foreign_keys = ON')
     db.exec(LEARN_SCHEMA)
     hardenSqliteDatabaseFiles(path)
-    return new CodemodeLearnStore(db)
+    return new CodemodeLearnStore(db, {
+      runCallBytes: budgets.runCallBytes ?? LEARN_RUN_CALL_BUDGET_BYTES,
+      storeBytes: budgets.storeBytes ?? LEARN_STORE_BUDGET_BYTES
+    })
   }
 
   /** Releases the file, so its folder can be removed. */
@@ -82,7 +96,7 @@ export class CodemodeLearnStore {
           GROUP BY shape HAVING COUNT(DISTINCT session_id) >= 2
           ORDER BY sessions DESC, last_seen DESC, shape LIMIT ?`
       )
-      .all(since, limit)
+      .all(since, clampLimit(limit))
     return groups.map((group) => {
       const shape = String(group.shape)
       const sample = this.db
@@ -123,7 +137,7 @@ export class CodemodeLearnStore {
         `SELECT run_id, session_id, project_root, started_at, ms, ok, code, code_truncated
            FROM learn_runs WHERE shape = ? ORDER BY started_at DESC, rowid DESC LIMIT ?`
       )
-      .all(shape, limit)
+      .all(shape, clampLimit(limit))
     const calls = this.db.prepare(
       `SELECT seq, tool, ok, input, input_truncated, output, output_truncated, error, ms
          FROM learn_calls WHERE run_id = ? ORDER BY seq`
@@ -211,34 +225,40 @@ export class CodemodeLearnStore {
   }
 
   private insert(run: CodemodeLearnRun, shape: string): void {
-    const calls = Array.isArray(run.calls) ? run.calls : []
+    const runId = String(run.runId)
+    const calls = callColumns(
+      runId,
+      Array.isArray(run.calls) ? run.calls : [],
+      this.budgets.runCallBytes
+    )
     // Same run id again: the newer report replaces it (its calls go with it).
-    this.db.prepare('DELETE FROM learn_runs WHERE run_id = ?').run(String(run.runId))
+    this.db.prepare('DELETE FROM learn_runs WHERE run_id = ?').run(runId)
     this.db
       .prepare(
         `INSERT INTO learn_runs (run_id, session_id, project_root, started_at, ms, ok, code,
-           code_truncated, shape, call_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           code_truncated, shape, call_count, stored_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(...runColumns(run, shape, calls.length))
+      .run(...runColumns(run, shape, calls.rows.length, calls.bytes))
     const insertCall = this.db.prepare(
       `INSERT OR REPLACE INTO learn_calls (run_id, seq, tool, ok, input, input_truncated, output,
          output_truncated, error, ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    for (const call of calls) {
-      insertCall.run(...callColumns(String(run.runId), call))
+    for (const row of calls.rows) {
+      insertCall.run(...row)
     }
   }
 
+  /** Past 30 days, past 5000 runs, or past the byte budget: the oldest runs go, calls with them. */
   private applyRetention(now: number): void {
     this.db.prepare('DELETE FROM learn_runs WHERE started_at < ?').run(now - LEARN_RETENTION_MS)
-    const count = Number(this.db.prepare('SELECT COUNT(1) AS n FROM learn_runs').get()?.n ?? 0)
-    if (count > LEARN_MAX_RUNS) {
-      this.db
-        .prepare(
-          `DELETE FROM learn_runs WHERE run_id IN (SELECT run_id FROM learn_runs
-             ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET ?)`
-        )
-        .run(LEARN_MAX_RUNS)
+    const totals = this.db
+      .prepare('SELECT COUNT(1) AS n, SUM(stored_bytes) AS bytes FROM learn_runs')
+      .get()
+    if (Number(totals?.n ?? 0) > LEARN_MAX_RUNS) {
+      this.db.prepare(DELETE_PAST_RUN_COUNT).run(LEARN_MAX_RUNS)
+    }
+    if (Number(totals?.bytes ?? 0) > this.budgets.storeBytes) {
+      this.db.prepare(DELETE_PAST_BYTE_BUDGET).run(this.budgets.storeBytes)
     }
   }
 

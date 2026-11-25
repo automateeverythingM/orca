@@ -97,15 +97,17 @@ describe('CodemodeLearnStore', () => {
   it('retention drops runs older than 30 days and keeps at most 5000', async () => {
     await learn.record(run('old', 's', { startedAt: NOW - 31 * DAY }), NOW - 31 * DAY)
     await learn.record(run('new', 's'), NOW)
-    expect(await learn.stats()).toMatchObject({ runs: 1, oldest: NOW - 1000 })
+    // The old run's two call rows went with it.
+    expect(await learn.stats()).toMatchObject({ runs: 1, calls: 2, oldest: NOW - 1000 })
 
     for (let i = 0; i < 5001; i++) {
       store.record(run(`n${i}`, 's', { startedAt: NOW + i, calls: [] }), NOW + i)
     }
     const stats = await learn.stats()
     expect(stats.runs).toBe(5000)
-    // The oldest go first: 'new' and n0 are gone, n1 is the oldest kept.
+    // The oldest go first: 'new' (and its call rows) and n0 are gone, n1 is the oldest kept.
     expect(stats.oldest).toBe(NOW + 1)
+    expect(stats.calls).toBe(0)
   })
 
   it('caps inputs and outputs', async () => {
@@ -114,19 +116,27 @@ describe('CodemodeLearnStore', () => {
     const result = await learn.record(
       run('big', 's', {
         code: longCode,
-        calls: [call(0, { input: { q: 'y'.repeat(20 * 1024) }, output: huge }), call(1)]
+        calls: [
+          call(0, { output: huge }),
+          call(1, { input: { q: 'y'.repeat(20 * 1024) } }),
+          call(2)
+        ]
       }),
       NOW
     )
     const [stored] = await learn.runsForShape(result.shape, 1)
-    const [cut, whole] = stored.calls
-    expect(cut.truncated).toBe(true)
-    expect(typeof cut.output).toBe('string')
-    expect(Buffer.byteLength(String(cut.output))).toBeLessThanOrEqual(64 * 1024)
-    expect(String(cut.output).startsWith('{"text":"xxx')).toBe(true)
-    expect(Buffer.byteLength(String(cut.input))).toBeLessThanOrEqual(16 * 1024)
-    expect(whole).toEqual(call(1))
-    expect(stored.truncated).toBe(true)
+    const [outputCut, inputCut, whole] = stored.calls
+    // Each flag names the field that was cut; the other field survived whole.
+    expect(outputCut).toMatchObject({ input: { q: 0 }, outputTruncated: true })
+    expect(outputCut.inputTruncated).toBeUndefined()
+    expect(typeof outputCut.output).toBe('string')
+    expect(Buffer.byteLength(String(outputCut.output))).toBeLessThanOrEqual(64 * 1024)
+    expect(String(outputCut.output).startsWith('{"text":"xxx')).toBe(true)
+    expect(inputCut).toMatchObject({ output: { n: 1 }, inputTruncated: true })
+    expect(inputCut.outputTruncated).toBeUndefined()
+    expect(Buffer.byteLength(String(inputCut.input))).toBeLessThanOrEqual(16 * 1024)
+    expect(whole).toEqual(call(2))
+    expect(stored.codeTruncated).toBe(true)
     expect(Buffer.byteLength(stored.code)).toBeLessThanOrEqual(64 * 1024)
     expect(stored.code.includes('�')).toBe(false)
     // The shape is the whole script's, not the cut one's.

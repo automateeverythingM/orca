@@ -34,6 +34,7 @@ export class CodemodeLearnWorkerClient {
     CodemodeLearnWorkerRequest,
     CodemodeLearnWorkerResponse
   >
+  private closeFailureLogged = false
 
   constructor(
     factory: WorkerThreadFactory = spawnCodemodeLearnWorker,
@@ -75,10 +76,18 @@ export class CodemodeLearnWorkerClient {
     return remote as unknown as CodemodeLearnRemote
   }
 
-  /** Stops the worker and fails any waiting call; resolves once the thread has exited. The client
-   * takes no calls after this. */
+  /** Stops the worker and fails any waiting call; resolves once the thread has exited, and never
+   * rejects. The client takes no calls after this. */
   async close(): Promise<void> {
-    this.queue.dispose()
-    await this.queue.retired()
+    try {
+      this.queue.dispose()
+      await this.queue.retired()
+    } catch (error) {
+      // Closing never fails its caller (app shutdown, a cleared store): say so once and move on.
+      if (!this.closeFailureLogged) {
+        this.closeFailureLogged = true
+        console.warn('[codemode] Learn DB worker did not close cleanly:', error)
+      }
+    }
   }
 }
