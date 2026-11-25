@@ -145,8 +145,11 @@ export class CodemodeLearnStore {
     return rows.map((row) => runOf(row, calls.all(String(row.run_id)).map(callOf)))
   }
 
-  /** Replaces the cached repeated chains (Task 4 computes them from chat journals). */
+  /** Replaces the cached repeated chains, unless a clear came after their computation started. */
   saveChains(chains: CodemodeRepeatedChain[], computedAt: number): void {
+    if (computedAt < (this.meta('cleared_at') ?? -Infinity)) {
+      return
+    }
     this.transaction(() => {
       this.db.prepare('DELETE FROM learn_chains').run()
       const insert = this.db.prepare(

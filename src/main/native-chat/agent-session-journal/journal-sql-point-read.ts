@@ -26,6 +26,7 @@ import { readJournalSqlStatusState } from './journal-sql-status-state'
 import { readJournalSqlStatusIndicators } from './journal-sql-status-indicators'
 import { readJournalSqlQueue } from './journal-sql-queue-read'
 import { readJournalDomainItems } from './journal-sql-item-reads'
+import { readJournalToolCallNames } from './journal-sql-tool-call-names'
 import {
   readJournalDomainAcpHistory,
   readJournalDomainAcpHistoryItems,
@@ -213,5 +214,7 @@ function read(
       }
     case 'queue':
       return { kind: 'queue', result: readJournalSqlQueue(scope, operation.operation) }
+    case 'tool-call-names':
+      return readJournalToolCallNames(scope, operation)
   }
 }

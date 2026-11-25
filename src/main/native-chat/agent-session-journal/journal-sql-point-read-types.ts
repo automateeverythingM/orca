@@ -38,6 +38,10 @@ import type { JournalLatestStop } from './context-epochs/journal-stop-turn-end'
 import type { JournalSqlQueueRead, JournalSqlQueueReadResult } from './journal-sql-queued-messages'
 import type { JournalSqlItemRead, JournalSqlItemReadResult } from './journal-sql-item-reads'
 import type {
+  JournalToolCallNamesRead,
+  JournalToolCallNamesResult
+} from './journal-sql-tool-call-names'
+import type {
   JournalAcpHistory,
   JournalAcpHistoryItems,
   JournalAcpHistoryItemsRead,
@@ -91,6 +95,7 @@ export type JournalSqlPointRead = {
     | { kind: 'turn-removed'; turnId: string }
     | { kind: 'queue'; operation: JournalSqlQueueRead }
     | JournalSqlItemRead
+    | JournalToolCallNamesRead
     | JournalPublicationRead
     | JournalConsumerRead
     | JournalRequestFailureRead
@@ -151,5 +156,6 @@ export type JournalSqlPointReadResult =
   | { kind: 'turn-removed'; removed: boolean }
   | { kind: 'queue'; result: JournalSqlQueueReadResult }
   | JournalSqlItemReadResult
+  | JournalToolCallNamesResult
   | JournalPublicationReadResult
   | JournalConsumerReadResult

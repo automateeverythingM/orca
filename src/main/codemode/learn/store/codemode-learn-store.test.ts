@@ -255,4 +255,20 @@ describe('CodemodeLearnStore', () => {
     await learn.saveChains([], NOW + 1)
     expect(await learn.chains()).toEqual({ computedAt: NOW + 1, chains: [] })
   })
+
+  it('refuses chains computed before a clear', async () => {
+    const chain = {
+      kind: 'chain' as const,
+      signature: 'a>b>c',
+      tools: ['a', 'b', 'c'],
+      sessions: 2,
+      occurrences: 2,
+      lastSeen: NOW - 5
+    }
+    await learn.clear(NOW)
+    await learn.saveChains([chain], NOW - 1)
+    expect(await learn.chains()).toEqual({ computedAt: null, chains: [] })
+    await learn.saveChains([chain], NOW)
+    expect(await learn.chains()).toEqual({ computedAt: NOW, chains: [chain] })
+  })
 })
