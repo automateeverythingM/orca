@@ -133,6 +133,10 @@ function libResult(method: string, functions: CodemodeLibEntryView[]): unknown {
       return { source: SOURCE, sha256: 'a'.repeat(64) }
     case 'codemode.lib.history':
       return { versions: HISTORY }
+    case 'codemode.learn.status':
+      return { enabled: false, stats: { runs: 0, calls: 0, bytes: 0, oldest: null } }
+    case 'codemode.learn.list':
+      return { scripts: [], chains: [], chainsComputedAt: null }
     default:
       return undefined
   }

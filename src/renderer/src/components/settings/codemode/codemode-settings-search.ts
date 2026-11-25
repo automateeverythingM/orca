@@ -6,6 +6,7 @@ import { translateSearchKeyword } from '../search/settings-search-keywords'
 export const CODEMODE_CONNECTORS_TARGET_ID = 'code-mode-connectors'
 export const CODEMODE_TRUSTED_SERVERS_TARGET_ID = 'code-mode-trusted-servers'
 export const CODEMODE_FUNCTIONS_TARGET_ID = 'code-mode-functions'
+export const CODEMODE_LEARN_TARGET_ID = 'code-mode-learn'
 
 export const getCodemodeConnectorsSearchEntry = createLocalizedCatalog((): SettingsSearchEntry => ({
   targetSectionId: CODEMODE_CONNECTORS_TARGET_ID,
@@ -37,6 +38,20 @@ export const getCodemodeFunctionsSearchEntry = createLocalizedCatalog((): Settin
   ]
 }))
 
+export const getCodemodeLearnSearchEntry = createLocalizedCatalog((): SettingsSearchEntry => ({
+  targetSectionId: CODEMODE_LEARN_TARGET_ID,
+  title: translate('settings.codemode.learn.title', 'Learn'),
+  description: translate(
+    'settings.codemode.learn.description',
+    'Scripts and tool chains agents ran in 2 or more chats, to save as functions.'
+  ),
+  keywords: [
+    ...translateSearchKeyword('settings.codemode.search.repeated', 'repeated'),
+    ...translateSearchKeyword('settings.codemode.search.learn', 'learn from runs'),
+    ...translateSearchKeyword('settings.codemode.search.clear', 'clear history')
+  ]
+}))
+
 export const getCodemodeTrustedServersSearchEntry = createLocalizedCatalog(
   (): SettingsSearchEntry => ({
     targetSectionId: CODEMODE_TRUSTED_SERVERS_TARGET_ID,
@@ -59,6 +74,7 @@ export function getCodemodeSettingsSearchEntries(): SettingsSearchEntry[] {
   return [
     getCodemodeConnectorsSearchEntry(),
     getCodemodeFunctionsSearchEntry(),
+    getCodemodeLearnSearchEntry(),
     getCodemodeTrustedServersSearchEntry()
   ]
 }

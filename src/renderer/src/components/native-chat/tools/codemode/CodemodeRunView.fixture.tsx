@@ -138,3 +138,27 @@ export const failed = defineFixture({
     frame.querySelectorAll<HTMLButtonElement>('li button')[2]?.click()
   }
 })
+
+export const seenInOtherChats = defineFixture({
+  width: 560,
+  render: () => (
+    <Frame
+      state="completed"
+      result={{ type: 'tool-result', output: '=> {"id":"u1","credits":120}', callId: 'toolu_01' }}
+      record={{
+        ...run(
+          'ok',
+          [
+            call(1, 'mcp.fake-crm.find_user', 'ok', { ms: 84, output: '{"id":"u1"}' }),
+            call(2, 'mcp.fake-crm.add_credits', 'ok', { ms: 120, output: '{"credits":120}' })
+          ],
+          240
+        ),
+        seenInChats: 3
+      }}
+    />
+  ),
+  interact: (frame) => {
+    frame.querySelector<HTMLButtonElement>('button')?.click()
+  }
+})

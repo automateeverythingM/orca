@@ -50,6 +50,8 @@ export function CodemodeRunView({
     run?.state !== 'running' &&
     run?.codeTruncated !== true
   const callCount = calls.length + (run?.omittedCalls ?? 0)
+  // Learn's count of chats that ran this same script, this one included.
+  const seenInChats = run?.seenInChats ?? 0
 
   return (
     <div>
@@ -98,15 +100,26 @@ export function CodemodeRunView({
             <NativeChatHighlightedCode code={code ?? ''} language="javascript" />
           </pre>
           {result ? <NativeChatToolOutput body={result} /> : null}
-          {canSave ? (
-            <button
-              type="button"
-              onClick={() => askToSaveAsFunction(sessionId, code)}
-              className="flex items-center gap-1.5 rounded-md py-1 font-sans text-xs text-chat-foreground-faint transition-colors hover:text-chat-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Save className="size-3.5" />
-              {t('components.native-chat.codemode.saveAsFunction', 'Save as function')}
-            </button>
+          {canSave || seenInChats >= 2 ? (
+            <div className="flex flex-wrap items-center gap-x-3 font-sans text-xs">
+              {canSave ? (
+                <button
+                  type="button"
+                  onClick={() => askToSaveAsFunction(sessionId, code)}
+                  className="flex items-center gap-1.5 rounded-md py-1 text-chat-foreground-faint transition-colors hover:text-chat-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Save className="size-3.5" />
+                  {t('components.native-chat.codemode.saveAsFunction', 'Save as function')}
+                </button>
+              ) : null}
+              {seenInChats >= 2 ? (
+                <span className="text-chat-foreground-faint">
+                  {t('components.native-chat.codemode.seenInChats', 'Ran in {{count}} chats', {
+                    count: seenInChats
+                  })}
+                </span>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </NativeChatExpandable>

@@ -3620,6 +3620,16 @@
         "count_other": "{{count}} skills"
       }
     },
+    "codemode": {
+      "learn": {
+        "chats_one": "{{count}} chat",
+        "chats_other": "{{count}} chats",
+        "runs_one": "{{count}} run",
+        "runs_other": "{{count}} runs",
+        "stats_one": "{{count}} run recorded, {{size}} MB",
+        "stats_other": "{{count}} runs recorded, {{size}} MB"
+      }
+    },
     "diagnostics": {
       "errors": {
         "creatingDisabled": "creating review files is disabled",

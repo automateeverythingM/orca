@@ -2114,7 +2114,10 @@
         "mcpJson": ".mcp.json",
         "lib": "lib",
         "savedFunction": "saved function",
-        "history": "history"
+        "history": "history",
+        "repeated": "repeated",
+        "learn": "learn from runs",
+        "clear": "clear history"
       },
       "functions": {
         "projectFrom": "Project functions come from {{name}} (the open worktree).",
@@ -2148,6 +2151,31 @@
         "description": "Saved functions agents call as lib.<name>: view, allow, move between project and global, or delete them.",
         "sourceTitle": "Saved function {{name}}",
         "allowViewFirst": "Open View to read it first"
+      },
+      "learn": {
+        "switch": "Learn from code mode runs",
+        "switchDescription": "Keeps your scripts and their results on this computer for 30 days to find work you repeat.",
+        "stats_one": "{{count}} run recorded, {{size}} MB",
+        "stats_other": "{{count}} runs recorded, {{size}} MB",
+        "clear": "Clear",
+        "clearConfirm": "Delete every recorded run and its results from this computer? Dismissed repeats come back.",
+        "cancel": "Cancel",
+        "reading": "Reading repeated work…",
+        "retry": "Try again",
+        "off": "Turn on Learn to find scripts you repeat.",
+        "empty": "Nothing repeated yet. Scripts and tool chains used in 2 or more chats show up here.",
+        "chats_one": "{{count}} chat",
+        "chats_other": "{{count}} chats",
+        "runs_one": "{{count}} run",
+        "runs_other": "{{count}} runs",
+        "lastSeen": "last {{ago}}",
+        "script": "Script",
+        "copied": "Copied",
+        "copy": "Copy save request",
+        "dismiss": "Dismiss",
+        "sampleCode": "Sample code",
+        "title": "Learn",
+        "description": "Scripts and tool chains agents ran in 2 or more chats, to save as functions."
       }
     }
   },
@@ -23084,7 +23112,8 @@
         "error": "Error",
         "omitted_one": "{{count}} more call not shown",
         "omitted_other": "{{count}} more calls not shown",
-        "saveAsFunction": "Save as function"
+        "saveAsFunction": "Save as function",
+        "seenInChats": "Ran in {{count}} chats"
       }
     },
     "tab": {

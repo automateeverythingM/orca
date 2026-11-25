@@ -6,6 +6,7 @@ import type { SettingsSearchEntry } from '../search/settings-search'
 import { SettingsSection } from '../section-layout/SettingsSection'
 import { CodemodeConnectorList } from './CodemodeConnectorList'
 import { CodemodeFunctionList } from './CodemodeFunctionList'
+import { CodemodeLearnSection } from './CodemodeLearnSection'
 import { CodemodeTrustedServersSetting } from './CodemodeTrustedServersSetting'
 
 export function CodemodeSettingsPage({
@@ -35,6 +36,7 @@ export function CodemodeSettingsPage({
       />
       <CodemodeConnectorList />
       <CodemodeFunctionList />
+      <CodemodeLearnSection settings={settings} updateSettings={updateSettings} />
       <CodemodeTrustedServersSetting settings={settings} updateSettings={updateSettings} />
     </SettingsSection>
   )

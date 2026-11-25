@@ -237,6 +237,7 @@ describe('Orca method exposure for code mode', () => {
     })
     expect(index.get('codemode.connectors.setToken')).toBeNull()
     expect(index.get('codemode.lib.delete')).toBeNull()
+    expect(index.get('codemode.learn.clear')).toBeNull()
     expect(areas).not.toContain('agentTeams')
     expect(areas).not.toContain('bots')
     expect(index.inArea('nope')).toEqual([])

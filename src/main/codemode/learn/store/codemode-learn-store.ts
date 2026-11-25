@@ -6,6 +6,7 @@ import SyncDatabase from '../../../sqlite/sync-database'
 import { hardenSqliteDatabaseFiles } from '../../../sqlite/harden-database-files'
 import type {
   CodemodeLearnRun,
+  CodemodeLearnStats,
   CodemodeRepeatedChain,
   CodemodeRepeatedScript
 } from '../../../../shared/codemode/codemode-learn-types'
@@ -30,13 +31,6 @@ import {
 export type CodemodeLearnBudgets = { runCallBytes: number; storeBytes: number }
 
 export type CodemodeLearnRecorded = { shape: string; otherSessions: number; dismissed: boolean }
-
-export type CodemodeLearnStats = {
-  runs: number
-  calls: number
-  bytes: number
-  oldest: number | null
-}
 
 /** The runs that count toward a repeat: ok, at least 2 inner calls, inside the window. */
 const COUNTED = 'ok = 1 AND call_count >= 2 AND started_at >= ?'

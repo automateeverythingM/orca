@@ -13,6 +13,8 @@ import { CodemodeLearnWorkerClient } from './db-worker/codemode-learn-worker-cli
 import type { CodemodeLearnRemote } from './store/codemode-learn-ops'
 
 const LEARN_STORE_FILE = 'codemode-learn.sqlite'
+/** The profile's Learn store file. */
+export const learnStorePath = (): string => join(getProfileUserDataPath(), LEARN_STORE_FILE)
 /** The longest a run's result waits on the Learn worker. */
 const FINISH_WAIT_MS = 2_000
 
@@ -160,7 +162,7 @@ export function workerLearnStore(testStore?: CodemodeLearnRemote): {
     store: () => {
       if (!remote) {
         client = new CodemodeLearnWorkerClient()
-        remote = client.store(join(getProfileUserDataPath(), LEARN_STORE_FILE))
+        remote = client.store(learnStorePath())
       }
       return remote
     },

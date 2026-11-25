@@ -362,6 +362,7 @@ import {
   CodemodeSessionConnectorToggle,
   CodemodeSessionConnectors
 } from './codemode/codemode-connectors-params'
+import { CodemodeLearnDismiss } from './codemode/codemode-learn-params'
 import {
   CodemodeLibList,
   CodemodeLibMove,
@@ -1540,6 +1541,10 @@ export const RPC_PARAMS_BY_METHOD = {
   'codemode.connectors.signIn.start': CodemodeConnectorTarget,
   'codemode.connectors.signIn.status': CodemodeConnectorTarget,
   'codemode.connectors.update': CodemodeConnectorUpdate,
+  'codemode.learn.clear': null,
+  'codemode.learn.dismiss': CodemodeLearnDismiss,
+  'codemode.learn.list': null,
+  'codemode.learn.status': null,
   'codemode.lib.delete': CodemodeLibTarget,
   'codemode.lib.history': CodemodeLibTarget,
   'codemode.lib.list': CodemodeLibList,

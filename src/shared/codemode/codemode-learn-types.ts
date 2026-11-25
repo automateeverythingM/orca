@@ -46,3 +46,21 @@ export type CodemodeRepeatedChain = {
   occurrences: number
   lastSeen: number
 }
+
+export type CodemodeLearnStats = {
+  runs: number
+  calls: number
+  /** The store file's size; the write-ahead log is not counted. */
+  bytes: number
+  oldest: number | null
+}
+
+/** `codemode.learn.status`: the switch, and what is stored (zero when the switch is off and no file exists). */
+export type CodemodeLearnStatusView = { enabled: boolean; stats: CodemodeLearnStats }
+
+/** `codemode.learn.list`: repeats not dismissed; empty while the switch is off. */
+export type CodemodeLearnListView = {
+  scripts: CodemodeRepeatedScript[]
+  chains: CodemodeRepeatedChain[]
+  chainsComputedAt: number | null
+}
