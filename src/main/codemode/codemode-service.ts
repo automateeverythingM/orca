@@ -87,6 +87,11 @@ export class CodemodeService {
     return this.learnStores.store()
   }
 
+  /** Stops the Learn worker so its file can be deleted; the next `learnStore()` starts a new one. */
+  closeLearnStore(): Promise<void> {
+    return this.learnStores.close()
+  }
+
   /** The saved-function trust and usage records all chats share; Settings must use these too. */
   libRecords(): CodemodeLibRecords {
     return this.lib

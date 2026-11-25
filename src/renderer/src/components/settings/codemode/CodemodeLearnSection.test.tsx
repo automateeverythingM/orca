@@ -131,3 +131,11 @@ it('Clear asks first, then clears and reads again', async () => {
   expect(client.clearCodemodeLearn).toHaveBeenCalledOnce()
   expect(screen.queryByText(/^Delete every recorded run/)).toBeNull()
 })
+
+it('switch off with an empty store file shows no stats and no Clear', async () => {
+  answer({ enabled: false, stats: { runs: 0, calls: 0, bytes: 4096, oldest: null } })
+  await show(false)
+  expect(screen.queryByText(/runs recorded/)).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
+  expect(screen.getByText('Turn on Learn to find scripts you repeat.')).toBeTruthy()
+})

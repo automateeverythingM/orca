@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -19,7 +19,11 @@ import {
 import { CodemodeLearnStore } from '../../../../codemode/learn/store/codemode-learn-store'
 import { OrcaRuntimeService } from '../../../orca-runtime'
 import { eraseRpcMethods, type RpcContext } from '../../core'
-import { codemodeLearnMethods, type CodemodeLearnMethodDeps } from './codemode-learn'
+import {
+  codemodeLearnMethods,
+  removeLearnStoreFiles,
+  type CodemodeLearnMethodDeps
+} from './codemode-learn'
 
 const NOW = 1_800_000_000_000
 const MINUTE = 60_000
@@ -85,11 +89,14 @@ function journal(): LearnChainJournal & { point: ReturnType<typeof vi.fn> } {
 
 function methodsFor(deps: Partial<CodemodeLearnMethodDeps> = {}) {
   const learnStore = vi.fn(() => remote)
+  const closeLearnStore = vi.fn(async () => {})
+  const removeStoreFiles = vi.fn(async () => {})
   const log = vi.fn()
   const methods = codemodeLearnMethods({
     desktop: () => true,
-    service: async () => ({ learnEnabled: () => enabled, learnStore }),
+    service: async () => ({ learnEnabled: () => enabled, learnStore, closeLearnStore }),
     storeExists: async () => fileExists,
+    removeStoreFiles,
     journal: async () => null,
     now: () => now,
     log,
@@ -118,7 +125,7 @@ function methodsFor(deps: Partial<CodemodeLearnMethodDeps> = {}) {
     }
     return reply
   }
-  return { call, list, status, learnStore, log }
+  return { call, list, status, learnStore, closeLearnStore, removeStoreFiles, log }
 }
 
 const isListView = (value: unknown): value is CodemodeLearnListView =>
@@ -139,7 +146,7 @@ describe('codemode.learn.* RPC methods', () => {
   it('switch off: no store is opened when no file exists, and nothing is listed', async () => {
     enabled = false
     fileExists = false
-    const { call, learnStore } = methodsFor()
+    const { call, learnStore, removeStoreFiles } = methodsFor()
     expect(await call('codemode.learn.status')).toEqual({
       enabled: false,
       stats: { runs: 0, calls: 0, bytes: 0, oldest: null }
@@ -152,15 +159,42 @@ describe('codemode.learn.* RPC methods', () => {
     expect(await call('codemode.learn.clear')).toEqual({})
     await expect(call('codemode.learn.dismiss', { key: 'a' })).rejects.toThrow('Learn is off')
     expect(learnStore).not.toHaveBeenCalled()
+    expect(removeStoreFiles).not.toHaveBeenCalled()
   })
 
-  it('switch off with a store file: status reads it and Clear empties it', async () => {
+  it('switch off with a store file: status reads it; Clear stops the worker and deletes the file', async () => {
     await remote.record(run('r1', 's1'), NOW)
     enabled = false
-    const { call, status } = methodsFor()
-    expect(await status()).toMatchObject({ enabled: false, stats: { runs: 1 } })
-    await call('codemode.learn.clear')
+    const methods = methodsFor()
+    expect(await methods.status()).toMatchObject({ enabled: false, stats: { runs: 1 } })
+    methods.learnStore.mockClear()
+    await methods.call('codemode.learn.clear')
+    expect(methods.closeLearnStore).toHaveBeenCalledOnce()
+    expect(methods.removeStoreFiles).toHaveBeenCalledOnce()
+    expect(methods.closeLearnStore.mock.invocationCallOrder[0]).toBeLessThan(
+      methods.removeStoreFiles.mock.invocationCallOrder[0] ?? 0
+    )
+    // No worker is started to empty a file about to be deleted.
+    expect(methods.learnStore).not.toHaveBeenCalled()
+  })
+
+  it('switch on: Clear empties the store and keeps its file', async () => {
+    await remote.record(run('r1', 's1'), NOW)
+    const methods = methodsFor()
+    await methods.call('codemode.learn.clear')
     expect((await remote.stats()).runs).toBe(0)
+    expect(methods.removeStoreFiles).not.toHaveBeenCalled()
+  })
+
+  it('removeLearnStoreFiles deletes the store and its WAL and SHM files', async () => {
+    const path = join(dir, 'gone.sqlite')
+    for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+      writeFileSync(file, 'x')
+    }
+    await removeLearnStoreFiles(path)
+    expect([path, `${path}-wal`, `${path}-shm`].some((file) => existsSync(file))).toBe(false)
+    // Nothing there is fine too.
+    await expect(removeLearnStoreFiles(path)).resolves.toBeUndefined()
   })
 
   it('lists repeated scripts and refreshes stale chains from the journal', async () => {
@@ -237,13 +271,6 @@ describe('codemode.learn.* RPC methods', () => {
     const { list } = methodsFor({ journal: async () => source })
     const listed = await list()
     expect(listed).toEqual({ scripts: [], chains: [], chainsComputedAt: null })
-  })
-
-  it('clear empties the store', async () => {
-    await remote.record(run('r1', 's1'), NOW)
-    const { call } = methodsFor()
-    expect(await call('codemode.learn.clear')).toEqual({})
-    expect(await remote.stats()).toMatchObject({ runs: 0, calls: 0 })
   })
 
   it('works only in the desktop app', async () => {

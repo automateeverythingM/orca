@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises'
+import { rm, stat } from 'node:fs/promises'
 import type {
   CodemodeLearnListView,
   CodemodeLearnStats,
@@ -23,22 +23,29 @@ import { defineMethod, type RpcContext } from '../../core'
 const LEARN_LIST_LIMIT = 50
 const NO_STATS: CodemodeLearnStats = { runs: 0, calls: 0, bytes: 0, oldest: null }
 
+type LearnService = Pick<CodemodeService, 'learnEnabled' | 'learnStore' | 'closeLearnStore'>
+
+/** Deletes a Learn store file with its write-ahead log and shared-memory files; missing ones are fine. */
+export async function removeLearnStoreFiles(path: string): Promise<void> {
+  await Promise.all([path, `${path}-wal`, `${path}-shm`].map((file) => rm(file, { force: true })))
+}
+
 export type CodemodeLearnMethodDeps = {
   /** Code mode runs only in the desktop app (its worker and WASM ship only there). */
   desktop: () => boolean
   /** The process's one code-mode service: the Learn switch and the store its recorder writes. */
-  service: (ctx: RpcContext) => Promise<Pick<CodemodeService, 'learnEnabled' | 'learnStore'>>
+  service: (ctx: RpcContext) => Promise<LearnService>
   /** Whether the profile has a Learn store file; with the switch off, no worker starts without one. */
   storeExists: () => Promise<boolean>
+  /** Deletes the store file (and its -wal/-shm); called only after the worker is closed. */
+  removeStoreFiles: () => Promise<void>
   /** The chats' records and journal readers; null when no chat host is installed. */
   journal: (ctx: RpcContext) => Promise<LearnChainJournal | null>
   now: () => number
   log: LearnChainLog
 }
 
-async function runtimeService(
-  ctx: RpcContext
-): Promise<Pick<CodemodeService, 'learnEnabled' | 'learnStore'>> {
+async function runtimeService(ctx: RpcContext): Promise<LearnService> {
   // Why: the host's install creates the service; Settings must share its store, never open another.
   await ctx.runtime.ensureStructuredAgentSessionHost()
   const service = installedCodemodeService()
@@ -68,6 +75,7 @@ const RUNTIME_DEPS: CodemodeLearnMethodDeps = {
       () => true,
       () => false
     ),
+  removeStoreFiles: () => removeLearnStoreFiles(learnStorePath()),
   journal: runtimeJournal,
   now: Date.now,
   log: (message, error) => console.warn(`[codemode] ${message}`, error ?? '')
@@ -160,9 +168,13 @@ export function codemodeLearnMethods(deps: CodemodeLearnMethodDeps) {
       params: null,
       handler: async (_params, ctx): Promise<Record<string, never>> => {
         const service = await open(ctx)
-        // Why: Clear works with the switch off too, when an earlier session left a store file.
-        if (service.learnEnabled() || (await deps.storeExists())) {
+        if (service.learnEnabled()) {
           await service.learnStore().clear()
+        } else if (await deps.storeExists()) {
+          // Why: with the switch off nothing should stay on disk, and a leftover file would start
+          // the worker on every Settings visit; stop the worker first so the file is not in use.
+          await service.closeLearnStore()
+          await deps.removeStoreFiles()
         }
         return {}
       }

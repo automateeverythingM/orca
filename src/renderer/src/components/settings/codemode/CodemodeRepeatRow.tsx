@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/class-names'
 import { useTranslate, type Translate } from '@/i18n/use-translate'
 import { formatUiCoarseRelativeTime } from '@/i18n/relative-time-format'
-import { codemodeConnectorErrorMessage } from './codemode-connectors-client'
+import { codemodeErrorMessage } from './codemode-error-message'
 import {
   dismissCodemodeRepeat,
   learnSaveRequest,
@@ -63,7 +63,7 @@ export function CodemodeRepeatRow({
       await window.api.ui.writeClipboardText(learnSaveRequest(repeat))
       setCopied(true)
     } catch (caught: unknown) {
-      setError(codemodeConnectorErrorMessage(caught))
+      setError(codemodeErrorMessage(caught))
     }
   }
   const dismiss = async (): Promise<void> => {
@@ -73,7 +73,7 @@ export function CodemodeRepeatRow({
       await dismissCodemodeRepeat(repeat)
       onDismissed()
     } catch (caught: unknown) {
-      setError(codemodeConnectorErrorMessage(caught))
+      setError(codemodeErrorMessage(caught))
     }
     setDismissing(false)
   }

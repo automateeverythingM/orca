@@ -1,7 +1,7 @@
 // Code mode's MCP connectors, read and changed on this computer's runtime (code mode is desktop-only).
 import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
-import { RuntimeRpcCallError } from '@/runtime/rpc/calls/runtime-rpc-result'
 import { translate } from '@/i18n/i18n'
+import { codemodeErrorMessage } from './codemode-error-message'
 import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
 import type {
   CodemodeConnectorView,
@@ -36,12 +36,8 @@ export function codemodeUrlHost(url: string): string {
 }
 
 /** The runtime's own words for a refused change (a taken name, an unreachable URL), else a generic line. */
-export function codemodeConnectorErrorMessage(error: unknown): string {
-  if (error instanceof RuntimeRpcCallError && error.message) {
-    return error.message
-  }
-  return translate('settings.codemode.connectors.genericError', 'Something went wrong. Try again.')
-}
+/** Kept for the connector and function views; new code uses `codemodeErrorMessage`. */
+export const codemodeConnectorErrorMessage = codemodeErrorMessage
 
 export async function listCodemodeConnectors(): Promise<CodemodeConnectorView[]> {
   const { connectors } = await callRuntimeRpc<{ connectors: CodemodeConnectorView[] }>(

@@ -10,7 +10,7 @@ import type {
 import type { GlobalSettings } from '../../../../../shared/settings/global-settings-types'
 import { SettingsSwitchRow } from '../form-controls/SettingsFormControls'
 import { SettingsGroup } from '../section-layout/SettingsGroup'
-import { codemodeConnectorErrorMessage } from './codemode-connectors-client'
+import { codemodeErrorMessage } from './codemode-error-message'
 import {
   clearCodemodeLearn,
   codemodeLearnStatus,
@@ -53,7 +53,7 @@ export function CodemodeLearnSection({
       },
       (caught: unknown) => {
         if (reads.current === read) {
-          setState({ kind: 'error', message: codemodeConnectorErrorMessage(caught) })
+          setState({ kind: 'error', message: codemodeErrorMessage(caught) })
         }
       }
     )
@@ -78,14 +78,15 @@ export function CodemodeLearnSection({
       setConfirmClear(false)
       refresh()
     } catch (caught: unknown) {
-      setClearError(codemodeConnectorErrorMessage(caught))
+      setClearError(codemodeErrorMessage(caught))
     }
     setClearing(false)
   }
 
   const ready = state.kind === 'ready' ? state : null
   const stats = ready?.status.stats
-  const showStats = stats !== undefined && (enabled || stats.runs > 0 || stats.bytes > 0)
+  // Why: an emptied store file still has a size; with the switch off only stored runs are worth a line.
+  const showStats = stats !== undefined && (enabled || stats.runs > 0)
   const repeats = ready ? [...ready.list.scripts, ...ready.list.chains] : []
   const muted = 'py-3 text-xs text-muted-foreground'
 
