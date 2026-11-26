@@ -14,7 +14,7 @@ export type LearnWriterGenerate = (
 
 export type LearnWriterResult =
   | { ok: true; draft: CodemodeLearnDraft }
-  | { ok: false; reason: string; canceled?: true }
+  | { ok: false; reason: string; canceled?: true; notWorth?: true }
 
 const CANCELED: LearnWriterResult = {
   ok: false,

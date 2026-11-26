@@ -143,4 +143,16 @@ describe('buildWriterPrompt', () => {
     expect(data).toContain('mcp.crm.update')
     expect(prompt.slice(0, open)).toMatch(/no inputs or outputs were recorded/i)
   })
+
+  it('lists the saved function names the writer must not reuse, at most 100', () => {
+    const taken = ['bad name', ...Array.from({ length: 120 }, (_, i) => `saved${i}`)]
+    const prompt = buildWriterPrompt({ kind: 'chain', tools: ['mcp.crm.search'] }, undefined, taken)
+    const { open } = fenceOf(prompt)
+    const head = prompt.slice(0, open)
+    expect(head).toMatch(/Do not reuse these names[^\n]*saved0, saved1/)
+    expect(head).toContain('saved99')
+    expect(head).not.toContain('saved100')
+    expect(head).not.toContain('bad name')
+    expect(buildWriterPrompt({ kind: 'chain', tools: ['x'] })).not.toContain('Do not reuse')
+  })
 })

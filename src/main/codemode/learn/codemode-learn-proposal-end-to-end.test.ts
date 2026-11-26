@@ -257,7 +257,7 @@ describe('Learn proposals end to end', () => {
     expect(cards).toEqual([])
   })
 
-  it('a draft calling an unrecorded tool fails replay and calls nothing real', async () => {
+  it('a draft calling an unrecorded tool fails replay and makes no real write', async () => {
     generate = async () => ({
       ok: true,
       text: draft(`const crm = mcp['fake-crm']

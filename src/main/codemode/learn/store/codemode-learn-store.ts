@@ -242,9 +242,9 @@ export class CodemodeLearnStore {
     return this.proposalTable.get(id)
   }
 
-  /** Source keys that already have a live or saved proposal. */
-  openProposalKeys(): string[] {
-    return this.proposalTable.openKeys()
+  /** Source keys a Learn run skips: a live or saved proposal, or a recent "not worth it". */
+  openProposalKeys(now: number = this.clock()): string[] {
+    return this.proposalTable.openKeys(now)
   }
 
   /** Gives the space of deleted rows back to the disk, after a clear. */

@@ -7,6 +7,9 @@ import { inProcessLearnStore, type CodemodeLearnRemote } from './codemode-learn-
 import { CodemodeLearnStore } from './codemode-learn-store'
 
 const NOW = 1_800_000_000_000
+const HOUR = 60 * 60 * 1000
+const DAY = 24 * HOUR
+const RETENTION_TEST_TIMEOUT_MS = 30_000
 let dir: string
 let path: string
 let store: CodemodeLearnStore
@@ -65,29 +68,57 @@ describe('Learn proposals', () => {
     expect((await learn.proposals(10)).map((p) => p.sourceKey)).toEqual(['b', 'a'])
   })
 
-  it('retention keeps 50 and never drops saved', async () => {
-    const saved: CodemodeLearnProposal[] = []
-    for (let i = 0; i < 3; i++) {
-      const p = (await learn.createProposal(base(`saved${i}`), NOW + i))!
-      await learn.updateProposal(p.id, { state: 'saved' }, ['writing'])
-      saved.push(p)
-    }
-    const dismissed = (await learn.createProposal(base('d'), NOW + 10))!
-    await learn.updateProposal(dismissed.id, { state: 'dismissed' }, ['writing'])
-    for (let i = 0; i < 60; i++) {
-      const p = (await learn.createProposal(base(`r${i}`), NOW + 100 + i))!
-      await learn.updateProposal(p.id, { state: 'ready' }, ['writing'])
-    }
-    const all = await learn.proposals(500)
-    expect(all).toHaveLength(50)
-    for (const p of saved) {
-      expect(all.some((x) => x.id === p.id)).toBe(true)
-    }
-    expect(all.some((x) => x.id === dismissed.id)).toBe(false)
-    // oldest ready went first; newest ready stays
-    expect(all.some((x) => x.sourceKey === 'r0')).toBe(false)
-    expect(all.some((x) => x.sourceKey === 'r59')).toBe(true)
-  })
+  it(
+    'retention keeps 50 and never drops saved',
+    async () => {
+      // Old enough that the 24 h hold on new ready proposals is over by the last create.
+      const old = NOW - 2 * DAY
+      const saved: CodemodeLearnProposal[] = []
+      for (let i = 0; i < 3; i++) {
+        const p = (await learn.createProposal(base(`saved${i}`), old + i))!
+        await learn.updateProposal(p.id, { state: 'saved' }, ['writing'])
+        saved.push(p)
+      }
+      const dismissed = (await learn.createProposal(base('d'), old + 10))!
+      await learn.updateProposal(dismissed.id, { state: 'dismissed' }, ['writing'])
+      for (let i = 0; i < 60; i++) {
+        const p = (await learn.createProposal(base(`r${i}`), old + 100 + i))!
+        await learn.updateProposal(p.id, { state: 'ready' }, ['writing'])
+      }
+      await learn.createProposal(base('fresh'), NOW)
+      const all = await learn.proposals(500)
+      expect(all).toHaveLength(50)
+      for (const p of saved) {
+        expect(all.some((x) => x.id === p.id)).toBe(true)
+      }
+      expect(all.some((x) => x.id === dismissed.id)).toBe(false)
+      // oldest ready went first; newest ready stays
+      expect(all.some((x) => x.sourceKey === 'r0')).toBe(false)
+      expect(all.some((x) => x.sourceKey === 'r59')).toBe(true)
+    },
+    // Why: 130 store writes; under a loaded parallel run this outlasted the 5 s default.
+    RETENTION_TEST_TIMEOUT_MS
+  )
+
+  it(
+    'retention never deletes a ready proposal from the last 24 h',
+    async () => {
+      for (let i = 0; i < 10; i++) {
+        const p = (await learn.createProposal(base(`old${i}`), NOW - 2 * DAY + i))!
+        await learn.updateProposal(p.id, { state: 'ready' }, ['writing'])
+      }
+      for (let i = 0; i < 55; i++) {
+        const p = (await learn.createProposal(base(`new${i}`), NOW - HOUR + i))!
+        await learn.updateProposal(p.id, { state: 'ready' }, ['writing'])
+      }
+      const all = await learn.proposals(500)
+      // Past 50, but only the old ready ones could go.
+      expect(all).toHaveLength(55)
+      expect(all.every((p) => p.sourceKey.startsWith('new'))).toBe(true)
+    },
+    // Why: 130 store writes, as above.
+    RETENTION_TEST_TIMEOUT_MS
+  )
 
   it('clear deletes proposals and refuses one from a run that started before it', async () => {
     await learn.createProposal(base('s1'), NOW)
@@ -108,6 +139,31 @@ describe('Learn proposals', () => {
     await learn.updateProposal(s.id, { state: 'saved' }, ['writing'])
     expect(w.state).toBe('writing')
     expect(await learn.openProposalKeys()).toEqual(['saved', 'writing'])
+  })
+
+  it('creating a proposal deletes the failed ones of the same source', async () => {
+    const failed = (await learn.createProposal(base('s1'), NOW))!
+    await learn.updateProposal(failed.id, { state: 'failed', failure: 'error' }, ['writing'])
+    const dismissed = (await learn.createProposal(base('s1'), NOW + 1))!
+    await learn.updateProposal(dismissed.id, { state: 'dismissed' }, ['writing'])
+    const other = (await learn.createProposal(base('s2'), NOW + 2))!
+    await learn.updateProposal(other.id, { state: 'failed', failure: 'error' }, ['writing'])
+    const again = (await learn.createProposal(base('s1'), NOW + 3))!
+    const ids = (await learn.proposals(10)).map((p) => p.id)
+    expect(ids).toEqual([again.id, other.id, dismissed.id])
+  })
+
+  it('a not-worth failure holds its source for 7 days; an error failure does not', async () => {
+    const notWorth = (await learn.createProposal(base('nw'), NOW))!
+    await learn.updateProposal(notWorth.id, { state: 'failed', failure: 'not-worth' }, ['writing'])
+    const broken = (await learn.createProposal(base('err'), NOW))!
+    await learn.updateProposal(broken.id, { state: 'failed', failure: 'error' }, ['writing'])
+    const legacy = (await learn.createProposal(base('legacy'), NOW))!
+    await learn.updateProposal(legacy.id, { state: 'failed' }, ['writing'])
+    expect(await learn.openProposalKeys(NOW + 7 * DAY - 1)).toEqual(['nw'])
+    expect(await learn.openProposalKeys(NOW + 7 * DAY + 1)).toEqual([])
+    // Without a time, the store's clock decides.
+    expect(await learn.openProposalKeys()).toEqual(['nw'])
   })
 
   it('caps testLog at 16 KiB and source at 256 KiB, and keeps an old file working', async () => {

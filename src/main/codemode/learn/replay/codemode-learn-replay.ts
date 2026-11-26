@@ -49,25 +49,39 @@ const failed = (reason: string, log: string[]): ReplayResult => ({
   log: log.join('\n')
 })
 
-export async function replayProposal(
-  input: ReplayProposalInput,
+/** The checks every proposal gets, recorded or not: a usable name, and a source that only defines
+ *  that function. Null when both pass; otherwise the failed result. */
+export async function checkProposalSource(
+  input: { source: string; name: string },
   deps: ReplayProposalDeps = {}
-): Promise<ReplayResult> {
+): Promise<ReplayResult | null> {
   const { source, name } = input
   if (!CODEMODE_LIB_NAME.test(name) || CODEMODE_LIB_RESERVED.has(name) || JS_RESERVED.has(name)) {
     return failed(`invalid function name ${JSON.stringify(name)}`, [])
   }
-  const limits = deps.limits ?? CODEMODE_LIMITS
-  const signal = deps.signal ?? new AbortController().signal
   const structure = await checkSourceStructure(source, name, {
     workerPath: deps.workerPath,
-    limits,
-    signal
+    limits: deps.limits ?? CODEMODE_LIMITS,
+    signal: deps.signal ?? new AbortController().signal
   })
   if (!structure.ok) {
     const reason = structureFailureText(name)
     return failed(reason, [`✗ ${reason}`, structure.detail])
   }
+  return null
+}
+
+export async function replayProposal(
+  input: ReplayProposalInput,
+  deps: ReplayProposalDeps = {}
+): Promise<ReplayResult> {
+  const { source, name } = input
+  const unfit = await checkProposalSource(input, deps)
+  if (unfit) {
+    return unfit
+  }
+  const limits = deps.limits ?? CODEMODE_LIMITS
+  const signal = deps.signal ?? new AbortController().signal
 
   const replay = replayHost(input.runs)
   // Why: parsed inside the sandbox, not pasted as a literal, so a `__proto__` key arrives as data.

@@ -137,7 +137,11 @@ describe('parseWriterReply', () => {
   it('fails when the writer says it is not worth saving', () => {
     expect(
       parseWriterReply(JSON.stringify({ worth: false, why: 'Each run did different work.' }))
-    ).toEqual({ ok: false, reason: 'Not worth saving: Each run did different work.' })
+    ).toEqual({
+      ok: false,
+      reason: 'Not worth saving: Each run did different work.',
+      notWorth: true
+    })
   })
 })
 

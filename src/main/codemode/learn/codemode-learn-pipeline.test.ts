@@ -322,3 +322,105 @@ describe('CodemodeLearnRunner', () => {
     expect(runner.running()).toBe(false)
   })
 })
+
+describe('runLearn and earlier failures', () => {
+  it('a not-worth reply holds its source; a writer error is drafted again, replacing its card', async () => {
+    await recordSignal(remote, 1)
+    await recordSignal(remote, 2)
+    const first = fakeGenerate(async (i) =>
+      i === 1
+        ? { ok: true, text: JSON.stringify({ worth: false, why: 'one-off work' }) }
+        : { ok: false, error: 'Claude is not logged in' }
+    )
+    await learn({ generate: first })
+    const failed = await remote.proposals(10)
+    expect(failed.map((p) => [p.name ?? p.error, p.state, p.failure]).sort()).toEqual([
+      ['Not worth saving: one-off work', 'failed', 'not-worth'],
+      ['The writer could not run: Claude is not logged in', 'failed', 'error']
+    ])
+    const again = vi.fn(fakeGenerate())
+    expect((await learn({ generate: again })).proposals).toHaveLength(1)
+    expect(again).toHaveBeenCalledOnce()
+    const after = await remote.proposals(10)
+    // The errored card is gone; the new draft and the not-worth card stay.
+    expect(after.map((p) => [p.name ?? p.failure, p.state]).sort()).toEqual([
+      ['not-worth', 'failed'],
+      ['plan2', 'ready']
+    ])
+  })
+
+  it('a stopped run and a thrown error mark their proposals failed with an error', async () => {
+    await recordSignal(remote, 1)
+    const controller = new AbortController()
+    const generate: LearnWriterGenerate = async () => {
+      controller.abort()
+      return { ok: false, error: 'canceled' }
+    }
+    await learn({ generate, signal: controller.signal })
+    expect((await remote.proposals(1))[0]).toMatchObject({ state: 'failed', failure: 'error' })
+  })
+})
+
+describe('runLearn tells the writer what exists', () => {
+  it('passes the saved function names for the source root to the writer', async () => {
+    await recordSignal(remote, 1)
+    const libNames = vi.fn(async () => ['planTaken', 'otherFn'])
+    const generate = vi.fn(fakeGenerate())
+    await learn({ generate, libNames })
+    expect(libNames).toHaveBeenCalledWith('/repo')
+    expect(generate.mock.calls[0]?.[0]).toMatch(/Do not reuse these names[^\n]*planTaken, otherFn/)
+  })
+
+  it('a failing name lookup does not stop the draft', async () => {
+    await recordSignal(remote, 1)
+    const log = vi.fn()
+    const libNames = async (): Promise<string[]> => {
+      throw new Error('EACCES')
+    }
+    await learn({ libNames, log })
+    expect((await remote.proposals(1))[0]).toMatchObject({ state: 'ready', name: 'plan1' })
+    expect(log).toHaveBeenCalled()
+  })
+})
+
+describe('runLearn checks chain proposals', () => {
+  it('a chain proposal that does more than define its function fails its test', async () => {
+    const generate = fakeGenerate(async (i) =>
+      i < 0
+        ? {
+            ok: true,
+            text: draftReply(-1, { body: 'return 1\n}\nglobalThis.x = 1\nasync function y(){' })
+          }
+        : undefined
+    )
+    await learn({ generate, chains: async () => [CHAIN] })
+    expect((await remote.proposals(1))[0]).toMatchObject({
+      sourceKind: 'chain',
+      state: 'ready',
+      testStatus: 'failed',
+      testReason: 'source must define only the function chainFn'
+    })
+  })
+
+  it('a well-formed chain proposal stays untested', async () => {
+    await learn({ chains: async () => [CHAIN] })
+    expect((await remote.proposals(1))[0]).toMatchObject({
+      testStatus: 'untested',
+      testReason: CHAIN_UNTESTED_REASON
+    })
+  })
+})
+
+describe('runLearn reports what it picked', () => {
+  it('onSignals gets the number of signals left after skips', async () => {
+    const onSignals = vi.fn()
+    await learn({ onSignals })
+    expect(onSignals).toHaveBeenLastCalledWith(0)
+    await recordSignal(remote, 1)
+    await learn({ onSignals })
+    expect(onSignals).toHaveBeenLastCalledWith(1)
+    // The source now has a ready proposal, so nothing is new.
+    await learn({ onSignals })
+    expect(onSignals).toHaveBeenLastCalledWith(0)
+  })
+})

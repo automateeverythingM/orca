@@ -3,6 +3,7 @@
 // Nothing is saved here; the person saves from Settings. Every update is conditional on the
 // proposal's state, so a Dismiss or Save made meanwhile always stands.
 import type {
+  CodemodeLearnFailure,
   CodemodeLearnProposalState,
   CodemodeLearnRun,
   CodemodeLearnTestStatus,
@@ -10,11 +11,14 @@ import type {
   CodemodeRepeatedScript
 } from '../../../shared/codemode/codemode-learn-types'
 import { learnSignalKey, pickSignals, type CodemodeLearnSignal } from './codemode-learn-rank'
-import { replayProposal } from './replay/codemode-learn-replay'
+import { checkProposalSource, replayProposal } from './replay/codemode-learn-replay'
 import type { CodemodeLearnRemote } from './store/codemode-learn-ops'
+import type { ProposalPatch } from './store/codemode-learn-proposal-table'
 import { WRITER_MAX_RUNS, buildWriterPrompt } from './writer/codemode-learn-writer-prompt'
 import { draftToLibFile } from './writer/codemode-learn-writer-reply'
 import { runLearnWriter, type LearnWriterGenerate } from './writer/codemode-learn-writer'
+
+export { CodemodeLearnRunner } from './codemode-learn-runner'
 
 /** Most proposals one run drafts. */
 export const LEARN_RUN_PROPOSALS = 5
@@ -30,11 +34,17 @@ export type LearnPipelineDeps = {
   /** The repeated chains as Settings lists them (refreshed when stale, dismissed ones left out). */
   chains: () => Promise<CodemodeRepeatedChain[]>
   generate: LearnWriterGenerate
-  /** Aborted by Clear (or the app stopping): the writer and replay stop, and so does the run. */
+  /** Aborted by Clear, by a Learn RPC that finds the switch off, or by the app stopping: the
+   *  writer and replay stop, and so does the run. */
   signal: AbortSignal
-  /** The Learn switch, read before each signal: switched off, the run stops. */
+  /** The Learn switch, read before each step: switched off, the run stops. */
   enabled: () => boolean
   log: (message: string, error?: unknown) => void
+  /** Names of the functions already saved for this project root (and global), for the writer to
+   *  avoid. Missing or failing, the writer is told none. */
+  libNames?: (projectRoot: string | null) => Promise<string[]>
+  /** Told how many signals the run will draft, once it has picked them (0: nothing new). */
+  onSignals?: (count: number) => void
   /** Tests only; default is the bundled worker entry. */
   workerPath?: string
 }
@@ -49,9 +59,16 @@ export type LearnRunOptions = {
   now: number
 }
 
+type TestResult = { status: CodemodeLearnTestStatus; reason?: string; log: string }
+
 const round1 = (value: number): number => Math.round(value * 10) / 10
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
+const failedWith = (error: string, failure: CodemodeLearnFailure): ProposalPatch => ({
+  state: 'failed',
+  error,
+  failure
+})
 
 async function signalsFor(
   deps: LearnPipelineDeps,
@@ -71,7 +88,7 @@ async function signalsFor(
     scripts = scripts.filter((script) => script.shape === opts.shape)
     chains = chains.filter((chain) => chain.signature === opts.shape)
   }
-  const skip = new Set(await deps.store.openProposalKeys())
+  const skip = new Set(await deps.store.openProposalKeys(opts.now))
   return pickSignals(scripts, chains, skip, LEARN_RUN_PROPOSALS)
 }
 
@@ -79,6 +96,27 @@ type Outcome = 'next' | 'stop'
 
 /** Clear (or the app stopping) aborted the run, or the person switched Learn off. */
 const stopped = (deps: LearnPipelineDeps): boolean => deps.signal.aborted || !deps.enabled()
+
+async function takenNames(deps: LearnPipelineDeps, projectRoot: string | null): Promise<string[]> {
+  try {
+    return (await deps.libNames?.(projectRoot)) ?? []
+  } catch (error) {
+    deps.log('Learn could not read the saved function names', error)
+    return []
+  }
+}
+
+/** A chain has no recordings to replay, but its source must still only define its function. */
+async function testChain(
+  deps: LearnPipelineDeps,
+  input: { source: string; name: string }
+): Promise<TestResult> {
+  const unfit = await checkProposalSource(input, {
+    ...(deps.workerPath ? { workerPath: deps.workerPath } : {}),
+    signal: deps.signal
+  })
+  return unfit ?? { status: 'untested', reason: CHAIN_UNTESTED_REASON, log: '' }
+}
 
 /** Drafts and tests one signal's proposal; 'stop' once a Clear, an abort or the switch ended the
  *  run. Any error is this signal's alone: it is logged, its proposal failed, and the run goes on. */
@@ -98,6 +136,8 @@ async function proposeOne(
         ? round1(runs.reduce((sum, run) => sum + run.calls.length, 0) / Math.max(runs.length, 1))
         : signal.chain.tools.length
     const roots = signal.kind === 'script' ? signal.script.projectRoots : []
+    // Why: project scope saves into the source runs' root, so it must be the only one.
+    const projectRoot = roots.length === 1 ? (roots[0] ?? null) : null
     if (stopped(deps)) {
       return 'stop'
     }
@@ -106,8 +146,7 @@ async function proposeOne(
         sourceKind: signal.kind,
         sourceKey: learnSignalKey(signal),
         sourceSessions: signal.kind === 'script' ? signal.script.sessions : signal.chain.sessions,
-        // Why: project scope saves into the source runs' root, so it must be the only one.
-        projectRoot: roots.length === 1 ? (roots[0] ?? null) : null,
+        projectRoot,
         callsBefore
       },
       opts.now
@@ -123,13 +162,17 @@ async function proposeOne(
       signal.kind === 'script'
         ? { kind: 'script', runs }
         : { kind: 'chain', tools: signal.chain.tools },
-      opts.hint
+      opts.hint,
+      await takenNames(deps, projectRoot)
     )
     const written = await runLearnWriter(prompt, { generate: deps.generate, signal: deps.signal })
     if (!written.ok || stopped(deps)) {
       const halted = (!written.ok && written.canceled) || stopped(deps)
-      const error = halted || written.ok ? LEARN_STOPPED_REASON : written.reason
-      await store.updateProposal(id, { state: 'failed', error }, ['writing'])
+      const patch =
+        halted || written.ok
+          ? failedWith(LEARN_STOPPED_REASON, 'error')
+          : failedWith(written.reason, written.notWorth ? 'not-worth' : 'error')
+      await store.updateProposal(id, patch, ['writing'])
       return halted ? 'stop' : 'next'
     }
     const { draft } = written
@@ -153,15 +196,15 @@ async function proposeOne(
     if (!testing) {
       return 'next'
     }
-    const test: { status: CodemodeLearnTestStatus; reason?: string; log: string } =
+    const test: TestResult =
       signal.kind === 'chain'
-        ? { status: 'untested', reason: CHAIN_UNTESTED_REASON, log: '' }
+        ? await testChain(deps, { source, name: draft.name })
         : await replayProposal(
             { source, name: draft.name, sampleArgs: draft.sampleArgs, expect: draft.expect, runs },
             { ...(deps.workerPath ? { workerPath: deps.workerPath } : {}), signal: deps.signal }
           )
     if (deps.signal.aborted) {
-      await store.updateProposal(id, { state: 'failed', error: LEARN_STOPPED_REASON }, ['testing'])
+      await store.updateProposal(id, failedWith(LEARN_STOPPED_REASON, 'error'), ['testing'])
       return 'stop'
     }
     await store.updateProposal(
@@ -179,7 +222,7 @@ async function proposeOne(
     deps.log(`Learn could not finish a proposal for ${learnSignalKey(signal)}`, error)
     if (id !== null) {
       await store
-        .updateProposal(id, { state: 'failed', error: messageOf(error) }, UNFINISHED)
+        .updateProposal(id, failedWith(messageOf(error), 'error'), UNFINISHED)
         .catch(() => false)
     }
     return stopped(deps) ? 'stop' : 'next'
@@ -198,12 +241,13 @@ export async function runLearn(
     if (UNFINISHED.includes(left.state)) {
       await deps.store.updateProposal(
         left.id,
-        { state: 'failed', error: LEARN_STOPPED_REASON },
+        failedWith(LEARN_STOPPED_REASON, 'error'),
         UNFINISHED
       )
     }
   }
   const signals = await signalsFor(deps, opts)
+  deps.onSignals?.(signals.length)
   for (const signal of signals) {
     if (stopped(deps)) {
       break
@@ -213,39 +257,4 @@ export async function runLearn(
     }
   }
   return { proposals: created }
-}
-
-/** The process's one Learn run at a time. */
-export class CodemodeLearnRunner {
-  private current: AbortController | null = null
-
-  running(): boolean {
-    return this.current !== null
-  }
-
-  /** Starts `run` unless one is going (then null); it gets the signal `stop` aborts. */
-  start<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> | null {
-    if (this.current) {
-      return null
-    }
-    const controller = new AbortController()
-    this.current = controller
-    const release = (): void => {
-      if (this.current === controller) {
-        this.current = null
-      }
-    }
-    let started: Promise<T>
-    try {
-      started = run(controller.signal)
-    } catch (error) {
-      started = Promise.reject(error)
-    }
-    return started.finally(release)
-  }
-
-  /** Aborts the run going now, if any; it stays `running` until it has wound down. */
-  stop(): void {
-    this.current?.abort()
-  }
 }

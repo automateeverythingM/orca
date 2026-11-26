@@ -15,29 +15,36 @@ import {
   CodemodeLearnPropose,
   CodemodeLearnSaveProposal
 } from '../../../../../shared/rpc-contract/codemode/codemode-learn-params'
-import type { CodemodeService } from '../../../../codemode/codemode-service'
 import { runLearn } from '../../../../codemode/learn/codemode-learn-pipeline'
 import type { CodemodeLearnRemote } from '../../../../codemode/learn/store/codemode-learn-ops'
+import type { ProposalPatch } from '../../../../codemode/learn/store/codemode-learn-proposal-table'
 import type { LearnWriterGenerate } from '../../../../codemode/learn/writer/codemode-learn-writer'
 import { createLearnWriterGenerate } from '../../../../codemode/learn/writer/codemode-learn-writer-generate'
-import { libAccessFor } from '../../../../codemode/lib/codemode-lib-access'
-import { parseLibHeader } from '../../../../codemode/lib/codemode-lib-header'
-import { CodemodeLibStore, libTrustKey } from '../../../../codemode/lib/codemode-lib-store'
 import { defineMethod, type RpcContext } from '../../core'
-import { installedService, listedChains, runtimeJournal } from './codemode-learn'
+import { installedService, learnSwitch, listedChains, runtimeJournal } from './codemode-learn'
 import { runtimeProjectAccess } from './codemode-lib'
+import {
+  SAVABLE,
+  learnProposalUsage,
+  refusal,
+  saveLearnProposal,
+  savedLibNames,
+  type ProposalService
+} from './codemode-learn-proposal-save'
+
+export { LEARN_CALLS_AFTER_MIN_USES } from './codemode-learn-proposal-save'
 
 /** Most proposals listed; saved ones are never deleted, so there can be more than the 50 kept. */
 const PROPOSALS_LIST_LIMIT = 100
-/** "was N calls, now M" shows once the saved function was used this often. */
-export const LEARN_CALLS_AFTER_MIN_USES = 3
 const NOT_SAVED: CodemodeLearnProposalState[] = ['writing', 'testing', 'ready', 'failed']
-const SAVABLE: CodemodeLearnProposalState[] = ['ready', 'failed']
-
-type ProposalService = Pick<
-  CodemodeService,
-  'learnEnabled' | 'learnStore' | 'learnRunner' | 'libRecords'
->
+const UNFINISHED: CodemodeLearnProposalState[] = ['writing', 'testing']
+export const LEARN_NOTHING_NEW_REASON = 'Nothing new to learn here yet.'
+/** A proposal still writing or testing while no run goes: the app quit or the run crashed. */
+const SWEPT: ProposalPatch = {
+  state: 'failed',
+  error: 'Stopped before it finished.',
+  failure: 'error'
+}
 
 export type CodemodeLearnProposalMethodDeps = {
   /** Code mode runs only in the desktop app (its worker and WASM ship only there). */
@@ -72,23 +79,6 @@ const RUNTIME_DEPS: CodemodeLearnProposalMethodDeps = {
   log
 }
 
-const round1 = (value: number): number => Math.round(value * 10) / 10
-const isMissing = (error: unknown): boolean =>
-  error instanceof Error && 'code' in error && error.code === 'ENOENT'
-
-/** Why a proposal in this state cannot be saved or dismissed. */
-function refusal(state: CodemodeLearnProposalState | undefined): string {
-  if (state === undefined) {
-    return 'unknown proposal'
-  }
-  if (state === 'saved') {
-    return 'This proposal is already saved.'
-  }
-  return state === 'dismissed'
-    ? 'This proposal was dismissed.'
-    : 'This proposal is not ready to save yet.'
-}
-
 async function requireProposal(
   store: CodemodeLearnRemote,
   id: string
@@ -98,6 +88,31 @@ async function requireProposal(
     throw new Error('unknown proposal')
   }
   return proposal
+}
+
+/** A card that failed on a writer or run error says nothing about the repeat itself. */
+const failedOnError = (proposal: CodemodeLearnProposal): boolean =>
+  proposal.failure === 'error' || (proposal.state === 'failed' && proposal.failure !== 'not-worth')
+
+/** Proposals as listed; while no run goes, any left writing or testing is marked failed. */
+async function listed(service: ProposalService): Promise<CodemodeLearnProposal[]> {
+  const store = service.learnStore()
+  const proposals = await store.proposals(PROPOSALS_LIST_LIMIT)
+  // Why: checked after the read; a run started since may own a proposal this list holds.
+  if (service.learnRunner().running()) {
+    return proposals
+  }
+  return Promise.all(
+    proposals.map(async (proposal) => {
+      if (!UNFINISHED.includes(proposal.state)) {
+        return proposal
+      }
+      if (await store.updateProposal(proposal.id, SWEPT, UNFINISHED)) {
+        return { ...proposal, ...SWEPT }
+      }
+      return (await store.proposal(proposal.id)) ?? proposal
+    })
+  )
 }
 
 export function codemodeLearnProposalMethods(deps: CodemodeLearnProposalMethodDeps) {
@@ -115,84 +130,6 @@ export function codemodeLearnProposalMethods(deps: CodemodeLearnProposalMethodDe
     return service
   }
 
-  /** How often a saved proposal's function ran, and its calls per run since it was saved. */
-  const usageOf = async (
-    service: ProposalService,
-    proposal: CodemodeLearnProposal
-  ): Promise<CodemodeLearnProposalUsage | null> => {
-    const saved = proposal.savedAs
-    if (proposal.state !== 'saved' || !saved) {
-      return null
-    }
-    const root = saved.scope === 'project' ? proposal.projectRoot : null
-    try {
-      const key = await libTrustKey(saved.scope, root)
-      const { uses } = await service.libRecords().usage.read(key, saved.name)
-      const after =
-        uses >= LEARN_CALLS_AFTER_MIN_USES
-          ? await service.learnStore().libCallsAfter(saved.name, proposal.savedAt ?? 0, root)
-          : null
-      return { uses, callsAfter: after === null ? null : round1(after) }
-    } catch (error) {
-      // A project folder that is gone has no usage to show; anything else is worth a log line.
-      if (!isMissing(error)) {
-        deps.log(`Learn could not read the usage of ${saved.name}`, error)
-      }
-      return { uses: 0, callsAfter: null }
-    }
-  }
-
-  /** Claims the proposal, then writes its function through the lib store and trusts it; a write
-   *  or trust failure gives the proposal back its earlier state. */
-  const save = async (
-    ctx: RpcContext,
-    service: ProposalService,
-    proposal: CodemodeLearnProposal,
-    scope: CodemodeLibScope,
-    edited: string | undefined
-  ): Promise<{ name: string; scope: CodemodeLibScope }> => {
-    const source = edited ?? proposal.source
-    if (!proposal.name || !source) {
-      throw new Error('This proposal has no function to save.')
-    }
-    const records = service.libRecords()
-    let projectRoot: string | null = null
-    if (scope === 'project') {
-      if (!proposal.projectRoot) {
-        throw new Error('This proposal has no project to save into; save it as global.')
-      }
-      await deps.projectAccess(ctx, proposal.projectRoot)
-      projectRoot = (await libAccessFor(proposal.projectRoot, records)).projectRoot
-    }
-    const store = service.learnStore()
-    // Why: claimed before anything is written, so a Dismiss or a second Save meanwhile is refused.
-    if (!(await store.updateProposal(proposal.id, { state: 'saved' }, SAVABLE))) {
-      throw new Error(refusal((await store.proposal(proposal.id))?.state))
-    }
-    try {
-      // The lib store validates the text (name, definition, size, symlinks) before it writes.
-      const saved = await new CodemodeLibStore({ projectRoot, homeDir: records.homeDir }).save({
-        name: proposal.name,
-        source,
-        scope,
-        // Why: the person's edited header wins; without one, the writer's description stands.
-        description: parseLibHeader(source).meta.description?.trim() || proposal.description,
-        savedBy: 'learn'
-      })
-      // Why: the person read and approved this exact text in Settings.
-      await records.trust.record(await libTrustKey(scope, projectRoot), saved.name, saved.source)
-      const savedAs = { name: saved.name, scope }
-      const fields = { savedAs, savedAt: deps.now(), source: saved.source }
-      await store.updateProposal(proposal.id, fields, ['saved'])
-      return savedAs
-    } catch (error) {
-      await store
-        .updateProposal(proposal.id, { state: proposal.state }, ['saved'])
-        .catch((revert: unknown) => deps.log('Learn could not give a proposal back', revert))
-      throw error
-    }
-  }
-
   return [
     defineMethod({
       name: 'codemode.learn.propose',
@@ -206,6 +143,7 @@ export function codemodeLearnProposalMethods(deps: CodemodeLearnProposalMethodDe
         const store = service.learnStore()
         const generate = deps.generate(ctx)
         const now = deps.now()
+        const picked = Promise.withResolvers<number | null>()
         // Why: the run takes minutes (one writer request per proposal); Settings polls for it.
         const run = service.learnRunner().start((signal) =>
           runLearn(
@@ -216,6 +154,8 @@ export function codemodeLearnProposalMethods(deps: CodemodeLearnProposalMethodDe
               signal,
               enabled: () => service.learnEnabled(),
               log: deps.log,
+              libNames: (root) => savedLibNames(deps, ctx, service, root),
+              onSignals: (count) => picked.resolve(count),
               ...(deps.workerPath ? { workerPath: deps.workerPath } : {})
             },
             { ...params, now }
@@ -224,7 +164,18 @@ export function codemodeLearnProposalMethods(deps: CodemodeLearnProposalMethodDe
         if (!run) {
           return { started: false, code: 'running', reason: 'Learn is already running' }
         }
-        void run.catch((error: unknown) => deps.log('a Learn run failed', error))
+        void run
+          .catch((error: unknown) => deps.log('a Learn run failed', error))
+          .finally(() => picked.resolve(null))
+        // Why: answers once the run has picked its signals, so "nothing new" is said, not polled.
+        const count = await picked.promise
+        if (count === 0) {
+          return { started: false, code: 'nothing-new', reason: LEARN_NOTHING_NEW_REASON }
+        }
+        if (count === null) {
+          // The run failed before it picked anything; its error is the answer.
+          await run
+        }
         return { started: true }
       }
     }),
@@ -234,14 +185,15 @@ export function codemodeLearnProposalMethods(deps: CodemodeLearnProposalMethodDe
       params: null,
       handler: async (_params, ctx): Promise<CodemodeLearnProposalsView> => {
         const service = await open(ctx)
+        const enabled = learnSwitch(service)
         const running = service.learnRunner().running()
-        if (!service.learnEnabled()) {
+        if (!enabled) {
           return { running, proposals: [], usage: {} }
         }
-        const proposals = await service.learnStore().proposals(PROPOSALS_LIST_LIMIT)
+        const proposals = await listed(service)
         const usage: Record<string, CodemodeLearnProposalUsage> = {}
         for (const proposal of proposals) {
-          const used = await usageOf(service, proposal)
+          const used = await learnProposalUsage(deps, service, proposal)
           if (used) {
             usage[proposal.id] = used
           }
@@ -255,13 +207,19 @@ export function codemodeLearnProposalMethods(deps: CodemodeLearnProposalMethodDe
       params: CodemodeLearnProposalId,
       handler: async (params, ctx): Promise<Record<string, never>> => {
         const store = (await openEnabled(ctx)).learnStore()
+        const before = await requireProposal(store, params.id)
         const moved = await store.updateProposal(params.id, { state: 'dismissed' }, NOT_SAVED)
-        const proposal = await requireProposal(store, params.id)
-        if (!moved && proposal.state !== 'dismissed') {
-          throw new Error(refusal(proposal.state))
+        if (!moved) {
+          const now = await requireProposal(store, params.id)
+          if (now.state !== 'dismissed') {
+            throw new Error(refusal(now.state))
+          }
         }
-        // Why: the repeat is not listed again, and the next run does not draft it again.
-        await store.dismiss(proposal.sourceKey)
+        // Why: the repeat is not listed again, and the next run does not draft it again; a card
+        // that failed on an error only goes, so a later run may still draft that repeat.
+        if (!failedOnError(before)) {
+          await store.dismiss(before.sourceKey)
+        }
         return {}
       }
     }),
@@ -275,7 +233,7 @@ export function codemodeLearnProposalMethods(deps: CodemodeLearnProposalMethodDe
         if (!SAVABLE.includes(proposal.state)) {
           throw new Error(refusal(proposal.state))
         }
-        return save(ctx, service, proposal, params.scope, params.source)
+        return saveLearnProposal(deps, ctx, service, proposal, params.scope, params.source)
       }
     })
   ]

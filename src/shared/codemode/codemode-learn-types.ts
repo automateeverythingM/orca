@@ -74,6 +74,9 @@ export type CodemodeLearnProposalState =
   | 'saved'
   | 'dismissed'
 export type CodemodeLearnTestStatus = 'passed' | 'failed' | 'untested'
+/** Why a proposal failed: the writer judged the repeat not worth a function, or something went
+ *  wrong (writer error, timeout, not logged in, bad reply, the run stopping). */
+export type CodemodeLearnFailure = 'not-worth' | 'error'
 
 /** A function the writer drafted from a repeated script or chain, waiting for the person. */
 export type CodemodeLearnProposal = {
@@ -85,6 +88,8 @@ export type CodemodeLearnProposal = {
   projectRoot: string | null
   state: CodemodeLearnProposalState
   error?: string
+  /** Set with `failed`: a `not-worth` failure holds its source for 7 days, an `error` does not. */
+  failure?: CodemodeLearnFailure
   name?: string
   description?: string
   params?: CodemodeLibParam[]
@@ -124,7 +129,7 @@ export type CodemodeLearnProposeParams = { sessionId?: string; shape?: string; h
 /** `codemode.learn.propose`: the run started, or why it did not. */
 export type CodemodeLearnProposeResult =
   | { started: true }
-  | { started: false; code: 'off' | 'running'; reason: string }
+  | { started: false; code: 'off' | 'running' | 'nothing-new'; reason: string }
 
 /** A saved proposal's function in use: `callsAfter` is the average inner calls of recorded runs
  *  that called it, null until it has been used 3 times or while no such run is recorded. */

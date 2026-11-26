@@ -13,7 +13,8 @@ import { renderLibFile } from '../../lib/codemode-lib-header'
 
 export type WriterReplyResult =
   | { ok: true; draft: CodemodeLearnDraft }
-  | { ok: false; reason: string }
+  /** `notWorth`: the writer judged the repeat not worth a function (not an error). */
+  | { ok: false; reason: string; notWorth?: true }
 
 const PARAM_NAME = /^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/
 
@@ -134,7 +135,7 @@ export function parseWriterReply(raw: string): WriterReplyResult {
   }
   if (value.worth === false) {
     const why = typeof value.why === 'string' && value.why.trim() ? value.why.trim() : 'no reason'
-    return { ok: false, reason: `Not worth saving: ${why.slice(0, 500)}` }
+    return { ok: false, reason: `Not worth saving: ${why.slice(0, 500)}`, notWorth: true }
   }
   const parsed = replySchema.safeParse(value)
   if (!parsed.success) {

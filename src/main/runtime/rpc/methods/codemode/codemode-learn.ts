@@ -48,6 +48,19 @@ export type CodemodeLearnMethodDeps = {
   log: LearnChainLog
 }
 
+/** The Learn switch as the settings say now; read off, a Learn run going is stopped (as Clear stops
+ *  it), so its writer request or replay ends now rather than at the run's next step. Settings reads
+ *  status as soon as the switch is saved, so switching off stops the run at once. */
+export function learnSwitch(
+  service: Pick<CodemodeService, 'learnEnabled' | 'learnRunner'>
+): boolean {
+  const enabled = service.learnEnabled()
+  if (!enabled) {
+    service.learnRunner().stop()
+  }
+  return enabled
+}
+
 /** The process's code-mode service, which the session host installs. */
 export async function installedService(ctx: RpcContext): Promise<CodemodeService> {
   // Why: the host's install creates the service; Settings must share its store, never open another.
@@ -140,7 +153,7 @@ export function codemodeLearnMethods(deps: CodemodeLearnMethodDeps) {
       params: null,
       handler: async (_params, ctx): Promise<CodemodeLearnStatusView> => {
         const service = await open(ctx)
-        const enabled = service.learnEnabled()
+        const enabled = learnSwitch(service)
         // Why: with the switch off, report what an earlier session left (so Clear can remove it)
         // without starting the worker when there is nothing on disk.
         const stats =
@@ -154,7 +167,7 @@ export function codemodeLearnMethods(deps: CodemodeLearnMethodDeps) {
       params: null,
       handler: async (_params, ctx): Promise<CodemodeLearnListView> => {
         const service = await open(ctx)
-        if (!service.learnEnabled()) {
+        if (!learnSwitch(service)) {
           return { scripts: [], chains: [], chainsComputedAt: null }
         }
         const store = service.learnStore()
