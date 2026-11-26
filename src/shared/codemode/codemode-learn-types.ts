@@ -1,4 +1,5 @@
 // Learn: what code mode remembers about past runs, to spot work the agent repeats across chats.
+import type { CodemodeLibParam, CodemodeLibScope } from './codemode-lib-types'
 
 export type CodemodeLearnCall = {
   seq: number
@@ -63,4 +64,40 @@ export type CodemodeLearnListView = {
   scripts: CodemodeRepeatedScript[]
   chains: CodemodeRepeatedChain[]
   chainsComputedAt: number | null
+}
+
+export type CodemodeLearnProposalState =
+  | 'writing'
+  | 'testing'
+  | 'ready'
+  | 'failed'
+  | 'saved'
+  | 'dismissed'
+export type CodemodeLearnTestStatus = 'passed' | 'failed' | 'untested'
+
+/** A function the writer drafted from a repeated script or chain, waiting for the person. */
+export type CodemodeLearnProposal = {
+  id: string
+  createdAt: number
+  sourceKind: 'script' | 'chain'
+  sourceKey: string
+  sourceSessions: number
+  projectRoot: string | null
+  state: CodemodeLearnProposalState
+  error?: string
+  name?: string
+  description?: string
+  params?: CodemodeLibParam[]
+  source?: string
+  sampleArgs?: unknown
+  expect?: string[]
+  callsSaved?: number
+  scope?: CodemodeLibScope
+  why?: string
+  testStatus?: CodemodeLearnTestStatus
+  testReason?: string
+  testLog?: string
+  callsBefore: number
+  savedAs?: { name: string; scope: CodemodeLibScope }
+  savedAt?: number
 }

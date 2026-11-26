@@ -5,12 +5,21 @@ import { dirname } from 'node:path'
 import SyncDatabase from '../../../sqlite/sync-database'
 import { hardenSqliteDatabaseFiles } from '../../../sqlite/harden-database-files'
 import type {
+  CodemodeLearnProposal,
+  CodemodeLearnProposalState,
   CodemodeLearnRun,
   CodemodeLearnStats,
   CodemodeRepeatedChain,
   CodemodeRepeatedScript
 } from '../../../../shared/codemode/codemode-learn-types'
 import { codemodeShapeHash } from '../codemode-shape'
+import { COUNTED, repeatedScriptsOf } from './codemode-learn-repeated'
+import {
+  CodemodeLearnProposalTable,
+  LEARN_PROPOSAL_SCHEMA,
+  type NewProposal,
+  type ProposalPatch
+} from './codemode-learn-proposal-table'
 import {
   DELETE_PAST_BYTE_BUDGET,
   DELETE_PAST_RUN_COUNT,
@@ -20,7 +29,6 @@ import {
   LEARN_SCHEMA,
   LEARN_STORE_BUDGET_BYTES,
   callColumns,
-  clampLimit,
   clampShapeRunsLimit,
   callOf,
   learnChainKey,
@@ -36,19 +44,16 @@ export type CodemodeLearnStoreOptions = Partial<CodemodeLearnBudgets> & { clock?
 
 export type CodemodeLearnRecorded = { shape: string; otherSessions: number; dismissed: boolean }
 
-/** The runs (of table or alias `runs`) that count toward a repeat: ok, at least 2 inner calls,
- *  inside the window, and no call to a saved function (`lib.*`), as for the nudge. */
-const counted = (runs: string) =>
-  `${runs}.ok = 1 AND ${runs}.call_count >= 2 AND ${runs}.started_at >= ? AND NOT EXISTS
-     (SELECT 1 FROM learn_calls lib WHERE lib.run_id = ${runs}.run_id AND substr(lib.tool, 1, 4) = 'lib.')`
-const COUNTED = counted('learn_runs')
-
 export class CodemodeLearnStore {
+  private readonly proposalTable: CodemodeLearnProposalTable
+
   private constructor(
     private readonly db: SyncDatabase,
     private readonly budgets: CodemodeLearnBudgets,
     private readonly clock: () => number
-  ) {}
+  ) {
+    this.proposalTable = new CodemodeLearnProposalTable(db)
+  }
 
   /** Opens (or creates) the store and applies retention, so data past 30 days goes even when Learn
    *  stays idle or off. */
@@ -59,6 +64,7 @@ export class CodemodeLearnStore {
     db.pragma('busy_timeout = 5000')
     db.pragma('foreign_keys = ON')
     db.exec(LEARN_SCHEMA)
+    db.exec(LEARN_PROPOSAL_SCHEMA)
     hardenSqliteDatabaseFiles(path)
     const store = new CodemodeLearnStore(
       db,
@@ -104,47 +110,7 @@ export class CodemodeLearnStore {
   /** Shapes run ok with 2+ calls in 2+ chats within 30 days, not dismissed; most chats first. */
   repeatedScripts(now: number, limit: number): CodemodeRepeatedScript[] {
     this.prune(now)
-    const since = now - LEARN_RETENTION_MS
-    const groups = this.db
-      .prepare(
-        `SELECT shape, COUNT(DISTINCT session_id) AS sessions, COUNT(1) AS runs, MAX(started_at) AS last_seen
-           FROM learn_runs
-          WHERE ${COUNTED} AND shape NOT IN (SELECT key FROM learn_dismissed)
-          GROUP BY shape HAVING COUNT(DISTINCT session_id) >= 2
-          ORDER BY sessions DESC, last_seen DESC, shape LIMIT ?`
-      )
-      .all(since, clampLimit(limit))
-    return groups.map((group) => {
-      const shape = String(group.shape)
-      const sample = this.db
-        .prepare(
-          `SELECT code FROM learn_runs WHERE shape = ? AND ${COUNTED}
-            ORDER BY started_at DESC, rowid DESC LIMIT 1`
-        )
-        .get(shape, since)
-      const tools = this.db
-        .prepare(
-          `SELECT DISTINCT c.tool AS tool FROM learn_calls c JOIN learn_runs r ON r.run_id = c.run_id
-            WHERE r.shape = ? AND ${counted('r')} ORDER BY c.tool`
-        )
-        .all(shape, since)
-      const roots = this.db
-        .prepare(
-          `SELECT DISTINCT project_root FROM learn_runs WHERE shape = ? AND ${COUNTED}
-            ORDER BY project_root`
-        )
-        .all(shape, since)
-      return {
-        kind: 'script',
-        shape,
-        sessions: Number(group.sessions),
-        runs: Number(group.runs),
-        lastSeen: Number(group.last_seen),
-        sampleCode: String(sample?.code ?? ''),
-        tools: tools.map((row) => String(row.tool)),
-        projectRoots: roots.map((row) => String(row.project_root))
-      }
-    })
+    return repeatedScriptsOf(this.db, now - LEARN_RETENTION_MS, limit)
   }
 
   /** The newest stored runs of this shape (at most 20), newest first, with their calls. */
@@ -220,12 +186,49 @@ export class CodemodeLearnStore {
         'learn_runs',
         'learn_chains',
         'learn_dismissed',
+        'learn_proposals',
         'learn_meta'
       ]) {
         this.db.prepare(`DELETE FROM ${table}`).run()
       }
       this.setMeta('cleared_at', now)
     })
+  }
+
+  /** Adds a `writing` proposal; `now` is when the Learn run started, and a run that started before a
+   *  clear gets null (nothing stored), as `record` refuses such runs. */
+  createProposal(proposal: NewProposal, now: number): CodemodeLearnProposal | null {
+    if (now < (this.meta('cleared_at') ?? -Infinity)) {
+      return null
+    }
+    const created: CodemodeLearnProposal[] = []
+    this.transaction(() => {
+      created.push(this.proposalTable.create(proposal, now))
+    })
+    return created[0] ?? null
+  }
+
+  /** Applies the patch only while the proposal's state is in `onlyFrom`; false when it moved on. */
+  updateProposal(
+    id: string,
+    patch: ProposalPatch,
+    onlyFrom: CodemodeLearnProposalState[]
+  ): boolean {
+    return this.proposalTable.update(id, patch, onlyFrom)
+  }
+
+  /** Newest first. */
+  proposals(limit: number): CodemodeLearnProposal[] {
+    return this.proposalTable.list(limit)
+  }
+
+  proposal(id: string): CodemodeLearnProposal | null {
+    return this.proposalTable.get(id)
+  }
+
+  /** Source keys that already have a live or saved proposal. */
+  openProposalKeys(): string[] {
+    return this.proposalTable.openKeys()
   }
 
   /** Gives the space of deleted rows back to the disk, after a clear. */

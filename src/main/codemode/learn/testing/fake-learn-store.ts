@@ -19,6 +19,11 @@ export function fakeLearnStore(
     dismissed: unused,
     clear: unused,
     compact: unused,
+    createProposal: unused,
+    updateProposal: unused,
+    proposals: unused,
+    proposal: unused,
+    openProposalKeys: unused,
     stats: unused
   }
 }

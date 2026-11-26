@@ -68,6 +68,11 @@ function fakeClearStore(compact: () => Promise<void>) {
     dismiss: unused,
     dismissed: unused,
     stats: unused,
+    createProposal: unused,
+    updateProposal: unused,
+    proposals: unused,
+    proposal: unused,
+    openProposalKeys: unused,
     clear,
     compact: vi.fn(compact)
   }
