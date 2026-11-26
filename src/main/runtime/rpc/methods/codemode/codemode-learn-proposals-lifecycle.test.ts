@@ -144,7 +144,7 @@ describe('saving over an existing function', () => {
     ).resolves.toEqual({ name: 'plan1', scope: 'project' })
   })
 
-  it('an edit that renames the function saves under the new name', async () => {
+  it('an edit that renames both, only @name, or only the function saves under the new name', async () => {
     await new CodemodeLibStore({ projectRoot: null, homeDir: home }).save({
       name: 'plan1',
       source: 'async function plan1() {\n  return 1\n}\n',
@@ -152,18 +152,38 @@ describe('saving over an existing function', () => {
       description: 'taken',
       savedBy: 'user'
     })
-    const p = await readyProposal(1, root)
-    const renamed = p.source!.replaceAll('plan1', 'planOne')
+    const cases: [string, (source: string) => string][] = [
+      ['planBoth', (src) => src.replaceAll('plan1', 'planBoth')],
+      ['planHeaderOnly', (src) => src.replace('@name plan1', '@name planHeaderOnly')],
+      ['planFnOnly', (src) => src.replace('async function plan1(', 'async function planFnOnly(')]
+    ]
+    for (const [target, edit] of cases) {
+      const p = await readyProposal(1, root)
+      await expect(
+        methods()('codemode.learn.saveProposal', {
+          id: p.id,
+          scope: 'global',
+          source: edit(p.source!)
+        })
+      ).resolves.toEqual({ name: target, scope: 'global' })
+      const saved = readFileSync(join(home, '.orca', 'lib', `${target}.js`), 'utf8')
+      expect(saved).toContain(`@name ${target}`)
+      expect(saved).toContain(`async function ${target}({ q })`)
+      expect(await remote.proposal(p.id)).toMatchObject({
+        state: 'saved',
+        savedAs: { name: target, scope: 'global' }
+      })
+    }
+    const mismatched = await readyProposal(1, root)
     await expect(
-      methods()('codemode.learn.saveProposal', { id: p.id, scope: 'global', source: renamed })
-    ).resolves.toEqual({ name: 'planOne', scope: 'global' })
-    expect(readFileSync(join(home, '.orca', 'lib', 'planOne.js'), 'utf8')).toContain(
-      'async function planOne({ q })'
-    )
-    expect(await remote.proposal(p.id)).toMatchObject({
-      state: 'saved',
-      savedAs: { name: 'planOne', scope: 'global' }
-    })
+      methods()('codemode.learn.saveProposal', {
+        id: mismatched.id,
+        scope: 'global',
+        source: mismatched
+          .source!.replace('@name plan1', '@name planHeader')
+          .replace('async function plan1(', 'async function planBody(')
+      })
+    ).rejects.toThrow('source must define function planHeader')
   })
 
   it('the writer is told the saved names of the project and global scopes', async () => {

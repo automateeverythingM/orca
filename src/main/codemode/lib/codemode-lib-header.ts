@@ -87,3 +87,28 @@ export function definesFunction(source: string, name: string): boolean {
   // \b fails before a leading `$`, so anchor on a non-identifier char instead.
   return new RegExp(`(?:^|[^A-Za-z0-9_$])(async\\s+)?function\\s+${escaped}\\s*\\(`).test(source)
 }
+
+/** Function names declared in `body`, preferring column-0 declarations over nested helpers. */
+export function declaredFunctionNames(body: string): string[] {
+  const collect = (pattern: RegExp): string[] => [
+    ...new Set(Array.from(body.matchAll(pattern), (match) => match[1]))
+  ]
+  const topLevel = collect(/^(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/gm)
+  return topLevel.length > 0
+    ? topLevel
+    : collect(/^[ \t]*(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/gm)
+}
+
+/** Renames the declaration of `from` to `to` in `body`, leaving strings and property names alone. */
+export function renameFunctionDeclaration(body: string, from: string, to: string): string {
+  const escaped = from.replace(/[$]/g, '\\$&')
+  const topLevel = new RegExp(`^((?:async\\s+)?function\\s+)${escaped}(\\s*\\()`, 'm')
+  if (topLevel.test(body)) {
+    return body.replace(
+      topLevel,
+      (_match, prefix: string, suffix: string) => `${prefix}${to}${suffix}`
+    )
+  }
+  const any = new RegExp(`((?:^|[^A-Za-z0-9_$])(?:async\\s+)?function\\s+)${escaped}(\\s*\\()`)
+  return body.replace(any, (_match, prefix: string, suffix: string) => `${prefix}${to}${suffix}`)
+}

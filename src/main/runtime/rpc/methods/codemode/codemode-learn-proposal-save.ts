@@ -7,11 +7,17 @@ import type {
 } from '../../../../../shared/codemode/codemode-learn-types'
 import {
   CODEMODE_LIB_NAME,
+  CODEMODE_LIB_RESERVED,
   type CodemodeLibScope
 } from '../../../../../shared/codemode/codemode-lib-types'
 import type { CodemodeService } from '../../../../codemode/codemode-service'
 import { libAccessFor } from '../../../../codemode/lib/codemode-lib-access'
-import { definesFunction, parseLibHeader } from '../../../../codemode/lib/codemode-lib-header'
+import {
+  declaredFunctionNames,
+  definesFunction,
+  parseLibHeader,
+  renameFunctionDeclaration
+} from '../../../../codemode/lib/codemode-lib-header'
 import {
   CodemodeLibStore,
   libTrustKey,
@@ -54,14 +60,50 @@ export function refusal(state: CodemodeLearnProposalState | undefined): string {
     : 'This proposal is not ready to save yet.'
 }
 
-/** The name to save under: the proposal's, unless the person's edit renamed the function (its
- *  header names a valid function that the edit defines). */
-function nameToSave(proposal: CodemodeLearnProposal, edited: string | undefined): string | null {
-  const renamed = edited === undefined ? undefined : parseLibHeader(edited).meta.name?.trim()
-  if (renamed && CODEMODE_LIB_NAME.test(renamed) && definesFunction(edited ?? '', renamed)) {
-    return renamed
+/**
+ * Resolves the name and source to save: changing either `@name` or the function declaration alone
+ * renames the function (keeping header and declaration aligned); changing them to different names
+ * is left mismatched so validation rejects it.
+ */
+function resolveProposalEdit(
+  proposal: CodemodeLearnProposal,
+  edited: string | undefined
+): { name: string | null; source: string | null } {
+  const original = proposal.name ?? null
+  if (edited === undefined) {
+    return { name: original, source: proposal.source ?? null }
   }
-  return proposal.name ?? null
+  const { meta, body } = parseLibHeader(edited)
+  const headerName = meta.name?.trim() || null
+  if (headerName && headerName !== original) {
+    if (definesFunction(body, headerName)) {
+      return { name: headerName, source: edited }
+    }
+    if (
+      original &&
+      CODEMODE_LIB_NAME.test(headerName) &&
+      !CODEMODE_LIB_RESERVED.has(headerName) &&
+      definesFunction(body, original)
+    ) {
+      const header = edited.slice(0, edited.length - body.length)
+      return {
+        name: headerName,
+        source: header + renameFunctionDeclaration(body, original, headerName)
+      }
+    }
+    return { name: headerName, source: edited }
+  }
+  if (original && definesFunction(body, original)) {
+    return { name: original, source: edited }
+  }
+  const prior = new Set(
+    proposal.source ? declaredFunctionNames(parseLibHeader(proposal.source).body) : []
+  )
+  const added = declaredFunctionNames(body).filter((fn) => fn !== original && !prior.has(fn))
+  if (added.length === 1) {
+    return { name: added[0], source: edited }
+  }
+  return { name: original, source: edited }
 }
 
 /** Names of the functions saved in `projectRoot` (a known worktree only) and globally. */
@@ -96,8 +138,7 @@ export async function saveLearnProposal(
   scope: CodemodeLibScope,
   edited: string | undefined
 ): Promise<{ name: string; scope: CodemodeLibScope }> {
-  const source = edited ?? proposal.source
-  const name = nameToSave(proposal, edited)
+  const { name, source } = resolveProposalEdit(proposal, edited)
   if (!name || !source) {
     throw new Error('This proposal has no function to save.')
   }
