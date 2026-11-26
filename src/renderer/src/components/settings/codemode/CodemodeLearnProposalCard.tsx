@@ -10,7 +10,12 @@ import { NativeChatHighlightedCode } from '../../native-chat/markdown/code/Nativ
 import { SettingsBadge, SettingsSegmentedControl } from '../form-controls/SettingsFormControls'
 import { codemodeErrorMessage } from './codemode-error-message'
 import { dismissCodemodeProposal, saveCodemodeProposal } from './codemode-learn-client'
-import { canSaveProposal, defaultSaveScope, editedSource } from './codemode-learn-proposal-view'
+import {
+  canSaveProposal,
+  defaultSaveScope,
+  dismissKeepsRepeat,
+  editedSource
+} from './codemode-learn-proposal-view'
 import { CODE_BOX, Disclosure, signalLine, TestLine } from './CodemodeLearnProposalParts'
 
 /** One function Learn drafted: what it is, how its replay went, and Save / Edit / Dismiss. */
@@ -220,7 +225,12 @@ export function CodemodeLearnProposalCard({
       {confirmDismiss ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <p className="min-w-0 flex-1 basis-48 text-xs text-muted-foreground">
-            {t('settings.codemode.learn.proposal.dismissConfirm', 'Won’t be suggested again.')}
+            {dismissKeepsRepeat(proposal)
+              ? t(
+                  'settings.codemode.learn.proposal.dismissRetry',
+                  'Removes this card. A later Learn run may try again.'
+                )
+              : t('settings.codemode.learn.proposal.dismissConfirm', 'Won’t be suggested again.')}
           </p>
           <Button
             variant="destructive"

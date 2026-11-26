@@ -96,6 +96,21 @@ it('Learn from this says why a run did not start', async () => {
   expect(screen.getByRole('alert').textContent).toBe('Learn is off')
 })
 
+it('Learn from this says when there is nothing new to learn', async () => {
+  vi.mocked(learnClient.proposeCodemodeLearn).mockResolvedValueOnce({
+    started: false,
+    code: 'nothing-new',
+    reason: 'Nothing new to learn here yet.'
+  })
+  await show(run(3, 'shape-1'))
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Learn from this' }))
+  })
+  expect(screen.getByRole('status').textContent).toBe('Nothing new to learn here yet.')
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(screen.queryByText(/^Learning…/)).toBeNull()
+})
+
 it('no Learn from this without a shape', async () => {
   await show(run(3))
   expect(screen.queryByRole('button', { name: 'Learn from this' })).toBeNull()

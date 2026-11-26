@@ -25,6 +25,15 @@ export function canSaveProposal(proposal: CodemodeLearnProposal): boolean {
   return (proposal.state === 'ready' || proposal.state === 'failed') && Boolean(proposal.source)
 }
 
+/** Dismissing a card that failed on a writer or run error removes only the card; main dismisses
+ *  the repeat itself for any other card, so it is not suggested again. */
+export function dismissKeepsRepeat(proposal: CodemodeLearnProposal): boolean {
+  return (
+    proposal.failure === 'error' ||
+    (proposal.state === 'failed' && proposal.failure !== 'not-worth')
+  )
+}
+
 /** The writer's suggested scope; global when the source runs had no single project root. */
 export function defaultSaveScope(proposal: CodemodeLearnProposal): CodemodeLibScope {
   return proposal.projectRoot !== null && proposal.scope !== 'global' ? 'project' : 'global'

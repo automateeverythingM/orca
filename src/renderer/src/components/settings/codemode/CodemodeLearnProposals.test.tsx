@@ -93,6 +93,19 @@ it('a refused run says why', async () => {
   expect(screen.getByRole('alert').textContent).toBe('Learn is off')
 })
 
+it('nothing new to learn is a note, not an error', async () => {
+  answer({})
+  vi.mocked(client.proposeCodemodeLearn).mockResolvedValueOnce({
+    started: false,
+    code: 'nothing-new',
+    reason: 'Nothing new to learn here yet.'
+  })
+  await show()
+  await click(button('Find functions to save'))
+  expect(screen.getByRole('status').textContent).toBe('Nothing new to learn here yet.')
+  expect(screen.queryByRole('alert')).toBeNull()
+})
+
 it('a failed read during a run keeps polling and shows the error', async () => {
   vi.useFakeTimers()
   answer({ running: true, proposals: [proposal({ state: 'writing' })] })

@@ -2203,6 +2203,7 @@
           "save": "Save",
           "noProject": "These runs have no single project, so this saves as global.",
           "dismissConfirm": "Won’t be suggested again.",
+          "dismissRetry": "Removes this card. A later Learn run may try again.",
           "savedProject": "Saved to project",
           "savedGlobal": "Saved as global",
           "callsChange": "was {{before}} calls, now {{after}}",

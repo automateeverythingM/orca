@@ -3,6 +3,7 @@ import type { CodemodeLearnProposal } from '../../../../../shared/codemode/codem
 import {
   canSaveProposal,
   defaultSaveScope,
+  dismissKeepsRepeat,
   editedSource,
   proposeParams,
   splitProposals
@@ -72,5 +73,15 @@ describe('proposeParams', () => {
     expect(proposeParams('  \n ')).toEqual({})
     expect(proposeParams('  crm credits ')).toEqual({ hint: 'crm credits' })
     expect(proposeParams('x'.repeat(2500)).hint).toHaveLength(2000)
+  })
+})
+
+describe('dismissKeepsRepeat', () => {
+  it('only a card that failed on an error keeps its repeat', () => {
+    expect(dismissKeepsRepeat(proposal({ state: 'failed', failure: 'error' }))).toBe(true)
+    expect(dismissKeepsRepeat(proposal({ state: 'failed' }))).toBe(true)
+    expect(dismissKeepsRepeat(proposal({ state: 'failed', failure: 'not-worth' }))).toBe(false)
+    expect(dismissKeepsRepeat(proposal({ state: 'ready' }))).toBe(false)
+    expect(dismissKeepsRepeat(proposal({ state: 'writing' }))).toBe(false)
   })
 })

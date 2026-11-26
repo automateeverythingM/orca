@@ -8,6 +8,8 @@ type Ask =
   | { kind: 'idle' }
   | { kind: 'asking' }
   | { kind: 'started' }
+  /** Nothing to draft (every repeat here already has a proposal): a note, not an error. */
+  | { kind: 'nothing-new'; reason: string }
   | { kind: 'refused'; reason: string }
 
 /** The "Ran in N chats" badge's action: a Learn run over this chat's runs of this one script. */
@@ -25,7 +27,14 @@ export function CodemodeLearnFromThis({
     setAsk({ kind: 'asking' })
     try {
       const result = await proposeCodemodeLearn({ sessionId, shape })
-      setAsk(result.started ? { kind: 'started' } : { kind: 'refused', reason: result.reason })
+      if (result.started) {
+        setAsk({ kind: 'started' })
+      } else {
+        setAsk({
+          kind: result.code === 'nothing-new' ? 'nothing-new' : 'refused',
+          reason: result.reason
+        })
+      }
     } catch (caught: unknown) {
       setAsk({ kind: 'refused', reason: codemodeErrorMessage(caught) })
     }
@@ -56,6 +65,11 @@ export function CodemodeLearnFromThis({
         )}
         {t('components.native-chat.codemode.learnFromThis', 'Learn from this')}
       </button>
+      {ask.kind === 'nothing-new' ? (
+        <span role="status" className="text-chat-foreground-faint">
+          {ask.reason}
+        </span>
+      ) : null}
       {ask.kind === 'refused' ? (
         <span role="alert" className="text-destructive">
           {ask.reason}

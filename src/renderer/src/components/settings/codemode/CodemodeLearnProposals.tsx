@@ -68,6 +68,7 @@ export function CodemodeLearnProposals({
   const [hint, setHint] = useState('')
   const [asking, setAsking] = useState(false)
   const [askError, setAskError] = useState<string | null>(null)
+  const [askNote, setAskNote] = useState<string | null>(null)
   // Why: bumped by a failed read, so a run still known to be going is read again after the delay.
   const [retries, setRetries] = useState(0)
   const reads = useRef(0)
@@ -114,11 +115,14 @@ export function CodemodeLearnProposals({
   const propose = async (): Promise<void> => {
     setAsking(true)
     setAskError(null)
+    setAskNote(null)
     try {
       const result = await proposeCodemodeLearn(proposeParams(hint))
       if (result.started || result.code === 'running') {
         setView((current) => (current ? { ...current, running: true } : current))
         read()
+      } else if (result.code === 'nothing-new') {
+        setAskNote(result.reason)
       } else {
         setAskError(result.reason)
       }
@@ -156,6 +160,11 @@ export function CodemodeLearnProposals({
               : t('settings.codemode.learn.propose', 'Find functions to save')}
           </Button>
         </div>
+        {askNote ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            {askNote}
+          </p>
+        ) : null}
         {askError ? (
           <p role="alert" className="text-xs text-destructive">
             {askError}

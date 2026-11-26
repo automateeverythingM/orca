@@ -135,6 +135,14 @@ it('Dismiss says it won’t come back, then dismisses', async () => {
   expect(client.dismissCodemodeProposal).toHaveBeenCalledWith('p1')
 })
 
+it('Dismiss on a card that failed on an error says Learn may try again', async () => {
+  answer({ proposals: [{ ...base, state: 'failed', failure: 'error', error: 'timed out' }] })
+  await show()
+  await click(button('Dismiss'))
+  expect(screen.getByText('Removes this card. A later Learn run may try again.')).toBeTruthy()
+  expect(screen.queryByText('Won’t be suggested again.')).toBeNull()
+})
+
 it('a save error shows main’s words', async () => {
   answer({ proposals: [base] })
   vi.mocked(client.saveCodemodeProposal).mockRejectedValueOnce(new Error('x'))
