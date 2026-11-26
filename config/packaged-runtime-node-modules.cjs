@@ -8,7 +8,7 @@ const {
   rmSync
 } = require('node:fs')
 const { basename, dirname, join, resolve } = require('node:path')
-const { builtinModules, createRequire } = require('node:module')
+const { createRequire, isBuiltin } = require('node:module')
 const {
   PE_MACHINE,
   readPeMachine
@@ -94,11 +94,6 @@ const PACKAGED_MAIN_SOURCE_RE = /^out\/main\/.+\.js$/
 const TYPE_DECLARATION_ARTIFACT_RE = /\.d\.(?:c|m)?ts(?:\.map)?$/
 const JS_SOURCE_MAP_ARTIFACT_RE = /\.(?:c|m)?js\.map$/
 
-const NODE_BUILTINS = new Set([
-  ...builtinModules,
-  ...builtinModules.map((moduleName) => `node:${moduleName}`)
-])
-
 function packageNameFromSpecifier(specifier) {
   if (specifier.startsWith('@')) {
     const [scope, name] = specifier.split('/')
@@ -112,7 +107,7 @@ function isPackagedExternalSpecifier(specifier) {
     !specifier.startsWith('.') &&
     !specifier.startsWith('/') &&
     specifier !== 'electron' &&
-    !NODE_BUILTINS.has(specifier)
+    !isBuiltin(specifier)
   )
 }
 
