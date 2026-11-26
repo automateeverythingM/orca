@@ -10,6 +10,7 @@ import { NativeChatComposerNotices } from '../controls/NativeChatComposerNotices
 import { NativeChatImageAttachmentPreview } from '../../attachments/chips/NativeChatImageAttachmentPreview'
 
 import { useNativeChatComposerDraftUnsaved } from '../../drafts/use-native-chat-draft-unsaved'
+import { useNativeChatComposerCompression } from '../controls/native-chat-compression-state'
 import { useNativeChatComposerGlow } from '../../native-chat-composer-glow'
 import { nativeChatComposerPlaceholder } from '../controls/native-chat-composer-placeholder'
 import { useTranslate } from '@/i18n/use-translate'
@@ -162,6 +163,10 @@ export function NativeChatComposerField({
   const runSteerPreview = useLatestHandler(onSteerPreview ?? noop)
   const stop = useLatestHandler(onStop ?? noop)
   const exitGoalMode = useLatestHandler(goalMode?.exit ?? noop)
+  const compressionControl = useNativeChatComposerCompression(
+    draftScopeKey,
+    Boolean(editSession || launchPrompt)
+  )
 
   // Browser owns the provisional value; React synchronizes drafts only between IME sessions.
   useLayoutEffect(() => {
@@ -338,6 +343,7 @@ export function NativeChatComposerField({
                 sessionOptionsPickerRequest={sessionOptionsPickerRequest}
                 focusComposer={focusComposer}
                 onExitGoalMode={goalMode?.active ? exitGoalMode : undefined}
+                compression={compressionControl}
                 launchPrompt={launch}
                 {...(agent ? { agent } : {})}
               />

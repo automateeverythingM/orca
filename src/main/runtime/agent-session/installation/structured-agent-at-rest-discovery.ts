@@ -4,6 +4,7 @@ import type { AgentSessionRecord } from '../../../../shared/agent-session/lifecy
 import { agentSessionAttachmentStoreRoot } from '../../../native-chat/agent-session-attachments/agent-session-attachment-references'
 import { NO_LINKED_SKILLS } from '../../../native-chat/native-chat-skill-roots'
 import { enabledNativeChatVisualsSkill } from '../../../native-chat/conversation-files/native-chat-visuals-delivery'
+import { resolveNativeChatCompressionSkillLocation } from '../../../native-chat/conversation-files/native-chat-compression-skill-location'
 import type { ClaudeCliLaunch } from '../../../claude/cli-capabilities/claude-cli-flag-support'
 import {
   claudeDiscoveryArgs,
@@ -35,20 +36,30 @@ async function visualsSkill(deps: AtRestDiscoveryDeps, record: AgentSessionRecor
     : enabledNativeChatVisualsSkill({ isEnabled: deps.nativeChatVisuals.isEnabled })
 }
 
+/** The bundled compression skill a launch would load: none for read-only chats or test runtimes. */
+async function compressionSkill(deps: AtRestDiscoveryDeps, record: AgentSessionRecord) {
+  return !deps.nativeChatVisuals || deps.readOnlySession?.(record.sessionId)
+    ? null
+    : resolveNativeChatCompressionSkillLocation()
+}
+
 /** Claude's discovery flags for a resting chat, minus its own scratch folder (output, not skills). */
 export function claudeAtRestDiscovery(deps: AtRestDiscoveryDeps) {
   return async (record: AgentSessionRecord, launch: ClaudeCliLaunch): Promise<string[]> => {
-    const [linked, visuals, configuredArgs] = await Promise.all([
+    const [linked, visuals, compression, configuredArgs] = await Promise.all([
       linkedSkills(deps, record),
       visualsSkill(deps, record),
+      compressionSkill(deps, record),
       deps.resolveLaunchArgs('claude')
     ])
-    const plugins = visuals && (await claudeTakesPluginDirs(deps.claudeCliFlags, launch))
+    const plugins =
+      (visuals || compression) && (await claudeTakesPluginDirs(deps.claudeCliFlags, launch))
     return claudeDiscoveryArgs(
       claudeDiscoveryOptions({
         configuredArgs,
         attachmentDirectory: agentSessionAttachmentStoreRoot(deps.stateDirectory),
         visuals: visuals && { pluginDir: plugins ? visuals.pluginDir : null },
+        ...(compression && plugins ? { extraPluginDirs: [compression.pluginDir] } : {}),
         linkedRoot: linked.root
       })
     )
@@ -59,12 +70,14 @@ export function claudeAtRestDiscovery(deps: AtRestDiscoveryDeps) {
  *  it shares the probe of chats without one; a link change retires its menu. */
 export function codexAtRestSkillRoots(deps: AtRestDiscoveryDeps) {
   return async (record: AgentSessionRecord): Promise<string[]> => {
-    const [linked, visuals] = await Promise.all([
+    const [linked, visuals, compression] = await Promise.all([
       linkedSkills(deps, record),
-      visualsSkill(deps, record)
+      visualsSkill(deps, record),
+      compressionSkill(deps, record)
     ])
     return codexSkillRoots({
       ...(visuals ? { visualsSkillsRoot: visuals.skillsRoot } : {}),
+      ...(compression ? { compressionSkillsRoot: compression.skillsRoot } : {}),
       ...(linked.root && linked.projects.length > 0
         ? { linkedSkillsRoot: linked.root.skillsRoot }
         : {})

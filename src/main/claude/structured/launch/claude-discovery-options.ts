@@ -21,9 +21,15 @@ export function claudeDiscoveryOptions(input: {
   /** Visuals, when on: the bundled plugin (null when the CLI takes no plugin folders), and the
    *  chat's own scratch folder, for its launch only, which holds the chat's output, not skills. */
   visuals?: { pluginDir: string | null; scratchDirectory?: string } | null
+  /** Additional Orca-bundled plugin folders (e.g. compression) when the CLI supports `--plugin-dir`. */
+  extraPluginDirs?: readonly string[]
   linkedRoot?: NativeChatSkillRoot | null
 }): ClaudeDiscoveryOptions {
   const configured = claudeStructuredLaunchArgs(input.configuredArgs)
+  const pluginDirs = [
+    ...(input.visuals?.pluginDir ? [input.visuals.pluginDir] : []),
+    ...(input.extraPluginDirs ?? [])
+  ]
   return {
     additionalDirectories: [
       ...configured.additionalDirectories,
@@ -33,8 +39,8 @@ export function claudeDiscoveryOptions(input: {
       // later ones (checked on 2.1.319), and it holds no project settings, plugins or commands.
       ...(input.linkedRoot ? [input.linkedRoot.pluginDir] : [])
     ],
-    ...(input.visuals?.pluginDir
-      ? { plugins: [{ type: 'local' as const, path: input.visuals.pluginDir }] }
+    ...(pluginDirs.length > 0
+      ? { plugins: pluginDirs.map((path) => ({ type: 'local' as const, path })) }
       : {}),
     settingSources: [...CLAUDE_DEFAULT_SETTING_SOURCES],
     extraArgs: configured.extraArgs

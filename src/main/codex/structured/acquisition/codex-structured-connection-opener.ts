@@ -24,7 +24,7 @@ export function codexConnectionOpener(
   sessionId: string,
   launch: Pick<
     CodexStructuredLaunch,
-    'visuals' | 'linkedSkillsRoot' | 'codexVersion' | 'customCommand'
+    'visuals' | 'compressionSkillsRoot' | 'linkedSkillsRoot' | 'codexVersion' | 'customCommand'
   >,
   /** The chat's start: cancelled or superseded, or its Stop aborted the signal. */
   startup: { attempt?: { readonly cancelled: boolean }; signal?: AbortSignal | undefined } = {},
@@ -39,6 +39,9 @@ export function codexConnectionOpener(
   }
   const skillRoots = codexSkillRoots({
     ...(launch.visuals ? { visualsSkillsRoot: launch.visuals.skill.skillsRoot } : {}),
+    ...(launch.compressionSkillsRoot
+      ? { compressionSkillsRoot: launch.compressionSkillsRoot }
+      : {}),
     ...(launch.linkedSkillsRoot ? { linkedSkillsRoot: launch.linkedSkillsRoot } : {})
   })
   const open: CodexConnectionOpen = (connectionLaunch, handlers) =>

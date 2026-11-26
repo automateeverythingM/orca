@@ -1,5 +1,6 @@
 import { AcpAtRestCommandCatalog } from '../../../acp/discovery/acp-at-rest-commands'
 import { resolveNativeChatVisualsSkillLocation } from '../../../native-chat/conversation-files/native-chat-visuals-skill-location'
+import { resolveNativeChatCompressionSkillLocation } from '../../../native-chat/conversation-files/native-chat-compression-skill-location'
 import { withSupportedCodexCli } from '../../../codex/structured/launch/codex-cli-installation-error'
 import { codexStructuredLaunchPart } from '../../../codex/structured/launch/codex-structured-launch-resolution'
 import { claudeStructuredLaunchPart } from '../../../claude/structured/launch/claude-structured-launch-resolution'
@@ -203,6 +204,10 @@ function createAcpAdapter(
               resolveVisualsSkill: () =>
                 deps.nativeChatVisuals && deps.nativeChatVisuals.isEnabled?.() !== false
                   ? resolveNativeChatVisualsSkillLocation()
+                  : Promise.resolve(null),
+              resolveCompressionSkill: () =>
+                deps.nativeChatVisuals
+                  ? resolveNativeChatCompressionSkillLocation()
                   : Promise.resolve(null),
               logger: deps.logger
             })

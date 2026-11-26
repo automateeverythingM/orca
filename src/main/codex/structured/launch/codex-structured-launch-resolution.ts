@@ -156,6 +156,7 @@ export function codexStructuredLaunchPart(
     // Match the first turn's model to avoid duplicate prompt injection on a model switch.
     const model = record.options?.model
     const visuals = await basis.visuals()
+    const compressionSkill = await basis.compressionSkill()
     const launchDirectory = await basis.launchDirectory()
     const selectedHome = await deps.prepareLaunchAccountHome?.(record, launchDirectory)
     const accountHome = selectedHome
@@ -222,6 +223,7 @@ export function codexStructuredLaunchPart(
         ...(model ? { model } : {}),
         ...(developerInstructions ? { developerInstructions } : {}),
         ...(visuals ? { visuals } : {}),
+        ...(compressionSkill ? { compressionSkillsRoot: compressionSkill.skillsRoot } : {}),
         // Refused even empty: a project linked later must then reach it as a list with paths.
         ...(linkedSkills.root
           ? {

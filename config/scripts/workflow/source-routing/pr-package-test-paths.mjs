@@ -80,6 +80,7 @@ const SHARED_PACKAGE_PREFIXES = [
   'skill-guides/',
   'resources/build/',
   'resources/native-chat-visuals/',
+  'resources/native-chat-compression/',
   'resources/onboarding/',
   'resources/plugins/',
   'resources/skills/',

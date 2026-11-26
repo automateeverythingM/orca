@@ -6,6 +6,7 @@ import {
   type AtRestCommandScan
 } from '../../native-chat/agent-session-wire/options/at-rest-command-catalog'
 import { resolveNativeChatVisualsSkillLocation } from '../../native-chat/conversation-files/native-chat-visuals-skill-location'
+import type { resolveNativeChatCompressionSkillLocation } from '../../native-chat/conversation-files/native-chat-compression-skill-location'
 import type { StructuredAgentSessionLogger } from '../../native-chat/agent-session-wire/host/structured-agent-session-logger'
 import type { AgentCliVersionReader } from '../../agent-launch/preflight/agent-cli-version-probe'
 import type { ProviderProcessLaunch } from '../../provider-process/provider-process-launch'
@@ -38,6 +39,7 @@ export type AcpAtRestCommandDeps = AcpLaunchInvocationDeps & {
   probeVersion?: AgentCliVersionReader
   connect?: (launch: ProviderProcessLaunch) => AcpDiscoveryConnection
   resolveVisualsSkill?: typeof resolveNativeChatVisualsSkillLocation
+  resolveCompressionSkill?: typeof resolveNativeChatCompressionSkillLocation
   logger?: StructuredAgentSessionLogger
   isWindowsProcessStartTimeAvailable?: () => boolean
 }
@@ -150,18 +152,27 @@ export class AcpAtRestCommandCatalog extends AtRestCommandCatalog {
               answer({ commands: undefined, fromAgent: false })
               return
             }
-            const location = spec.skillRoots
+            const [visualsLocation, compressionLocation] = spec.skillRoots
               ? await awaitAcpDiscovery(
-                  (deps.resolveVisualsSkill ?? resolveNativeChatVisualsSkillLocation)(),
+                  Promise.all([
+                    (deps.resolveVisualsSkill ?? resolveNativeChatVisualsSkillLocation)(),
+                    deps.resolveCompressionSkill
+                      ? deps.resolveCompressionSkill()
+                      : Promise.resolve(null)
+                  ]),
                   signal
                 )
-              : null
+              : [null, null]
             check()
+            const extraRoots = [
+              ...(visualsLocation ? [visualsLocation] : []),
+              ...(compressionLocation ? [compressionLocation] : [])
+            ]
             const skill =
-              location && spec.skillRoots
+              extraRoots.length > 0 && spec.skillRoots
                 ? await awaitAcpDiscovery(
                     spec.skillRoots({
-                      roots: [location],
+                      roots: extraRoots,
                       version: version.version,
                       env: launch.env
                     }),

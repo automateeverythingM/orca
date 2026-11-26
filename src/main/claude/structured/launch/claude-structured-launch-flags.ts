@@ -2,6 +2,7 @@ import type {
   NativeChatVisualsLaunch,
   PrepareNativeChatVisuals
 } from '../../../native-chat/conversation-files/native-chat-visuals-delivery'
+import type { NativeChatCompressionSkillLocation } from '../../../native-chat/conversation-files/native-chat-compression-skill-location'
 import {
   CLAUDE_CACHED_FLAG_CHECK_BUDGET_MS,
   CLAUDE_CLI_FLAG_PROBE_KILL_AFTER_MS,
@@ -22,6 +23,7 @@ export type ClaudeLaunchFlags = {
   /** Show thinking text without enabling thinking for users who disabled it. */
   thinkingDisplayArgs: Readonly<Record<string, string>>
   visuals: { visuals: NativeChatVisualsLaunch; pluginDir: string | null } | null
+  compressionPluginDir: string | null
   /** The host's setting allows suggestions and the CLI is new enough to be told to pause them. */
   promptSuggestions: boolean
   /** Managed settings refused these at an earlier start, so this one leaves them out. */
@@ -44,6 +46,7 @@ export async function resolveClaudeLaunchFlags(
   deps: {
     cliFlags?: Pick<ClaudeCliFlagSupport, 'check'>
     prepareVisuals?: PrepareNativeChatVisuals
+    resolveCompressionSkill?: () => Promise<NativeChatCompressionSkillLocation | null>
     promptSuggestions?: () => boolean
   },
   sessionId: string,
@@ -56,18 +59,21 @@ export async function resolveClaudeLaunchFlags(
     deps.cliFlags ? deps.cliFlags.check(flag, launch, ...budget) : 'unknown'
   const thinking = async (...budget: [budgetMs?: number, startProbe?: boolean]) =>
     (await check(CLAUDE_THINKING_DISPLAY_FLAG, ...budget)) === 'supported'
-  // A missed plugin probe disables the skill for the session, so allow the full probe timeout.
+  // A missed plugin probe disables bundled skills for the session, so allow the full probe timeout.
   const preparedVisuals = deps.prepareVisuals?.(sessionId) ?? Promise.resolve(null)
-  const [thinksFirst, visuals, loadsPlugins] = await Promise.all([
+  const preparedCompression = deps.resolveCompressionSkill?.() ?? Promise.resolve(null)
+  const [thinksFirst, visuals, compression, loadsPlugins] = await Promise.all([
     thinking(),
     preparedVisuals,
-    preparedVisuals.then(async (visuals) =>
-      visuals ? await claudeTakesPluginDirs(deps.cliFlags, launch) : false
+    preparedCompression,
+    Promise.all([preparedVisuals, preparedCompression]).then(async ([v, c]) =>
+      v || c ? await claudeTakesPluginDirs(deps.cliFlags, launch) : false
     )
   ])
   // Reuse any version learned by the plugin check without starting a new probe.
   const thinks =
-    thinksFirst || (visuals ? await thinking(CLAUDE_CACHED_FLAG_CHECK_BUDGET_MS, false) : false)
+    thinksFirst ||
+    (visuals || compression ? await thinking(CLAUDE_CACHED_FLAG_CHECK_BUDGET_MS, false) : false)
   // Unproven support stays off: each suggestion is a model request, and an older CLI can't pause one.
   const suggests =
     deps.promptSuggestions?.() === true &&
@@ -85,6 +91,7 @@ export async function resolveClaudeLaunchFlags(
     },
     promptSuggestions: suggests,
     thinkingDisplayArgs: thinks ? THINKING_DISPLAY_ARGS : {},
-    visuals: visuals ? { visuals, pluginDir: loadsPlugins ? visuals.skill.pluginDir : null } : null
+    visuals: visuals ? { visuals, pluginDir: loadsPlugins ? visuals.skill.pluginDir : null } : null,
+    compressionPluginDir: compression && loadsPlugins ? compression.pluginDir : null
   }
 }

@@ -14,6 +14,10 @@ import {
   type NativeChatVisualsLaunch,
   type PrepareNativeChatVisuals
 } from '../../../native-chat/conversation-files/native-chat-visuals-delivery'
+import {
+  resolveNativeChatCompressionSkillLocation,
+  type NativeChatCompressionSkillLocation
+} from '../../../native-chat/conversation-files/native-chat-compression-skill-location'
 import { resolveAgentSessionLaunchDirectory } from './agent-session-launch-directory'
 import type { AgentSessionRecordStore } from '../records/agent-session-record-store'
 import type { StructuredAgentAdapterContext } from '../installation/structured-agent-runtime-registration-types'
@@ -37,6 +41,7 @@ export type StructuredAgentLaunchSources = {
   resolveAgentLaunchEnv?: (agent: string) => Record<string, string>
   resolveCommandSettings?: () => StructuredAgentCommandSettings
   prepareVisuals?: PrepareNativeChatVisuals
+  resolveCompressionSkill?: () => Promise<NativeChatCompressionSkillLocation | null>
   /** Standing instructions the agent's own system prompt carries for this session; null adds none. */
   resolveInstructions?: (
     record: AgentSessionRecord,
@@ -76,6 +81,8 @@ export type StructuredAgentLaunchBasis = {
   environment(): Promise<Record<string, string>>
   /** Null when the chat gets no visuals. */
   visuals(): Promise<NativeChatVisualsLaunch | null>
+  /** Null when the chat does not load Orca's bundled compression skill. */
+  compressionSkill(): Promise<NativeChatCompressionSkillLocation | null>
   /** Null when there are none. A resumed conversation keeps the ones it started with, in both agents. */
   instructions(linkedSkills?: string | null): Promise<string | null>
   /** The MCP servers Orca adds (a bot's own and the host's list); none for a read-only session. */
@@ -203,6 +210,9 @@ async function composedPart<L>(
     // A read-only session gets no visuals folder, which is a place it could write.
     visuals: once(async () =>
       readOnly ? null : ((await sources.prepareVisuals?.(record.sessionId)) ?? null)
+    ),
+    compressionSkill: once(async () =>
+      readOnly ? null : ((await sources.resolveCompressionSkill?.()) ?? null)
     ),
     // A launch asks once; the section is the first call's.
     instructions: (() => {
@@ -334,7 +344,8 @@ export function structuredAgentLaunchSources(
             stateDirectory: deps.stateDirectory,
             logger: deps.logger,
             isEnabled: deps.nativeChatVisuals.isEnabled
-          })
+          }),
+          resolveCompressionSkill: () => resolveNativeChatCompressionSkillLocation()
         }
       : {})
   }

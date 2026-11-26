@@ -43,12 +43,13 @@ import {
 import {
   childEnvironmentView,
   loadAcpSkillRoots,
+  resolveAcpBundledSkillInputs,
   type AcpLaunchVisualsDeps
 } from './acp-structured-launch-skill-roots'
 import { linkedSkillsSection } from '../../native-chat/native-chat-skill-roots'
 import { noteManagedServerUse } from '../../node-runtime/managed-runtime-release'
 import type { AcpInstructionsLaunch } from './acp-instructions'
-import { acpInstructionsWithVisuals, visualsByInstructions } from './acp-visuals-instructions'
+import { acpInstructionsWithVisuals } from './acp-visuals-instructions'
 import { withAcpToolFreeFolder } from '../session/acp-tool-free-run'
 import { withoutCallerIdentity } from '../../runtime/agent-session/environment/structured-session-child-env'
 
@@ -204,11 +205,8 @@ export function acpStructuredLaunchPart(
       })
     noteManagedServerUse(spec.agent, spec.managedRuntime, version)
     const cwd = await basis.launchDirectory()
-    const visuals = spec.skillRoots || visualsByInstructions(spec) ? await basis.visuals() : null
-    const linked = await basis.linkedSkills()
-    // Only a folder with skills: these agents read it once, so a later link reaches them as a list.
-    const linkedRoot = linked.projects.length > 0 ? linked.root : null
-    const roots = [...(visuals ? [visuals.skill] : []), ...(linkedRoot ? [linkedRoot] : [])]
+    const { visuals, compressionSkill, linked, linkedRoot, roots } =
+      await resolveAcpBundledSkillInputs(spec, basis)
     // PATH may have changed since chat creation.
     const launchVersion = await checkAcpLaunchVersion(
       spec,
@@ -231,6 +229,7 @@ export function acpStructuredLaunchPart(
     })
     const loaded = skill?.loaded ?? []
     const skillLoaded = visuals && loaded.includes(visuals.skill) ? visuals : null
+    const compressionLoaded = compressionSkill && loaded.includes(compressionSkill)
     // A managed release's receipt names its version; other programs answer the check.
     const launchedVersion = version ?? launchVersion.version
     // The agent's own servers, which a same-named server from the host's list leaves running. Like
@@ -263,7 +262,8 @@ export function acpStructuredLaunchPart(
         cwd,
         version: launchVersion.version
       },
-      visuals && !skillLoaded ? visuals.skill : null
+      visuals && !skillLoaded ? visuals.skill : null,
+      compressionSkill && !compressionLoaded ? compressionSkill : null
     )
     const instructions = delivered.launch
     const visualsLoaded = skillLoaded ?? (delivered.visuals ? visuals : null)
