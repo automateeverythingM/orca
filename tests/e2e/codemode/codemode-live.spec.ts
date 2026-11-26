@@ -582,4 +582,69 @@ test.describe('code mode with a real agent', () => {
       .not.toBeNull()
     expect(await runJsResult(LEARN_TWO)).toContain(LEARN_NUDGE)
   })
+  test('Claude + real writer: Learn proposes a function from a repeated script', async ({
+    orcaPage,
+    electronApp,
+    registerPostElectronShutdownCleanup
+  }) => {
+    // The real writer runs on this machine's Claude login and can take minutes.
+    test.setTimeout(15 * 60_000)
+    await orcaPage.evaluate(async () => {
+      await window.__store!.getState().updateSettings({ codemodeLearnEnabled: true })
+    })
+    const home = await appHome(electronApp)
+    const ran = async (marker: string): Promise<boolean> => {
+      const transcript = await readClaudeTranscript(home, marker)
+      const use = transcript.toolUses.find((entry) => entry.name === 'mcp__orca__run_js')
+      return use ? transcript.outcomes.has(use.id) : false
+    }
+    const stateFile = await startClaudeChat(
+      orcaPage,
+      'full-access',
+      registerPostElectronShutdownCleanup,
+      learnPrompt(LEARN_ONE, 5)
+    )
+    await expect.poll(() => ran(LEARN_ONE), { timeout: 5 * 60_000, intervals: [2_000] }).toBe(true)
+    await sendInNewClaudeChat(orcaPage, learnPrompt(LEARN_TWO, 9))
+    await expect.poll(() => ran(LEARN_TWO), { timeout: 5 * 60_000, intervals: [2_000] }).toBe(true)
+
+    const started = await runtimeCall(orcaPage, 'codemode.learn.propose', {})
+    console.log(`[codemode-live:learn] propose: ${JSON.stringify(started)}`)
+    expect(field(started, 'started')).toBe(true)
+
+    const text = (value: unknown): string | undefined =>
+      typeof value === 'string' ? value : undefined
+    type Proposal = { id: string; state: string; testStatus?: string; reason?: string }
+    const finished = async (): Promise<Proposal | null> => {
+      const view = await runtimeCall(orcaPage, 'codemode.learn.proposals')
+      const list = field(view, 'proposals')
+      const done = Array.isArray(list)
+        ? list.find((p) => ['ready', 'failed'].includes(String(field(p, 'state'))))
+        : null
+      return done
+        ? {
+            id: String(field(done, 'id')),
+            state: String(field(done, 'state')),
+            testStatus: text(field(done, 'testStatus')),
+            reason: text(field(done, 'testReason') ?? field(done, 'reason'))
+          }
+        : null
+    }
+    await expect.poll(finished, { timeout: 5 * 60_000, intervals: [5_000] }).not.toBeNull()
+    const proposal = (await finished())!
+    console.log(`[codemode-live:learn] proposal: ${JSON.stringify(proposal)}`)
+
+    if (proposal.state === 'ready' && proposal.testStatus === 'passed') {
+      const saved = await runtimeCall(orcaPage, 'codemode.learn.saveProposal', {
+        id: proposal.id,
+        scope: 'project'
+      })
+      const name = String(field(saved, 'name'))
+      const lib = await readFile(
+        path.join(path.dirname(stateFile), '.orca', 'lib', `${name}.js`),
+        'utf8'
+      )
+      expect(lib).toContain('@saved-by learn')
+    }
+  })
 })
