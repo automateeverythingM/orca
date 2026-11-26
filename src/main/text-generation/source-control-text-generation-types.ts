@@ -55,6 +55,7 @@ export type TextGenerationOperation =
   | 'conversation-name'
   | 'bot-suggestions'
   | 'dictation-cleanup'
+  | 'codemode-learn'
 
 export type CommitMessageGenerationTarget =
   | { kind: 'local'; cwd: string; env?: NodeJS.ProcessEnv; wslDistro?: string; laneId?: string }

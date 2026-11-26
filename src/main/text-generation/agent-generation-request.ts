@@ -43,11 +43,14 @@ export async function runGenerationRequest(input: {
   operation: TextGenerationOperation
   spawnAgent: SpawnSourceControlAgent
   shouldExecute?: () => boolean
+  /** How long a local agent may run; the source-control default when absent. */
+  timeoutMs?: number
 }): Promise<InternalTextGenerationResult> {
   const params = {
     ...input.params,
     backslash: commandBackslashMode(input.target),
-    toolFree: input.operation === 'dictation-cleanup'
+    // Both prompts carry text the agent must not act on: the user's words, or recorded tool data.
+    toolFree: input.operation === 'dictation-cleanup' || input.operation === 'codemode-learn'
   }
   const prompt =
     input.operation === 'conversation-name'
@@ -89,7 +92,8 @@ export async function runGenerationRequest(input: {
             target: input.target,
             operation: input.operation,
             spawnAgent: input.spawnAgent,
-            shouldExecute: input.shouldExecute
+            shouldExecute: input.shouldExecute,
+            timeoutMs: input.timeoutMs
           })
   let result = await runClaudeGenerationAttempts({
     agentId: input.params.agentId,
@@ -143,7 +147,8 @@ export async function runGenerationRequest(input: {
     !isCustomAgentId(input.params.agentId) ||
     input.operation === 'pull-request-fields' ||
     input.operation === 'jira-issue-summary' ||
-    input.operation === 'bot-suggestions'
+    input.operation === 'bot-suggestions' ||
+    input.operation === 'codemode-learn'
   ) {
     return result
   }

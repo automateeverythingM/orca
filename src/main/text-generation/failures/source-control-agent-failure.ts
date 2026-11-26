@@ -43,9 +43,13 @@ const OPERATIONS_WITHOUT_STDOUT_DETAIL: ReadonlySet<TextGenerationOperation> = n
   'dictation-cleanup'
 ])
 
-/** The agent's answer without CLI framing; dictated text keeps the lines and markers Git text drops. */
+/** The agent's answer without CLI framing; dictated text keeps the lines and markers Git text drops,
+ * and a Learn draft keeps its JSON fence for its own parser. */
 export function cleanAgentAnswer(raw: string, operation: TextGenerationOperation): string {
-  return cleanGeneratedText(raw, operation === 'dictation-cleanup' ? 'prose' : 'git')
+  return cleanGeneratedText(
+    raw,
+    operation === 'dictation-cleanup' || operation === 'codemode-learn' ? 'prose' : 'git'
+  )
 }
 
 type AgentCliFailureOptions = {
@@ -107,7 +111,8 @@ const UNCODED_EMPTY_RESULT_NAMES = {
   'branch-name': 'branch name',
   'conversation-name': 'chat name',
   'dictation-cleanup': 'cleanup',
-  'bot-suggestions': 'answer'
+  'bot-suggestions': 'answer',
+  'codemode-learn': 'function draft'
 } as const
 
 export function emptyResultFailure(
@@ -119,7 +124,8 @@ export function emptyResultFailure(
     operation === 'branch-name' ||
     operation === 'conversation-name' ||
     operation === 'dictation-cleanup' ||
-    operation === 'bot-suggestions'
+    operation === 'bot-suggestions' ||
+    operation === 'codemode-learn'
   ) {
     // Background rename failures are stored as English rename errors, outside the coded result path.
     const name = UNCODED_EMPTY_RESULT_NAMES[operation]

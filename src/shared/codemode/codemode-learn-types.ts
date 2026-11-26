@@ -101,3 +101,19 @@ export type CodemodeLearnProposal = {
   savedAs?: { name: string; scope: CodemodeLibScope }
   savedAt?: number
 }
+
+/** What the Learn writer drafted, checked: a function body plus how to test and present it. */
+export type CodemodeLearnDraft = {
+  name: string
+  description: string
+  params: CodemodeLibParam[]
+  /** The code inside `async function <name>({ <params> }) { … }`. */
+  body: string
+  /** Arguments taken from one source run, so replay can match its recorded calls. */
+  sampleArgs: Record<string, unknown>
+  /** 1–3 strings the JSON of the returned value must contain. */
+  expect: string[]
+  callsSaved: number
+  scope: CodemodeLibScope
+  why: string
+}

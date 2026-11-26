@@ -255,6 +255,7 @@
 1 src/main/codemode/connectors/codemode-connector-relay-route.ts # builds connectorCredentialSource for the relay route; its reads are counted in codemode-connector-credential-source.ts
 1 src/main/codemode/connectors/codemode-connector-store.ts # writeSecureJsonFile on a user add, edit or remove of a small list file; writeSecureFileAsync still renames synchronously and would make the store's sync API async
 1 src/main/codemode/host/codemode-file-tools.ts # spawnBundledRipgrep: the rg path lookup (existsSync) runs once per process and is cached, like the other rg callers
+1 src/main/codemode/learn/writer/codemode-learn-writer-generate.ts # prepareLocalCommitMessageAgentEnv once per Learn proposal (person-initiated, at most 5 per run): the same agent env preparation dictation cleanup and first-work rename use; its existsSync is in shell-startup-env.ts
 2 src/main/codex-accounts/account-management/codex-account-registration.ts
 1 src/main/codex-accounts/credentials/codex-credential-absence-grace.ts
 5 src/main/codex-accounts/credentials/managed-codex-auth-readiness.ts
