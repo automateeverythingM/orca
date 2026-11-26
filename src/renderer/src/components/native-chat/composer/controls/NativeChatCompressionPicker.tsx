@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useRef } from 'react'
 import { Minimize2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,7 +15,6 @@ import {
   NATIVE_CHAT_COMPRESSION_MODES,
   type NativeChatCompressionMode
 } from '../../../../../../shared/native-chat/input/composer/native-chat-compression'
-import { useNativeChatPickerFocusReturn } from '../focus/native-chat-picker-focus-return'
 
 export type NativeChatCompressionPickerProps = {
   mode: NativeChatCompressionMode
@@ -66,7 +65,7 @@ function NativeChatCompressionPickerInner({
 }: NativeChatCompressionPickerProps): React.JSX.Element {
   const t = useTranslate()
   useUiLanguageRevision()
-  const focusReturn = useNativeChatPickerFocusReturn(focusComposer)
+  const picked = useRef(false)
   const title = t('components.native-chat.composer.compression', 'Compression')
   const valueLabel = compressionModeLabel(mode, t)
   const active = mode !== 'off'
@@ -87,7 +86,6 @@ function NativeChatCompressionPickerInner({
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild disabled={disabled}>
             <Button
-              ref={focusReturn.triggerRef}
               type="button"
               variant={active ? 'secondary' : 'ghost'}
               size={!active && !inOverflow ? 'icon-sm' : 'xs'}
@@ -116,8 +114,14 @@ function NativeChatCompressionPickerInner({
         side="top"
         collisionPadding={8}
         className="w-64 max-w-(--radix-dropdown-menu-content-available-width)"
-        onInteractOutside={focusReturn.onInteractOutside}
-        onCloseAutoFocus={focusReturn.onCloseAutoFocus}
+        onCloseAutoFocus={(event) => {
+          if (!picked.current || !focusComposer) {
+            return
+          }
+          picked.current = false
+          event.preventDefault()
+          focusComposer()
+        }}
       >
         <DropdownMenuRadioGroup aria-label={title} value={mode}>
           {NATIVE_CHAT_COMPRESSION_MODES.map((choice) => (
@@ -126,7 +130,7 @@ function NativeChatCompressionPickerInner({
               value={choice}
               disabled={disabled}
               onSelect={() => {
-                focusReturn.notePick()
+                picked.current = true
                 onSelect(choice)
               }}
             >

@@ -1,5 +1,13 @@
 // @protected-copy: preserve code controls used by approval prompts.
-import React, { useContext, useEffect, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from 'react'
 import { WrapText } from 'lucide-react'
 import { useTranslate } from '@/i18n/use-translate'
 import { cn } from '@/lib/class-names'
@@ -9,8 +17,16 @@ import { NativeChatMarkdownCodeBlockContext } from '../native-chat-markdown-code
 import { useNativeChatDisclosure } from '../../messages/disclosure/native-chat-disclosure-store'
 import { NativeChatHighlightedCode } from './NativeChatHighlightedCode'
 import { NativeChatHtmlPreview, NativeChatHtmlViewToggle } from './NativeChatHtmlPreview'
+import { NativeChatCodeRunControls, NativeChatCodeRunOutput } from './NativeChatCodeRunOutput'
 import { isHtmlDocumentCodeBlock } from '../../../../../../shared/markdown/html-document-fences'
+import {
+  isRunnableShellLanguage,
+  prepareShellBlockCommand
+} from '../../../../../../shared/markdown/runnable-shell-code-block'
 import { observeTranscriptVisibility } from '../../media/images/native-chat-image-visibility'
+import { useNativeChatRunCommand } from './native-chat-run-command-context'
+
+const NOOP_UNSUBSCRIBE = (): void => {}
 
 /** Code fences need their own copy target rather than the whole chat message. */
 export function NativeChatCodeBlock({
@@ -35,6 +51,8 @@ export function NativeChatCodeBlock({
   // Keep wrap state in the transcript store so windowing and streaming block recuts cannot reset it; never persist it.
   const blockKey =
     rowKey === undefined || sourceLine === undefined ? undefined : `${rowKey}:${sourceLine}`
+  const fallbackRunKey = useId()
+  const runKey = blockKey ?? fallbackRunKey
   const { open: wrapped, setOpen: setWrapped } = useNativeChatDisclosure(
     blockKey && `code-wrap:${blockKey}`,
     false
@@ -44,13 +62,63 @@ export function NativeChatCodeBlock({
     blockKey && `code-preview:${blockKey}`,
     false
   )
+  const { open: runOutputExpanded, setOpen: setRunOutputExpanded } = useNativeChatDisclosure(
+    blockKey && `code-run-output:${blockKey}`,
+    true
+  )
   const previewAvailable = !growing || fenceClosed
   const previewing = htmlDocument && previewAvailable && previewOpen
   const content = useRef<HTMLPreElement | null>(null)
   const highlights = Boolean(language && code && !plain)
   const colored = useSeenOnScreen(content, highlights && deferHighlight && !previewing)
+  const codeRunner = useNativeChatRunCommand()
+  // Never run a half-streamed shell fence or dimmed/system prose.
+  const runnableCommand =
+    codeRunner && !plain && previewAvailable && isRunnableShellLanguage(language)
+      ? prepareShellBlockCommand(code, language)
+      : ''
+
+  const runStore = codeRunner?.store
+  const subscribeRun = useCallback(
+    (listener: () => void) => (runStore ? runStore.subscribe(runKey, listener) : NOOP_UNSUBSCRIBE),
+    [runStore, runKey]
+  )
+  const getRunSnapshot = useCallback(() => runStore?.getSnapshot(runKey), [runStore, runKey])
+  const runRecord = useSyncExternalStore(subscribeRun, getRunSnapshot, getRunSnapshot)
+
+  const handleRunInline = useCallback(() => {
+    if (!runStore || !runnableCommand) {
+      return
+    }
+    setRunOutputExpanded(true)
+    runStore.run({ blockKey: runKey, command: runnableCommand, language })
+  }, [language, runKey, runStore, runnableCommand, setRunOutputExpanded])
+
+  const handleStopInline = useCallback(() => {
+    runStore?.stop(runKey)
+  }, [runKey, runStore])
+
+  const handleClearInline = useCallback(() => {
+    runStore?.clear(runKey)
+  }, [runKey, runStore])
+
+  const openInTerminal = codeRunner?.openInTerminal
+  const handleOpenInTerminal = useCallback(
+    () =>
+      openInTerminal && runnableCommand ? openInTerminal(runnableCommand) : Promise.resolve(false),
+    [openInTerminal, runnableCommand]
+  )
+
   const actions = code ? (
     <>
+      {codeRunner && runnableCommand ? (
+        <NativeChatCodeRunControls
+          running={runRecord?.status === 'running'}
+          onRun={handleRunInline}
+          onStop={handleStopInline}
+          onOpenInTerminal={openInTerminal ? handleOpenInTerminal : undefined}
+        />
+      ) : null}
       <NativeChatCodeWrapButton wrapped={wrapped} onToggle={() => setWrapped(!wrapped)} />
       <NativeChatCopyButton
         platformLineEndings
@@ -113,6 +181,16 @@ export function NativeChatCodeBlock({
           children
         )}
       </pre>
+      {runRecord ? (
+        <NativeChatCodeRunOutput
+          record={runRecord}
+          expanded={runOutputExpanded}
+          onToggleExpanded={() => setRunOutputExpanded(!runOutputExpanded)}
+          onRun={handleRunInline}
+          onStop={handleStopInline}
+          onClear={handleClearInline}
+        />
+      ) : null}
       {code && !language ? (
         <div className="absolute right-1.5 top-1.5 flex items-center gap-0.5 opacity-100 transition-opacity can-hover:pointer-events-none can-hover:opacity-0 group-hover/code:pointer-events-auto group-hover/code:opacity-100 [[class~='group/code']:has(:focus-visible)_&]:pointer-events-auto [[class~='group/code']:has(:focus-visible)_&]:opacity-100">
           {actions}

@@ -6,6 +6,7 @@ import { NativeChatFindBar } from './viewport/find/NativeChatFindBar'
 import { NativeChatFindQueryContext } from './viewport/find/native-chat-find-query'
 import { NativeChatSessionHistoryScopeContext } from './native-chat-session-history-scope'
 import { NativeChatLinkClickContext } from './links/actions/native-chat-link-click-context'
+import { NativeChatRunCommandContext } from './markdown/code/native-chat-run-command-context'
 import type { NativeChatSurfaceState } from './use-native-chat-surface'
 
 /** Every chat screen's root: the surface's handlers, appearance, context menu, link popover, and
@@ -40,11 +41,13 @@ export function NativeChatSurface({
       data-native-chat-scheme={surface.appearance.colorScheme}
     >
       <NativeChatLinkClickContext value={surface.onLinkClick}>
-        <NativeChatSessionHistoryScopeContext.Provider value={surface.sessionHistory}>
-          <NativeChatFindQueryContext value={surface.find.isOpen ? surface.find.query : ''}>
-            {children}
-          </NativeChatFindQueryContext>
-        </NativeChatSessionHistoryScopeContext.Provider>
+        <NativeChatRunCommandContext value={surface.codeRunner}>
+          <NativeChatSessionHistoryScopeContext.Provider value={surface.sessionHistory}>
+            <NativeChatFindQueryContext value={surface.find.isOpen ? surface.find.query : ''}>
+              {children}
+            </NativeChatFindQueryContext>
+          </NativeChatSessionHistoryScopeContext.Provider>
+        </NativeChatRunCommandContext>
       </NativeChatLinkClickContext>
 
       {surface.menu}

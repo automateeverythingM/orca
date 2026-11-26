@@ -676,7 +676,11 @@ import {
   McpServerUpdate,
   McpServersList
 } from './mcp-servers-params'
-import { NativeChatSession, NativeChatUnsubscribe } from './native-chat/native-chat-params'
+import {
+  NativeChatRunCodeBlock,
+  NativeChatSession,
+  NativeChatUnsubscribe
+} from './native-chat/native-chat-params'
 import {
   NotificationGetMissedSinceParams,
   NotificationPushCoverageParams,
@@ -1953,6 +1957,7 @@ export const RPC_PARAMS_BY_METHOD = {
   'mobileWeb.bundle.manifest': null,
   'mobileWeb.bundle.range': MobileWebBundleChunkParamsSchema,
   'nativeChat.readSession': NativeChatSession,
+  'nativeChat.runCodeBlock': NativeChatRunCodeBlock,
   'nativeChat.subscribe': NativeChatSession,
   'nativeChat.unsubscribe': NativeChatUnsubscribe,
   'network.browserTunnel': BrowserNetworkTunnelAttachParams,

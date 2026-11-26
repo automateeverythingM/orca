@@ -54,4 +54,13 @@ export const NativeChatUnsubscribe = lazyZodSchema(() =>
   })
 )
 
+export const NativeChatRunCodeBlock = lazyZodSchema(() =>
+  z.object({
+    worktreeId: z.string().min(1),
+    command: z.string().min(1).max(65_536),
+    cwd: z.string().min(1).optional(),
+    language: z.string().min(1).max(32).optional()
+  })
+)
+
 export const MOBILE_NATIVE_CHAT_MAX_WINDOW = 2000

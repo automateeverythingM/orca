@@ -23117,7 +23117,21 @@
         "sampleCall": "Sample call",
         "sampleNote": "Starts a real run",
         "send": "Send"
-      }
+      },
+      "ranInTerminal": "Opened in terminal",
+      "stopCommand": "Stop command",
+      "runCommand": "Run command",
+      "openInTerminal": "Open in terminal",
+      "exitCode": "exit {{code}}",
+      "outputTruncated": "showing latest output",
+      "rerunCommand": "Run again",
+      "copyOutput": "Copy output",
+      "dismissOutput": "Dismiss output",
+      "noCommandOutput": "No output",
+      "commandRunning": "Running…",
+      "commandSucceeded": "Succeeded",
+      "commandFailed": "Failed",
+      "commandStopped": "Stopped"
     },
     "tab": {
       "bar": {
