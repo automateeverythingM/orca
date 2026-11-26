@@ -4,8 +4,8 @@
 import type { OrcaMethodLabel } from '../codemode-orca-method-policy'
 
 export const CODEMODE_ORCA_REVIEWED_SOURCE_CONTROL: Readonly<Record<string, OrcaMethodLabel>> = {
-  'git.abortMerge': 'write',
-  'git.abortRebase': 'write',
+  'git.abortMerge': 'destructive',
+  'git.abortRebase': 'destructive',
   'git.atRiskLocalFiles': 'read',
   'git.blame': 'read',
   'git.branchCompare': 'read',
@@ -45,7 +45,7 @@ export const CODEMODE_ORCA_REVIEWED_SOURCE_CONTROL: Readonly<Record<string, Orca
   'git.remoteFileUrl': 'read',
   'git.resolveConflict': 'write',
   'git.revert': 'write',
-  'git.sequencerAbort': 'write',
+  'git.sequencerAbort': 'destructive',
   'git.sequencerContinue': 'write',
   'git.stage': 'write',
   'git.status': 'read',

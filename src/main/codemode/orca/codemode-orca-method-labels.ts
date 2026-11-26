@@ -78,7 +78,12 @@ export const CODEMODE_ORCA_LABEL_OVERRIDES: ReadonlyMap<string, OrcaMethodLabel>
     // Its `status` can complete a gate-blocked task, which readies and dispatches dependents.
     'orchestration.taskUpdate',
     'jira.generateIssueSummary',
-    'worktree.restore'
+    'worktree.restore',
+    'browser.eval',
+    'browser.clipboardRead',
+    'git.abortMerge',
+    'git.abortRebase',
+    'git.sequencerAbort'
   ]),
   ...labelled('write', [
     'git.resolveConflict',

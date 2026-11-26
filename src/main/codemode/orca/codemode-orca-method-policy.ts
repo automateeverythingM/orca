@@ -65,7 +65,12 @@ export const CODEMODE_ORCA_CLIENT_PROTOCOL_METHODS: ReadonlySet<string> = new Se
   'sidebarInputs.repoIcons',
   // A live-text viewer saying it is shown, and paired desktops' orchestration sync feed.
   'agentSession.liveTextShown',
-  'agentActivity.orchestration'
+  'agentActivity.orchestration',
+  // Legacy no-ops kept for older clients and mobile input-sequence handshaking.
+  'agentSession.restartResume',
+  'orchestration.workerTerminalUserInput',
+  'orchestration.workerChatTouch',
+  'terminal.openInputSession'
 ])
 
 export function isClientProtocolMethod(name: string): boolean {
@@ -93,6 +98,8 @@ export const CODEMODE_ORCA_DENIED_METHODS: ReadonlySet<string> = new Set([
   'webhooks.reveal',
   'webhooks.rotate',
   'browser.setCredentials',
+  // Raw agent-browser passthrough reaches cookies and credentials that the typed methods deny.
+  'browser.exec',
   'google.client.import',
   'google.client.export',
   'google.disconnect',

@@ -147,7 +147,6 @@ export const CODEMODE_ORCA_REVIEWED_WORKSPACE: Readonly<Record<string, OrcaMetho
   'terminal.inspectProcess': 'read',
   'terminal.isRunningAgent': 'read',
   'terminal.list': 'read',
-  'terminal.openInputSession': 'write',
   'terminal.read': 'write',
   'terminal.readKittyFile': 'read',
   'terminal.recoverPane': 'write',
