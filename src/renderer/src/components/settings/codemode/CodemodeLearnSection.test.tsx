@@ -17,7 +17,8 @@ vi.mock('./codemode-learn-client', async (importActual) => ({
   codemodeLearnStatus: vi.fn(),
   listCodemodeRepeats: vi.fn(),
   dismissCodemodeRepeat: vi.fn(async () => {}),
-  clearCodemodeLearn: vi.fn(async () => {})
+  clearCodemodeLearn: vi.fn(async () => {}),
+  codemodeLearnProposals: vi.fn(async () => ({ running: false, proposals: [], usage: {} }))
 }))
 
 const SEEN = 1_800_000_000_000
@@ -138,4 +139,14 @@ it('switch off with an empty store file shows no stats and no Clear', async () =
   expect(screen.queryByText(/runs recorded/)).toBeNull()
   expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
   expect(screen.getByText('Turn on Learn to find scripts you repeat.')).toBeTruthy()
+})
+
+it('offers Find functions to save only while Learn is on', async () => {
+  answer({ enabled: true, stats: { runs: 1, calls: 2, bytes: 1, oldest: 1 } })
+  await show(true)
+  expect(screen.getByRole('button', { name: 'Find functions to save' })).toBeTruthy()
+  cleanup()
+  answer({ enabled: false, stats: { runs: 1, calls: 2, bytes: 1, oldest: 1 } })
+  await show(false)
+  expect(screen.queryByRole('button', { name: 'Find functions to save' })).toBeNull()
 })

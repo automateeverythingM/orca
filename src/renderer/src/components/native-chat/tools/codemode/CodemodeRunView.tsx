@@ -15,6 +15,7 @@ import { NativeChatHighlightedCode } from '../../markdown/code/NativeChatHighlig
 import { NativeChatToolIcon } from '../lines/NativeChatToolIcon'
 import { NativeChatToolOutput } from '../lines/NativeChatToolOutput'
 import { CodemodeInnerCallLine } from './CodemodeInnerCallLine'
+import { CodemodeLearnFromThis } from './CodemodeLearnFromThis'
 import { codemodeCodePreview, codemodeInnerCallRows, codemodeRunCall } from './codemode-run-rows'
 import { askToSaveAsFunction } from './codemode-save-as-function'
 import { useNativeChatVisualOwner } from '../../media/visuals/native-chat-visual-owner'
@@ -118,6 +119,9 @@ export function CodemodeRunView({
                     count: seenInChats
                   })}
                 </span>
+              ) : null}
+              {seenInChats >= 2 && sessionId !== undefined && run?.shape ? (
+                <CodemodeLearnFromThis sessionId={sessionId} shape={run.shape} />
               ) : null}
             </div>
           ) : null}

@@ -115,7 +115,11 @@ export class CodemodeRunStore {
   }
 
   /** Adds Learn's findings to a run's header; a run no longer kept is left alone. */
-  annotate(sessionId: string, runId: string, patch: Pick<CodemodeRunHeader, 'seenInChats'>): void {
+  annotate(
+    sessionId: string,
+    runId: string,
+    patch: Pick<CodemodeRunHeader, 'seenInChats' | 'shape'>
+  ): void {
     const run = this.sessions.get(sessionId)?.find((entry) => entry.runId === runId)
     if (!run) {
       return

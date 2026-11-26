@@ -3624,6 +3624,14 @@
       "learn": {
         "chats_one": "{{count}} chat",
         "chats_other": "{{count}} chats",
+        "proposal": {
+          "callsSaved_one": "Saves about {{count}} call",
+          "callsSaved_other": "Saves about {{count}} calls",
+          "chainSignal_one": "Tool chain used in {{count}} chat",
+          "chainSignal_other": "Tool chain used in {{count}} chats",
+          "scriptSignal_one": "Script used in {{count}} chat",
+          "scriptSignal_other": "Script used in {{count}} chats"
+        },
         "runs_one": "{{count}} run",
         "runs_other": "{{count}} runs",
         "stats_one": "{{count}} run recorded, {{size}} MB",

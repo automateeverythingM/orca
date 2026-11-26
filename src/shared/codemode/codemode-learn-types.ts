@@ -118,6 +118,9 @@ export type CodemodeLearnDraft = {
   why: string
 }
 
+/** `codemode.learn.propose` params: only one chat's scripts and/or one shape; a hint for the writer. */
+export type CodemodeLearnProposeParams = { sessionId?: string; shape?: string; hint?: string }
+
 /** `codemode.learn.propose`: the run started, or why it did not. */
 export type CodemodeLearnProposeResult = { started: true } | { started: false; reason: string }
 

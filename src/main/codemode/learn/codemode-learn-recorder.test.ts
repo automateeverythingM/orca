@@ -74,7 +74,8 @@ describe('CodemodeLearnRecorder', () => {
     h.feed('r1', ['mcp.crm.a', 'orca.worktree.list'])
     expect(await h.recorder.finish('r1', finished)).toEqual({
       note: learnNote(2),
-      seenInChats: 3
+      seenInChats: 3,
+      shape: 'h'
     })
     expect(learnNote(1)).toBe(
       '\nNote: you have run this same script in 1 other chat(s). If the person may want it again, offer to save it as a function with lib.save.'
@@ -91,15 +92,19 @@ describe('CodemodeLearnRecorder', () => {
       results.push(await h.recorder.finish(runId, finished))
     }
     expect(results).toEqual([
-      { note: learnNote(1), seenInChats: 2 },
-      { note: null, seenInChats: 2 },
-      { note: null, seenInChats: 2 }
+      { note: learnNote(1), seenInChats: 2, shape: 'h' },
+      { note: null, seenInChats: 2, shape: 'h' },
+      { note: null, seenInChats: 2, shape: 'h' }
     ])
     // Another chat running the same shape still gets its own nudge.
     h.recorder.begin('s2', '/project', 'r4', 'code')
     h.recorder.call('r4', call(1, 'mcp.crm.a'))
     h.recorder.call('r4', call(2, 'mcp.crm.b'))
-    expect(await h.recorder.finish('r4', finished)).toEqual({ note: learnNote(1), seenInChats: 2 })
+    expect(await h.recorder.finish('r4', finished)).toEqual({
+      note: learnNote(1),
+      seenInChats: 2,
+      shape: 'h'
+    })
   })
 
   it('a run in flight is not recorded once Learn is off or its store is closed for deletion', async () => {
@@ -237,8 +242,11 @@ describe('CodemodeLearnRecorder', () => {
     hooks.onCall('r', call(1))
     hooks.onCall('r', call(2))
     expect(await hooks.onFinish({ runId: 'r', ...finished })).toBe(learnNote(1))
-    expect(runs.runs('s1')[0].seenInChats).toBe(2)
-    expect(seen.at(-1)).toMatchObject({ type: 'run', run: { runId: 'r', seenInChats: 2 } })
+    expect(runs.runs('s1')[0]).toMatchObject({ seenInChats: 2, shape: 'h' })
+    expect(seen.at(-1)).toMatchObject({
+      type: 'run',
+      run: { runId: 'r', seenInChats: 2, shape: 'h' }
+    })
 
     // No repeat: no annotation.
     const plain = makeRecorder({})
@@ -251,5 +259,6 @@ describe('CodemodeLearnRecorder', () => {
     plainHooks.begin('r2', 'code')
     expect(await plainHooks.onFinish({ runId: 'r2', ...finished })).toBeNull()
     expect(runs.runs('s1')[1].seenInChats).toBeUndefined()
+    expect(runs.runs('s1')[1].shape).toBeUndefined()
   })
 })

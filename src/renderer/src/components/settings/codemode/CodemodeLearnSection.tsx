@@ -17,6 +17,7 @@ import {
   listCodemodeRepeats
 } from './codemode-learn-client'
 import { CODEMODE_LEARN_TARGET_ID, getCodemodeLearnSearchEntry } from './codemode-settings-search'
+import { CodemodeLearnProposals } from './CodemodeLearnProposals'
 import { CodemodeRepeatRow } from './CodemodeRepeatRow'
 
 type LearnState =
@@ -41,6 +42,8 @@ export function CodemodeLearnSection({
   const [confirmClear, setConfirmClear] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [clearError, setClearError] = useState<string | null>(null)
+  // Why: bumped by Clear, so the proposals list starts over instead of showing deleted ones.
+  const [cleared, setCleared] = useState(0)
   const reads = useRef(0)
 
   const refresh = useCallback(() => {
@@ -76,6 +79,7 @@ export function CodemodeLearnSection({
     try {
       await clearCodemodeLearn()
       setConfirmClear(false)
+      setCleared((count) => count + 1)
       refresh()
     } catch (caught: unknown) {
       setClearError(codemodeErrorMessage(caught))
@@ -153,6 +157,7 @@ export function CodemodeLearnSection({
           ) : null}
         </div>
       ) : null}
+      {enabled ? <CodemodeLearnProposals key={cleared} onChanged={refresh} /> : null}
       {state.kind === 'loading' ? (
         <p data-settings-row="" role="status" className={muted}>
           {t('settings.codemode.learn.reading', 'Reading repeated work…')}

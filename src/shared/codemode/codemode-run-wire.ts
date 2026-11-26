@@ -35,6 +35,8 @@ export type CodemodeRunHeader = {
   omittedCalls: number
   /** Learn: chats (this one included) that ran this same script; set only when the agent was nudged. */
   seenInChats?: number
+  /** Learn: the script's shape key, set with `seenInChats`; the chat asks Learn about it by this key. */
+  shape?: string
 }
 
 export type CodemodeRunRecord = CodemodeRunHeader & { calls: CodemodeInnerCallRecord[] }

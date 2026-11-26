@@ -154,7 +154,8 @@ export const seenInOtherChats = defineFixture({
           ],
           240
         ),
-        seenInChats: 3
+        seenInChats: 3,
+        shape: 'a'.repeat(64)
       }}
     />
   ),

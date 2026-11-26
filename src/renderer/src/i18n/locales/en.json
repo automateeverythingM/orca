@@ -2117,7 +2117,8 @@
         "history": "history",
         "repeated": "repeated",
         "learn": "learn from runs",
-        "clear": "clear history"
+        "clear": "clear history",
+        "proposals": "find functions to save"
       },
       "functions": {
         "projectFrom": "Project functions come from {{name}} (the open worktree).",
@@ -2175,7 +2176,41 @@
         "dismiss": "Dismiss",
         "sampleCode": "Sample code",
         "title": "Learn",
-        "description": "Scripts and tool chains agents ran in 2 or more chats, to save as functions."
+        "description": "Scripts and tool chains agents ran in 2 or more chats, to save as functions.",
+        "proposal": {
+          "chainSignal_one": "Tool chain used in {{count}} chat",
+          "chainSignal_other": "Tool chain used in {{count}} chats",
+          "scriptSignal_one": "Script used in {{count}} chat",
+          "scriptSignal_other": "Script used in {{count}} chats",
+          "passed": "Passed",
+          "testFailed": "Failed: {{reason}}",
+          "untested": "Untested: {{reason}}",
+          "unnamed": "New function",
+          "edited": "Edited",
+          "callsSaved_one": "Saves about {{count}} call",
+          "callsSaved_other": "Saves about {{count}} calls",
+          "writing": "Writing a function…",
+          "testing": "Testing against recorded results…",
+          "notFinished": "Couldn’t finish testing: {{error}}",
+          "writeFailed": "Couldn’t write this function: {{error}}",
+          "testLog": "Test log",
+          "editLabel": "Code for {{name}}",
+          "done": "Done",
+          "code": "Code",
+          "readFirst": "Replay checks one recorded case. Read the code before saving.",
+          "edit": "Edit",
+          "scope": "Save to",
+          "save": "Save",
+          "noProject": "These runs have no single project, so this saves as global.",
+          "dismissConfirm": "Won’t be suggested again.",
+          "savedProject": "Saved to project",
+          "savedGlobal": "Saved as global",
+          "callsChange": "was {{before}} calls, now {{after}}"
+        },
+        "hint": "What should Learn look for? (optional)",
+        "learning": "Learning…",
+        "propose": "Find functions to save",
+        "savedByLearn": "Saved by Learn"
       }
     }
   },
@@ -23113,7 +23148,9 @@
         "omitted_one": "{{count}} more call not shown",
         "omitted_other": "{{count}} more calls not shown",
         "saveAsFunction": "Save as function",
-        "seenInChats": "Ran in {{count}} chats"
+        "seenInChats": "Ran in {{count}} chats",
+        "learnStarted": "Learning… see Settings › Code mode › Learn",
+        "learnFromThis": "Learn from this"
       }
     },
     "tab": {

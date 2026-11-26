@@ -48,6 +48,7 @@ export const getCodemodeLearnSearchEntry = createLocalizedCatalog((): SettingsSe
   keywords: [
     ...translateSearchKeyword('settings.codemode.search.repeated', 'repeated'),
     ...translateSearchKeyword('settings.codemode.search.learn', 'learn from runs'),
+    ...translateSearchKeyword('settings.codemode.search.proposals', 'find functions to save'),
     ...translateSearchKeyword('settings.codemode.search.clear', 'clear history')
   ]
 }))

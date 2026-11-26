@@ -28,7 +28,10 @@ export type CodemodeLearnRecorderDeps = {
   log: (message: string, error?: unknown) => void
 }
 
-export type CodemodeLearnFinish = { note: string | null; seenInChats: number | null }
+/** `shape` comes with `seenInChats`, so the chat can ask Learn about this one script. */
+export type CodemodeLearnFinish =
+  | { note: string | null; seenInChats: null }
+  | { note: string | null; seenInChats: number; shape: string }
 
 /** A run in flight: its calls are cut as they settle, so only what the store would keep is held. */
 type Pending = { run: Omit<CodemodeLearnRun, 'startedAt' | 'ms' | 'ok'>; budget: LearnCallBudget }
@@ -112,13 +115,13 @@ export class CodemodeLearnRecorder {
     const seenInChats = result.otherSessions + 1
     const key = `${run.sessionId}\u0000${result.shape}`
     if (this.nudged.has(key)) {
-      return { note: null, seenInChats }
+      return { note: null, seenInChats, shape: result.shape }
     }
     if (this.nudged.size >= MAX_NUDGED) {
       this.nudged.clear()
     }
     this.nudged.add(key)
-    return { note: learnNote(result.otherSessions), seenInChats }
+    return { note: learnNote(result.otherSessions), seenInChats, shape: result.shape }
   }
 
   /** Forgets every run in flight, so none is recorded: the store is closing to be deleted. */
@@ -154,18 +157,18 @@ export function learnSessionHooks(
   chat: {
     sessionId: string
     projectRoot: string
-    annotate: (runId: string, patch: Pick<CodemodeRunHeader, 'seenInChats'>) => void
+    annotate: (runId: string, patch: Pick<CodemodeRunHeader, 'seenInChats' | 'shape'>) => void
   }
 ): CodemodeRunLearnHooks {
   return {
     begin: (runId, code) => recorder.begin(chat.sessionId, chat.projectRoot, runId, code),
     onCall: (runId, call) => recorder.call(runId, call),
     onFinish: async ({ runId, ok, ms, startedAt }) => {
-      const { note, seenInChats } = await recorder.finish(runId, { ok, ms, startedAt })
-      if (seenInChats !== null) {
-        chat.annotate(runId, { seenInChats })
+      const finish = await recorder.finish(runId, { ok, ms, startedAt })
+      if (finish.seenInChats !== null) {
+        chat.annotate(runId, { seenInChats: finish.seenInChats, shape: finish.shape })
       }
-      return note
+      return finish.note
     }
   }
 }

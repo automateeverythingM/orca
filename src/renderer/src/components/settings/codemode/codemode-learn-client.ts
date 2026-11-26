@@ -2,8 +2,12 @@
 // is desktop-only).
 import { callRuntimeRpc } from '@/runtime/rpc/calls/runtime-rpc-call'
 import type { RuntimeClientTarget } from '../../../../../shared/remote-runtime/host-catalog/runtime-client-target'
+import type { CodemodeLibScope } from '../../../../../shared/codemode/codemode-lib-types'
 import type {
   CodemodeLearnListView,
+  CodemodeLearnProposalsView,
+  CodemodeLearnProposeParams,
+  CodemodeLearnProposeResult,
   CodemodeLearnStatusView,
   CodemodeRepeatedChain,
   CodemodeRepeatedScript
@@ -30,6 +34,31 @@ export async function dismissCodemodeRepeat(repeat: CodemodeRepeat): Promise<voi
 
 export async function clearCodemodeLearn(): Promise<void> {
   await callRuntimeRpc(LOCAL, 'codemode.learn.clear')
+}
+
+/** Starts a Learn run in main; poll `codemodeLearnProposals` while it reports `running`. */
+export function proposeCodemodeLearn(
+  params: CodemodeLearnProposeParams
+): Promise<CodemodeLearnProposeResult> {
+  return callRuntimeRpc<CodemodeLearnProposeResult>(LOCAL, 'codemode.learn.propose', params)
+}
+
+export function codemodeLearnProposals(): Promise<CodemodeLearnProposalsView> {
+  return callRuntimeRpc<CodemodeLearnProposalsView>(LOCAL, 'codemode.learn.proposals')
+}
+
+/** Dismisses a proposal and its repeated source: Learn will not suggest it again until Clear. */
+export async function dismissCodemodeProposal(id: string): Promise<void> {
+  await callRuntimeRpc(LOCAL, 'codemode.learn.dismissProposal', { id })
+}
+
+/** Saves a proposal as a function; `source` is the person's edit of the whole file, if any. */
+export function saveCodemodeProposal(params: {
+  id: string
+  scope: CodemodeLibScope
+  source?: string
+}): Promise<{ name: string; scope: CodemodeLibScope }> {
+  return callRuntimeRpc(LOCAL, 'codemode.learn.saveProposal', params)
 }
 
 const isControl = (code: number): boolean =>
