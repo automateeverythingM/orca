@@ -46,11 +46,14 @@ function rules(kind: WriterPromptInput['kind']): string {
         "- expect: 1 to 3 short strings that appear in the JSON of what the function returns for sample_args, taken from that run's recorded outputs."
       : '- sample_args: plausible example arguments (nothing was recorded, so it is not tested).\n' +
         '- expect: 1 to 3 short strings you would expect in the JSON of the returned value.'
+  const expectRule =
+    "- expect: each string is searched for in the JSON text of the function's return value (as JSON.stringify writes it), so give a plain substring such as pro or 42, with no quotes or backslashes."
   return [
     '- Generalize: values that change between runs (ids, emails, queries, paths) become params; values that stay the same stay in the body.',
     '- body: only the code inside `async function <name>({ <params> }) { ... }`. Do not write that line yourself. Use the params as plain variables and end with `return`.',
     '- Call only the tools the recorded work calls, with inputs shaped the same way. Never call lib.*.',
     sample,
+    expectRule,
     '- calls_saved: about how many tool calls one use of the function replaces.',
     '- scope: "project" when the function depends on this project (its files, paths or repo), otherwise "global".',
     `- name: a camelCase JavaScript identifier, at most 64 characters, not one of: ${[...CODEMODE_LIB_RESERVED].join(', ')}.`,

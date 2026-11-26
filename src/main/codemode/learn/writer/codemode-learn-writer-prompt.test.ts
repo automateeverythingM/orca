@@ -123,6 +123,18 @@ describe('buildWriterPrompt', () => {
     expect(prompt).not.toContain('y'.repeat(501))
   })
 
+  it('says expect strings are plain substrings of the result JSON', () => {
+    for (const prompt of [
+      buildWriterPrompt({ kind: 'script', runs: [run('r1', [call(0)])] }),
+      buildWriterPrompt({ kind: 'chain', tools: ['mcp.crm.search'] })
+    ]) {
+      expect(prompt).toMatch(
+        /expect[^\n]*searched for in the JSON text of the function's return value/
+      )
+      expect(prompt).toMatch(/plain substring[^\n]*no quotes or backslashes/)
+    }
+  })
+
   it('describes a tool chain with no recorded results', () => {
     const prompt = buildWriterPrompt({ kind: 'chain', tools: ['mcp.crm.search', 'mcp.crm.update'] })
     const { open, close } = fenceOf(prompt)

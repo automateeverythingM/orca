@@ -10,29 +10,41 @@ export const structureFailureText = (name: string): string =>
   `source must define only the function ${name}`
 
 /**
- * Evaluates the source as a global script and reports whether the only global it added is `name`,
- * holding a function. Built-ins are captured first, so the source cannot fake the answer; a global
- * script also refuses a top-level `return`, which the lib loader's wrapper would accept.
+ * Evaluates the source as a global script and reports whether the only change to the globals is a
+ * new `name` holding a function: no other new key (string or symbol) and no global replaced or
+ * removed. Built-ins are captured first, so the source cannot fake the answer; a global script also
+ * refuses a top-level `return`, which the lib loader's wrapper would accept.
  */
 function structureScript(source: string, name: string): string {
   const key = JSON.stringify(name)
   return [
     'const g = globalThis',
     'const ev = eval',
-    'const own = Object.getOwnPropertyNames',
+    'const ownKeys = Reflect.ownKeys',
     'const describe = Object.getOwnPropertyDescriptor',
     'const hasOwn = Object.hasOwn',
-    'const seen = Object.create(null)',
+    'const same = Object.is',
     // A name that is already a sandbox global (read, print…) must be defined again by the source.
     `delete g[${key}]`,
-    'const before = own(g)',
-    'for (let i = 0; i < before.length; i++) seen[before[i]] = true',
+    'const before = ownKeys(g)',
+    'const was = []',
+    'for (let i = 0; i < before.length; i++) was[i] = describe(g, before[i])',
+    'const kept = (a, b) =>',
+    '  b !== undefined &&',
+    "  (hasOwn(a, 'value')",
+    "    ? hasOwn(b, 'value') && same(a.value, b.value)",
+    "    : hasOwn(b, 'get') && same(a.get, b.get) && same(a.set, b.set))",
     `ev(${JSON.stringify(source)})`,
-    'const after = own(g)',
-    'let extra = 0',
-    `for (let i = 0; i < after.length; i++) if (seen[after[i]] !== true && after[i] !== ${key}) extra++`,
+    'for (let i = 0; i < before.length; i++) if (!kept(was[i], describe(g, before[i]))) return false',
+    'const after = ownKeys(g)',
+    'for (let i = 0; i < after.length; i++) {',
+    `  if (after[i] === ${key}) continue`,
+    '  let found = false',
+    '  for (let j = 0; j < before.length && !found; j++) found = before[j] === after[i]',
+    '  if (!found) return false',
+    '}',
     `const d = describe(g, ${key})`,
-    "return extra === 0 && d !== undefined && hasOwn(d, 'value') && typeof d.value === 'function'"
+    "return d !== undefined && hasOwn(d, 'value') && typeof d.value === 'function'"
   ].join('\n')
 }
 
@@ -62,7 +74,7 @@ export async function checkSourceStructure(
     return { ok: false, detail: `loading the source failed: ${result.error}` }
   }
   if (result.value !== true) {
-    return { ok: false, detail: 'loading the source defined other globals or no function' }
+    return { ok: false, detail: 'loading the source changed other globals or defined no function' }
   }
   return { ok: true }
 }

@@ -18,7 +18,7 @@ export type WriterReplyResult =
 const PARAM_NAME = /^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/
 
 // Words strict-mode JavaScript will not bind as a function or parameter name.
-const JS_RESERVED: ReadonlySet<string> = new Set(
+export const JS_RESERVED: ReadonlySet<string> = new Set(
   (
     'break case catch class const continue debugger default delete do else enum export extends ' +
     'false finally for function if import in instanceof new null return super switch this throw ' +

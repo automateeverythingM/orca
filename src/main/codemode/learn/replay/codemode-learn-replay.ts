@@ -1,10 +1,14 @@
 // Tests a Learn proposal: its source runs in a fresh QuickJS sandbox whose host answers only from the
 // source runs' recorded calls, so nothing real is ever called.
 import type { CodemodeLearnRun } from '../../../../shared/codemode/codemode-learn-types'
-import { CODEMODE_LIB_NAME } from '../../../../shared/codemode/codemode-lib-types'
+import {
+  CODEMODE_LIB_NAME,
+  CODEMODE_LIB_RESERVED
+} from '../../../../shared/codemode/codemode-lib-types'
 import { CODEMODE_LIMITS, type CodemodeLimits } from '../../codemode-limits'
 import { runScriptInWorker } from '../../sandbox/codemode-worker-run'
 import { capText } from '../codemode-learn-caps'
+import { JS_RESERVED } from '../writer/codemode-learn-writer-reply'
 import { replayHost } from './codemode-learn-replay-host'
 import { checkSourceStructure, structureFailureText } from './codemode-learn-replay-structure'
 
@@ -50,7 +54,7 @@ export async function replayProposal(
   deps: ReplayProposalDeps = {}
 ): Promise<ReplayResult> {
   const { source, name } = input
-  if (!CODEMODE_LIB_NAME.test(name)) {
+  if (!CODEMODE_LIB_NAME.test(name) || CODEMODE_LIB_RESERVED.has(name) || JS_RESERVED.has(name)) {
     return failed(`invalid function name ${JSON.stringify(name)}`, [])
   }
   const limits = deps.limits ?? CODEMODE_LIMITS
@@ -66,7 +70,9 @@ export async function replayProposal(
   }
 
   const replay = replayHost(input.runs)
-  const script = `${source}\nreturn await ${name}(${JSON.stringify(input.sampleArgs ?? {})})`
+  // Why: parsed inside the sandbox, not pasted as a literal, so a `__proto__` key arrives as data.
+  const argsJson = JSON.stringify(input.sampleArgs ?? {}) ?? '{}'
+  const script = `${source}\nreturn await ${name}(JSON.parse(${JSON.stringify(argsJson)}))`
   const result = await runScriptInWorker(script, replay.host, limits, signal, deps.workerPath)
   const log = [...replay.lines, ...result.printed.map((line) => `print: ${line}`)]
   if (!result.ok) {

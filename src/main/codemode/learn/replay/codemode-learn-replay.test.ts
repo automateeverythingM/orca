@@ -172,7 +172,7 @@ describe('replayProposal source structure', () => {
   it('a body that closes the function and adds top-level code fails', async () => {
     const result = await replay('return 1\n}\nglobalThis.x = 1\nasync function y(){')
     expect(result).toMatchObject({ status: 'failed', reason: STRUCTURE })
-    expect(result.log).toContain('defined other globals')
+    expect(result.log).toContain('changed other globals')
   })
 
   it('a body that calls mcp at top level fails', async () => {
@@ -204,5 +204,34 @@ describe('replayProposal source structure', () => {
       status: 'failed',
       reason: 'source must define only the function read'
     })
+  })
+
+  it('a symbol-keyed new global fails', async () => {
+    const result = await replay('return 1\n}\nglobalThis[Symbol()] = 1\nif (true) {')
+    expect(result).toMatchObject({ status: 'failed', reason: STRUCTURE })
+  })
+
+  it('replacing a sandbox global fails', async () => {
+    const result = await replay('return 1\n}\nglobalThis.bash = () => 1\nif (true) {')
+    expect(result).toMatchObject({ status: 'failed', reason: STRUCTURE })
+  })
+})
+
+describe('replayProposal inputs', () => {
+  it('refuses a reserved or keyword name before running anything', async () => {
+    for (const name of ['typeof', 'lib', 'then', 'arguments']) {
+      const result = await replayProposal(
+        { source: 'x', name, sampleArgs: {}, expect: ['x'], runs: [] },
+        { workerPath }
+      )
+      expect(result).toMatchObject({ status: 'failed', reason: `invalid function name "${name}"` })
+    }
+  })
+
+  it('passes a __proto__ key in sampleArgs as data', async () => {
+    const sampleArgs: unknown = JSON.parse('{"__proto__":{"plan":"x"},"email":"a@b.c"}')
+    const body = "return { tag: Object.hasOwn(arguments[0], '__proto__') ? 'own-proto' : 'lost' }"
+    const result = await replay(body, { runs: [], sampleArgs, expect: ['own-proto'] })
+    expect(result).toMatchObject({ status: 'passed' })
   })
 })
