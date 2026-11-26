@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { OrcaRuntimeService } from '../../runtime/orca-runtime'
 import { eraseRpcMethods } from '../../runtime/rpc/core'
 import { codemodeLearnMethods } from '../../runtime/rpc/methods/codemode/codemode-learn'
+import { CodemodeLearnRunner } from './codemode-learn-pipeline'
 import { spawnWorkerThread } from '../../worker-threads/worker-thread-spawn'
 import { createLaunchSession } from '../codemode-launch-session'
 import type { CodemodeSession } from '../host/codemode-run-host'
@@ -125,7 +126,8 @@ describe('Learn end to end', () => {
       service: async () => ({
         learnEnabled: () => enabled,
         learnStore: () => remote,
-        closeLearnStore: async () => {}
+        closeLearnStore: async () => {},
+        learnRunner: () => new CodemodeLearnRunner()
       }),
       storeExists: async () => true,
       removeStoreFiles: async () => {},

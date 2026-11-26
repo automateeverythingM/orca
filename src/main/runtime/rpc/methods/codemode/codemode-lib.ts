@@ -54,14 +54,17 @@ async function runtimeRecords(ctx: RpcContext): Promise<CodemodeLibRecords> {
   return service.libRecords()
 }
 
+/** `requireKnownProject` against the runtime's managed worktrees. */
+export const runtimeProjectAccess = (ctx: RpcContext, projectRoot: string): Promise<void> =>
+  requireKnownProject(
+    () => ctx.runtime.listManagedWorktrees(undefined, Number.MAX_SAFE_INTEGER),
+    projectRoot
+  )
+
 const RUNTIME_DEPS: CodemodeLibMethodDeps = {
   desktop: () => process.versions.electron !== undefined,
   records: runtimeRecords,
-  projectAccess: (ctx, projectRoot) =>
-    requireKnownProject(
-      () => ctx.runtime.listManagedWorktrees(undefined, Number.MAX_SAFE_INTEGER),
-      projectRoot
-    )
+  projectAccess: runtimeProjectAccess
 }
 
 type Opened = CodemodeLibAccess & { keys: Map<CodemodeLibScope, Promise<string>> }

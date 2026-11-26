@@ -10,6 +10,7 @@ import {
   type CodemodeLearnRemote
 } from '../../../../codemode/learn/store/codemode-learn-ops'
 import { CodemodeLearnStore } from '../../../../codemode/learn/store/codemode-learn-store'
+import { CodemodeLearnRunner } from '../../../../codemode/learn/codemode-learn-pipeline'
 import { OrcaRuntimeService } from '../../../orca-runtime'
 import { eraseRpcMethods, type RpcContext } from '../../core'
 import { codemodeLearnMethods, removeLearnStoreFiles } from './codemode-learn'
@@ -29,12 +30,21 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-function methodsFor(remote: CodemodeLearnRemote, removeStoreFiles = vi.fn(async () => {})) {
+function methodsFor(
+  remote: CodemodeLearnRemote,
+  removeStoreFiles = vi.fn(async () => {}),
+  runner = new CodemodeLearnRunner()
+) {
   const closeLearnStore = vi.fn(async () => {})
   const log = vi.fn()
   const methods = codemodeLearnMethods({
     desktop: () => true,
-    service: async () => ({ learnEnabled: () => true, learnStore: () => remote, closeLearnStore }),
+    service: async () => ({
+      learnEnabled: () => true,
+      learnStore: () => remote,
+      closeLearnStore,
+      learnRunner: () => runner
+    }),
     storeExists: async () => true,
     removeStoreFiles,
     journal: async () => null,
@@ -63,6 +73,8 @@ function fakeClearStore(compact: () => Promise<void>) {
     record: unused,
     repeatedScripts: unused,
     runsForShape: unused,
+    sessionShapes: unused,
+    libCallsAfter: unused,
     saveChains: unused,
     chains: unused,
     dismiss: unused,
@@ -80,6 +92,27 @@ function fakeClearStore(compact: () => Promise<void>) {
 }
 
 describe('codemode.learn.clear', () => {
+  it('stops a Learn run going now before it empties the store', async () => {
+    const fake = fakeClearStore(async () => {})
+    const runner = new CodemodeLearnRunner()
+    let stopped: AbortSignal | undefined
+    let finish: () => void = () => {}
+    const run = runner.start(
+      (signal) =>
+        new Promise<void>((resolve) => {
+          stopped = signal
+          finish = resolve
+        })
+    )
+    const methods = methodsFor(fake.store, undefined, runner)
+    await expect(methods.call('codemode.learn.clear')).resolves.toEqual({})
+    expect(stopped?.aborted).toBe(true)
+    expect(fake.clear).toHaveBeenCalledOnce()
+    finish()
+    await run
+    expect(runner.running()).toBe(false)
+  })
+
   it('answers once the rows are deleted; shrinking the file runs after, and only logs a failure', async () => {
     let finishCompact: (error?: Error) => void = () => {}
     const fake = fakeClearStore(

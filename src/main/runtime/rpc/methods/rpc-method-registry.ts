@@ -117,6 +117,7 @@ import { BOT_CONNECTORS_METHOD } from './bots-connectors'
 import { BOT_TOOLS_METHODS } from './bots-tools'
 import { CODEMODE_CONNECTOR_METHODS } from './codemode/codemode-connectors'
 import { CODEMODE_LEARN_METHODS } from './codemode/codemode-learn'
+import { CODEMODE_LEARN_PROPOSAL_METHODS } from './codemode/codemode-learn-proposals'
 import { CODEMODE_LIB_METHODS } from './codemode/codemode-lib'
 import { BOT_TOOLS_OWNED_SIGN_IN_METHODS } from './bots-tools-owned-sign-in'
 import { BOT_COMPOSIO_METHODS } from './bots-composio'
@@ -191,6 +192,7 @@ const BOT_RPC_METHODS = [
   ...CODEMODE_CONNECTOR_METHODS,
   ...CODEMODE_LIB_METHODS,
   ...CODEMODE_LEARN_METHODS,
+  ...CODEMODE_LEARN_PROPOSAL_METHODS,
   ...BOT_COMPOSIO_METHODS,
   ...BOT_COMPOSIO_EVENTS_METHODS,
   ...WEBHOOK_METHODS

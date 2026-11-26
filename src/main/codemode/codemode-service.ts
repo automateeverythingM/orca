@@ -25,6 +25,7 @@ import {
   readConnectorsOff
 } from './connectors/codemode-connector-session-switch'
 import type { InnerCallEvent } from './host/codemode-run-host'
+import { CodemodeLearnRunner } from './learn/codemode-learn-pipeline'
 import { CodemodeLearnRecorder, workerLearnStore } from './learn/codemode-learn-recorder'
 import type { CodemodeLearnRemote } from './learn/store/codemode-learn-ops'
 import { type CodemodeLibRecords, createLibRecords, openChatLib } from './lib/codemode-lib-access'
@@ -60,6 +61,7 @@ export class CodemodeService {
   private readonly lib: CodemodeLibRecords
   private readonly learnStores: ReturnType<typeof workerLearnStore>
   private readonly learn: CodemodeLearnRecorder
+  private readonly learnRuns = new CodemodeLearnRunner()
 
   constructor(private readonly opts: CodemodeServiceOptions = {}) {
     this.server = opts.server ?? new CodemodeHttpServer()
@@ -90,8 +92,14 @@ export class CodemodeService {
   /** Stops the Learn worker so its file can be deleted, dropping runs in flight so none lands in a
    *  new file; the next `learnStore()` starts a new one. */
   closeLearnStore(): Promise<void> {
+    this.learnRuns.stop()
     this.learn.dropPending()
     return this.learnStores.close()
+  }
+
+  /** The one Learn run at a time; closing the store (Clear) stops it. */
+  learnRunner(): CodemodeLearnRunner {
+    return this.learnRuns
   }
 
   /** The saved-function trust and usage records all chats share; Settings must use these too. */
@@ -304,7 +312,7 @@ export class CodemodeService {
     this.removeRelayRoute?.()
     this.removeRelayRoute = null
     await this.connectorWiring?.pool.closeAll()
-    await this.learnStores.close()
+    await this.closeLearnStore()
   }
 
   connectorsOff(sessionId: string): Set<string> {

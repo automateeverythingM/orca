@@ -13,6 +13,8 @@ export function fakeLearnStore(
     record: vi.fn(record),
     repeatedScripts: unused,
     runsForShape: unused,
+    sessionShapes: unused,
+    libCallsAfter: unused,
     saveChains: unused,
     chains: unused,
     dismiss: unused,

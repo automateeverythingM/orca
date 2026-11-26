@@ -126,3 +126,72 @@ describe('Learn proposals', () => {
     expect((await inProcessLearnStore(() => store).proposal(id))?.state).toBe('writing')
   })
 })
+
+describe('Learn proposal updates (one conditional statement)', () => {
+  it('keeps sourceKey, id and createdAt whatever the patch says', async () => {
+    const made = (await learn.createProposal(base('s1'), NOW))!
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: a patch from outside the type, as the worker boundary allows.
+    const patch = { sourceKey: 'other', id: 'x', createdAt: 1, name: 'f' } as never
+    expect(await learn.updateProposal(made.id, patch, ['writing'])).toBe(true)
+    expect(await learn.proposal(made.id)).toMatchObject({
+      id: made.id,
+      sourceKey: 's1',
+      createdAt: NOW,
+      state: 'writing',
+      name: 'f'
+    })
+    expect(await learn.openProposalKeys()).toEqual(['s1'])
+  })
+
+  it('replaces a field whole and keeps the others', async () => {
+    const id = (await learn.createProposal(base('s1'), NOW))!.id
+    await learn.updateProposal(id, { sampleArgs: { a: 1 }, expect: ['x', 'y'] }, ['writing'])
+    await learn.updateProposal(id, { state: 'testing', sampleArgs: { b: 2 }, expect: ['z'] }, [
+      'writing'
+    ])
+    expect(await learn.proposal(id)).toMatchObject({
+      state: 'testing',
+      sampleArgs: { b: 2 },
+      expect: ['z'],
+      callsBefore: 4
+    })
+    expect((await learn.proposal(id))?.sampleArgs).toEqual({ b: 2 })
+  })
+
+  it('refuses an unknown id and an empty onlyFrom', async () => {
+    const id = (await learn.createProposal(base('s1'), NOW))!.id
+    expect(await learn.updateProposal('nope', { state: 'ready' }, ['writing'])).toBe(false)
+    expect(await learn.updateProposal(id, { state: 'ready' }, [])).toBe(false)
+    expect((await learn.proposal(id))?.state).toBe('writing')
+  })
+})
+
+describe('Learn run lookups for proposals', () => {
+  const run = (runId: string, sessionId: string, code: string, tools: string[]) => ({
+    runId,
+    sessionId,
+    projectRoot: '/repo',
+    startedAt: NOW - 1000,
+    ms: 5,
+    ok: true,
+    code,
+    calls: tools.map((tool, seq) => ({ seq, tool, input: {}, ok: true, ms: 1 }))
+  })
+
+  it('sessionShapes lists the shapes one chat ran', async () => {
+    const a = await learn.record(run('r1', 's1', 'return mcp.a.x()', ['mcp.a.x', 'mcp.a.y']), NOW)
+    const b = await learn.record(run('r2', 's1', 'return mcp.b.x()', ['mcp.b.x']), NOW)
+    await learn.record(run('r3', 's2', 'return mcp.c.x()', ['mcp.c.x']), NOW)
+    expect((await learn.sessionShapes('s1')).sort()).toEqual([a.shape, b.shape].sort())
+    expect(await learn.sessionShapes('nobody')).toEqual([])
+  })
+
+  it('libCallsAfter averages the calls of runs that called lib.<name>', async () => {
+    expect(await learn.libCallsAfter('plan')).toBeNull()
+    await learn.record(run('r1', 's1', 'return lib.plan()', ['lib.plan', 'mcp.a.x']), NOW)
+    await learn.record(run('r2', 's2', 'return lib.plan({})', ['lib.plan', 'mcp.a.x', 'x']), NOW)
+    await learn.record(run('r3', 's2', 'return lib.planner()', ['lib.planner']), NOW)
+    expect(await learn.libCallsAfter('plan')).toBe(2.5)
+    expect(await learn.libCallsAfter('planner')).toBe(1)
+  })
+})

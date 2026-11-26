@@ -23,7 +23,10 @@ import { defineMethod, type RpcContext } from '../../core'
 const LEARN_LIST_LIMIT = 50
 const NO_STATS: CodemodeLearnStats = { runs: 0, calls: 0, bytes: 0, oldest: null }
 
-type LearnService = Pick<CodemodeService, 'learnEnabled' | 'learnStore' | 'closeLearnStore'>
+type LearnService = Pick<
+  CodemodeService,
+  'learnEnabled' | 'learnStore' | 'closeLearnStore' | 'learnRunner'
+>
 
 /** Deletes a Learn store file with its write-ahead log and shared-memory files; missing ones are fine. */
 export async function removeLearnStoreFiles(path: string): Promise<void> {
@@ -45,7 +48,8 @@ export type CodemodeLearnMethodDeps = {
   log: LearnChainLog
 }
 
-async function runtimeService(ctx: RpcContext): Promise<LearnService> {
+/** The process's code-mode service, which the session host installs. */
+export async function installedService(ctx: RpcContext): Promise<CodemodeService> {
   // Why: the host's install creates the service; Settings must share its store, never open another.
   await ctx.runtime.ensureStructuredAgentSessionHost()
   const service = installedCodemodeService()
@@ -55,7 +59,7 @@ async function runtimeService(ctx: RpcContext): Promise<LearnService> {
   return service
 }
 
-async function runtimeJournal(ctx: RpcContext): Promise<LearnChainJournal | null> {
+export async function runtimeJournal(ctx: RpcContext): Promise<LearnChainJournal | null> {
   await ctx.runtime.ensureStructuredAgentSessionHost()
   const host = getStructuredAgentSessionHost()
   if (!host) {
@@ -69,7 +73,7 @@ async function runtimeJournal(ctx: RpcContext): Promise<LearnChainJournal | null
 
 const RUNTIME_DEPS: CodemodeLearnMethodDeps = {
   desktop: () => process.versions.electron !== undefined,
-  service: runtimeService,
+  service: installedService,
   storeExists: () =>
     stat(learnStorePath()).then(
       () => true,
@@ -81,6 +85,39 @@ const RUNTIME_DEPS: CodemodeLearnMethodDeps = {
   log: (message, error) => console.warn(`[codemode] ${message}`, error ?? '')
 }
 
+export type LearnChainSource = {
+  journal: (ctx: RpcContext) => Promise<LearnChainJournal | null>
+  now: () => number
+  log: LearnChainLog
+}
+
+/** The saved chains not dismissed, computed again from the chats when older than 10 minutes. */
+export async function listedChains(
+  deps: LearnChainSource,
+  ctx: RpcContext,
+  store: CodemodeLearnRemote
+): Promise<{ chains: CodemodeRepeatedChain[]; computedAt: number | null }> {
+  let current = await store.chains()
+  if (!chainsAreFresh(current.computedAt, deps.now())) {
+    const journal = await deps.journal(ctx)
+    if (journal) {
+      try {
+        await refreshChains({ journal, store, now: deps.now, log: deps.log })
+        // Why: read back what was saved; a refresh that lost to Clear saved nothing and lists nothing.
+        current = await store.chains()
+      } catch (error) {
+        deps.log('Learn could not compute repeated chains; showing the saved ones', error)
+      }
+    }
+  }
+  // Why: a dismiss applies at once, without computing the chains again.
+  const dismissed = new Set(await store.dismissed())
+  return {
+    chains: current.chains.filter((chain) => !dismissed.has(chain.signature)),
+    computedAt: current.computedAt
+  }
+}
+
 /** `codemode.learn.*`: Settings › Code mode › Learn. Each call is the person's own action there. */
 export function codemodeLearnMethods(deps: CodemodeLearnMethodDeps) {
   const open = async (ctx: RpcContext) => {
@@ -88,29 +125,6 @@ export function codemodeLearnMethods(deps: CodemodeLearnMethodDeps) {
       throw new Error('code mode is only available in the desktop app')
     }
     return deps.service(ctx)
-  }
-
-  /** The saved chains, computed again from the chats when older than 10 minutes. */
-  const chains = async (
-    ctx: RpcContext,
-    store: CodemodeLearnRemote
-  ): Promise<{ chains: CodemodeRepeatedChain[]; computedAt: number | null }> => {
-    const saved = await store.chains()
-    if (chainsAreFresh(saved.computedAt, deps.now())) {
-      return saved
-    }
-    const journal = await deps.journal(ctx)
-    if (!journal) {
-      return saved
-    }
-    try {
-      await refreshChains({ journal, store, now: deps.now, log: deps.log })
-    } catch (error) {
-      deps.log('Learn could not compute repeated chains; showing the saved ones', error)
-      return saved
-    }
-    // Why: read back what was saved; a refresh that lost to Clear saved nothing and lists nothing.
-    return store.chains()
   }
 
   /** Stops the worker, then deletes the store file and its -wal/-shm. */
@@ -145,14 +159,8 @@ export function codemodeLearnMethods(deps: CodemodeLearnMethodDeps) {
         }
         const store = service.learnStore()
         const scripts = await store.repeatedScripts(deps.now(), LEARN_LIST_LIMIT)
-        const cached = await chains(ctx, store)
-        // Why: a dismiss applies at once, without computing the chains again.
-        const dismissed = new Set(await store.dismissed())
-        return {
-          scripts,
-          chains: cached.chains.filter((chain) => !dismissed.has(chain.signature)),
-          chainsComputedAt: cached.computedAt
-        }
+        const listed = await listedChains(deps, ctx, store)
+        return { scripts, chains: listed.chains, chainsComputedAt: listed.computedAt }
       }
     }),
     defineMethod({
@@ -174,6 +182,8 @@ export function codemodeLearnMethods(deps: CodemodeLearnMethodDeps) {
       params: null,
       handler: async (_params, ctx): Promise<Record<string, never>> => {
         const service = await open(ctx)
+        // Why: a Learn run going now stops; whatever it would still write is refused anyway.
+        service.learnRunner().stop()
         if (service.learnEnabled()) {
           const store = service.learnStore()
           try {

@@ -17,6 +17,7 @@ import {
   type CodemodeLearnRemote
 } from '../../../../codemode/learn/store/codemode-learn-ops'
 import { CodemodeLearnStore } from '../../../../codemode/learn/store/codemode-learn-store'
+import { CodemodeLearnRunner } from '../../../../codemode/learn/codemode-learn-pipeline'
 import { OrcaRuntimeService } from '../../../orca-runtime'
 import { eraseRpcMethods, type RpcContext } from '../../core'
 import {
@@ -87,14 +88,22 @@ function journal(): LearnChainJournal & { point: ReturnType<typeof vi.fn> } {
   return { records: () => [record('s1'), record('s2')], readers: { point }, point }
 }
 
-function methodsFor(deps: Partial<CodemodeLearnMethodDeps> = {}) {
+function methodsFor(
+  deps: Partial<CodemodeLearnMethodDeps> = {},
+  runner = new CodemodeLearnRunner()
+) {
   const learnStore = vi.fn(() => remote)
   const closeLearnStore = vi.fn(async () => {})
   const removeStoreFiles = vi.fn(async () => {})
   const log = vi.fn()
   const methods = codemodeLearnMethods({
     desktop: () => true,
-    service: async () => ({ learnEnabled: () => enabled, learnStore, closeLearnStore }),
+    service: async () => ({
+      learnEnabled: () => enabled,
+      learnStore,
+      closeLearnStore,
+      learnRunner: () => runner
+    }),
     storeExists: async () => fileExists,
     removeStoreFiles,
     journal: async () => null,

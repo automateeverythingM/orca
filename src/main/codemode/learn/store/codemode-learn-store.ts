@@ -13,7 +13,12 @@ import type {
   CodemodeRepeatedScript
 } from '../../../../shared/codemode/codemode-learn-types'
 import { codemodeShapeHash } from '../codemode-shape'
-import { COUNTED, repeatedScriptsOf } from './codemode-learn-repeated'
+import {
+  COUNTED,
+  libCallsAfterOf,
+  repeatedScriptsOf,
+  sessionShapesOf
+} from './codemode-learn-repeated'
 import {
   CodemodeLearnProposalTable,
   LEARN_PROPOSAL_SCHEMA,
@@ -127,6 +132,16 @@ export class CodemodeLearnStore {
          FROM learn_calls WHERE run_id = ? ORDER BY seq`
     )
     return rows.map((row) => runOf(row, calls.all(String(row.run_id)).map(callOf)))
+  }
+
+  /** The shapes of the runs this chat recorded. */
+  sessionShapes(sessionId: string): string[] {
+    return sessionShapesOf(this.db, sessionId)
+  }
+
+  /** The average inner calls of the stored runs that called `lib.<name>`; null when none did. */
+  libCallsAfter(name: string): number | null {
+    return libCallsAfterOf(this.db, name)
   }
 
   /** Replaces the cached repeated chains, unless a clear came after their computation started. */

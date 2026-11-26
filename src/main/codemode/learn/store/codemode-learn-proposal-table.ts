@@ -12,7 +12,35 @@ import { clampLimit } from './codemode-learn-rows'
 export const LEARN_MAX_PROPOSALS = 50
 export const LEARN_PROPOSAL_SOURCE_CAP_BYTES = 256 * 1024
 export const LEARN_PROPOSAL_LOG_CAP_BYTES = 16 * 1024
-const OPEN_STATES = ['writing', 'testing', 'ready', 'saved']
+const OPEN_STATES: CodemodeLearnProposalState[] = ['writing', 'testing', 'ready', 'saved']
+const STATES: ReadonlySet<string> = new Set([
+  ...OPEN_STATES,
+  'failed',
+  'dismissed'
+] satisfies CodemodeLearnProposalState[])
+/** Body fields a patch may set; `id`, `createdAt` and `sourceKey` never change, `state` is a column.
+ *  Plain identifiers, so each one is safe in a `json_set` path. */
+const PATCHABLE: ReadonlySet<string> = new Set([
+  'sourceKind',
+  'sourceSessions',
+  'projectRoot',
+  'error',
+  'name',
+  'description',
+  'params',
+  'source',
+  'sampleArgs',
+  'expect',
+  'callsSaved',
+  'scope',
+  'why',
+  'testStatus',
+  'testReason',
+  'testLog',
+  'callsBefore',
+  'savedAs',
+  'savedAt'
+] satisfies (keyof Body)[])
 
 export const LEARN_PROPOSAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS learn_proposals (
@@ -67,21 +95,29 @@ export class CodemodeLearnProposalTable {
     return { ...body, id, createdAt: now, state: 'writing' }
   }
 
-  /** Applies the patch only while the proposal's state is one of `onlyFrom`. */
+  /** Applies the patch only while the proposal's state is one of `onlyFrom`: one conditional
+   *  UPDATE, so the state check and the write cannot be split by another write. */
   update(id: string, patch: ProposalPatch, onlyFrom: CodemodeLearnProposalState[]): boolean {
-    const current = this.get(id)
-    if (!current || !onlyFrom.includes(current.state)) {
+    const states = (Array.isArray(onlyFrom) ? onlyFrom : []).map(String)
+    if (states.length === 0) {
       return false
     }
-    const next = { ...current, ...capped(patch) }
-    const body: Partial<CodemodeLearnProposal> = { ...next }
-    delete body.id
-    delete body.createdAt
-    delete body.state
-    this.db
-      .prepare('UPDATE learn_proposals SET state = ?, body = ? WHERE id = ?')
-      .run(next.state, JSON.stringify(body), id)
-    return true
+    const fields = Object.entries(capped(patch)).filter(
+      ([key, value]) => PATCHABLE.has(key) && value !== undefined
+    )
+    // Why: `json_set` per top-level field replaces it whole (a merge patch would merge objects).
+    const sets = fields.map(([key]) => `, '$.${key}', json(?)`).join('')
+    const state = patch.state === undefined ? null : String(patch.state)
+    if (state !== null && !STATES.has(state)) {
+      return false
+    }
+    const result = this.db
+      .prepare(
+        `UPDATE learn_proposals SET state = COALESCE(?, state), body = json_set(body${sets})
+          WHERE id = ? AND state IN (${states.map(() => '?').join(', ')})`
+      )
+      .run(state, ...fields.map(([, value]) => JSON.stringify(value)), String(id), ...states)
+    return Number(result.changes) > 0
   }
 
   get(id: string): CodemodeLearnProposal | null {

@@ -57,3 +57,22 @@ export function repeatedScriptsOf(
     }
   })
 }
+
+/** The shapes of the runs one chat recorded. */
+export function sessionShapesOf(db: SyncDatabase, sessionId: string): string[] {
+  return db
+    .prepare('SELECT DISTINCT shape FROM learn_runs WHERE session_id = ? ORDER BY shape')
+    .all(String(sessionId))
+    .map((row) => String(row.shape))
+}
+
+/** The average inner calls of the stored runs that called `lib.<name>`; null when none did. */
+export function libCallsAfterOf(db: SyncDatabase, name: string): number | null {
+  const row = db
+    .prepare(
+      `SELECT AVG(r.call_count) AS n FROM learn_runs r WHERE EXISTS
+         (SELECT 1 FROM learn_calls c WHERE c.run_id = r.run_id AND c.tool = ?)`
+    )
+    .get(`lib.${String(name)}`)
+  return row?.n === null || row?.n === undefined ? null : Number(row.n)
+}

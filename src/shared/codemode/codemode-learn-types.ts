@@ -117,3 +117,17 @@ export type CodemodeLearnDraft = {
   scope: CodemodeLibScope
   why: string
 }
+
+/** `codemode.learn.propose`: the run started, or why it did not. */
+export type CodemodeLearnProposeResult = { started: true } | { started: false; reason: string }
+
+/** A saved proposal's function in use: `callsAfter` is the average inner calls of recorded runs
+ *  that called it, null until it has been used 3 times or while no such run is recorded. */
+export type CodemodeLearnProposalUsage = { uses: number; callsAfter: number | null }
+
+/** `codemode.learn.proposals`: newest first; `usage` only for saved ones, by proposal id. */
+export type CodemodeLearnProposalsView = {
+  running: boolean
+  proposals: CodemodeLearnProposal[]
+  usage: Record<string, CodemodeLearnProposalUsage>
+}

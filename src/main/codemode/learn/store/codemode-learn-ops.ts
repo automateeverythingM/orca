@@ -6,6 +6,8 @@ export const CODEMODE_LEARN_OPS = [
   'record',
   'repeatedScripts',
   'runsForShape',
+  'sessionShapes',
+  'libCallsAfter',
   'saveChains',
   'chains',
   'dismiss',
