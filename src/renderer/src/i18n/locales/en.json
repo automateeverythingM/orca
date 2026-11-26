@@ -21849,7 +21849,15 @@
         "modelAndEffortValue": "{{model}} · {{effort}}",
         "modelAndEffort": "Model and effort",
         "modelsLoading": "Loading models…",
-        "signInForModels": "Sign in to see the models you can use."
+        "signInForModels": "Sign in to see the models you can use.",
+        "compressionOff": "Off",
+        "compressionTerra": "Terra",
+        "compressionUltra": "Ultra",
+        "compressionOffDescription": "Normal response detail",
+        "compressionTerraDescription": "Terse, concise replies without filler",
+        "compressionUltraDescription": "Maximum caveman-style token compression",
+        "compression": "Compression",
+        "compressionTooltip": "{{title}} · {{mode}}"
       },
       "tool": {
         "exitCode": "exit {{value0}}",

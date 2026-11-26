@@ -186,6 +186,12 @@ export const ORCAD_NATIVE_CHAT_VISUALS_ARTIFACTS = [
   'native-chat-visuals/skills/orca-chat-visuals/SKILL.md'
 ] as const
 
+/** The compression skill plugin native-chat agents load by path; mirrors resources/native-chat-compression. */
+export const ORCAD_NATIVE_CHAT_COMPRESSION_ARTIFACTS = [
+  'native-chat-compression/.claude-plugin/plugin.json',
+  'native-chat-compression/skills/orca-compression/SKILL.md'
+] as const
+
 /** Phones load this page via mobileWeb.bundle.*; its content-addressed assets are listed only in the manifest. */
 export const ORCAD_MOBILE_WEB_DIR = 'out/mobile-web'
 export const ORCAD_MOBILE_WEB_MANIFEST = `${ORCAD_MOBILE_WEB_DIR}/manifest.json`
@@ -293,6 +299,7 @@ export const ORCAD_ARTIFACTS: readonly OrcadArtifact[] = [
   ...ORCAD_NODE_PTY_JS_ARTIFACTS.map((filename) => ({ filename })),
   ...ORCAD_RIPGREP_LICENSE_ARTIFACTS.map((filename) => ({ filename })),
   ...ORCAD_NATIVE_CHAT_VISUALS_ARTIFACTS.map((filename) => ({ filename })),
+  ...ORCAD_NATIVE_CHAT_COMPRESSION_ARTIFACTS.map((filename) => ({ filename })),
   // Missing page suppresses mobileWeb.bundle.v1, leaving paired phones without a page.
   { filename: ORCAD_MOBILE_WEB_MANIFEST }
 ]

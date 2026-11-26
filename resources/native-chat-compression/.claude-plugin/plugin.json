@@ -1,0 +1,5 @@
+{
+  "name": "orca-native-compression",
+  "version": "1.0.0",
+  "description": "Compresses assistant responses in Orca chats with Terra (terse) and Ultra (maximum compression) modes."
+}

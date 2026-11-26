@@ -6,6 +6,15 @@ import {
 } from '../../paste/native-chat-composer-pasted-text-references'
 import { useCallback, type Dispatch, type SetStateAction } from 'react'
 import type { AgentType } from '../../../../../../shared/agent-status/contracts/agent-status-types'
+import {
+  applyNativeChatCompressionToSend,
+  isCompressionResetCommand
+} from '../../../../../../shared/native-chat/input/composer/native-chat-compression'
+import {
+  markNativeChatCompressionApplied,
+  readNativeChatCompression,
+  resetNativeChatCompressionApplied
+} from '../controls/native-chat-compression-state'
 import type { NativeChatLaunchDraft } from '@/components/native-chat/drafts/native-chat-launch-prompt'
 import { translate } from '@/i18n/i18n'
 import { useAppStore } from '../../../../store/index'
@@ -87,6 +96,20 @@ export function useNativeChatPtyComposerSend(args: {
       text = retry
         ? resolveNativeChatPastedText(args.draftScopeKey, text)
         : serializeNativeChatAgentReferences(text, submitted.document, submitted.pastedTextFiles)
+      const compressionState = readNativeChatCompression(args.draftScopeKey)
+      const compressed = !retry
+        ? applyNativeChatCompressionToSend({
+            mode: compressionState.selected,
+            appliedMode: compressionState.applied,
+            text,
+            hasAttachments: imagePaths.length > 0,
+            isCommand: classification !== 'chat',
+            agent: args.agent
+          })
+        : null
+      if (compressed) {
+        text = compressed.text
+      }
       const { sendOptions: launchSendOptions } = resolveNativeChatLaunchDraftSend({
         launchDraft: args.launchDraft,
         launchDraftResolved: args.launchDraftResolved,
@@ -167,6 +190,15 @@ export function useNativeChatPtyComposerSend(args: {
       })
       args.onSubmitted?.()
       if (!retry) {
+        if (classification === 'command' && isCompressionResetCommand(text, args.agent)) {
+          resetNativeChatCompressionApplied(args.draftScopeKey)
+        } else if (
+          classification === 'chat' &&
+          compressed &&
+          compressed.nextAppliedMode !== compressionState.applied
+        ) {
+          markNativeChatCompressionApplied(args.draftScopeKey, compressed.nextAppliedMode)
+        }
         args.setDraft('')
         args.setCaret(0)
         args.clearSkillOrigin()

@@ -154,6 +154,10 @@ const nativeChatVisualsResource = {
   from: 'resources/native-chat-visuals',
   to: 'native-chat-visuals'
 }
+const nativeChatCompressionResource = {
+  from: 'resources/native-chat-compression',
+  to: 'native-chat-compression'
+}
 // SSH deploy resolves process.resourcesPath/relay; extraResources keeps bundles on real disk.
 const relayExtraResource = {
   from: 'out/relay',
@@ -193,6 +197,7 @@ const commonExtraResources = [
   skillFreshnessResources,
   ...agentBrowserSkillResources,
   nativeChatVisualsResource,
+  nativeChatCompressionResource,
   emojiShortcodeDatasetResource
 ]
 // electron-builder replaces these defaults when `depends` is configured; retain
@@ -341,6 +346,7 @@ module.exports = {
     '!resources/onboarding/feature-wall/**',
     '!resources/skills/**',
     '!resources/native-chat-visuals/**',
+    '!resources/native-chat-compression/**',
     // extraResources already ships plugin bytes; exclude source duplicates.
     '!resources/plugins/launch/**',
     // afterPack copies the target's speech engine to resources/node_modules; asar would duplicate it and ship other variants.

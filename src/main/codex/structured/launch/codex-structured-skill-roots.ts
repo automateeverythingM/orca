@@ -28,14 +28,16 @@ export function isCodexSkillRootsUnsupported(error: unknown): boolean {
   )
 }
 
-/** extraRoots replaces the entire process list, so include every root: visuals, then linked
- *  projects'. A chat's launch and its resting `/` probe both load these. */
+/** extraRoots replaces the entire process list, so include every root: visuals, compression, then
+ *  linked projects'. A chat's launch and its resting `/` probe both load these. */
 export function codexSkillRoots(roots: {
   visualsSkillsRoot?: string
+  compressionSkillsRoot?: string
   linkedSkillsRoot?: string
 }): string[] {
   return [
     ...(roots.visualsSkillsRoot ? [roots.visualsSkillsRoot] : []),
+    ...(roots.compressionSkillsRoot ? [roots.compressionSkillsRoot] : []),
     ...(roots.linkedSkillsRoot ? [roots.linkedSkillsRoot] : [])
   ]
 }
@@ -120,6 +122,7 @@ async function writableRootsConfig(
 type CodexSkillRootsLaunch = {
   cwd: string
   visuals?: NativeChatVisualsLaunch | null
+  compressionSkillsRoot?: string
   linkedSkillsRoot?: string
   permissionPolicy?: CodexStructuredPermissionPolicy
 }
@@ -132,6 +135,9 @@ export async function prepareCodexThreadSkills(
   const { visuals } = launch
   const roots = codexSkillRoots({
     ...(visuals ? { visualsSkillsRoot: visuals.skill.skillsRoot } : {}),
+    ...(launch.compressionSkillsRoot
+      ? { compressionSkillsRoot: launch.compressionSkillsRoot }
+      : {}),
     ...(launch.linkedSkillsRoot ? { linkedSkillsRoot: launch.linkedSkillsRoot } : {})
   })
   if (roots.length === 0) {

@@ -2,7 +2,42 @@ import type { StructuredAgentSessionLogger } from '../../native-chat/agent-sessi
 import type { PrepareNativeChatVisuals } from '../../native-chat/conversation-files/native-chat-visuals-delivery'
 import type { AcpLaunchSpec } from './acp-launch-contract'
 import type { AcpSkillRootsLaunch } from './acp-skill-roots'
+import { withoutCallerIdentity } from '../../runtime/agent-session/environment/structured-session-child-env'
+
+/** The environment a launch's process gets; see `AcpLaunchSpec.sharedToolProcess`. */
+export function acpProcessEnvironment(launch: {
+  spec: AcpLaunchSpec
+  env: Record<string, string>
+  envToDelete: string[]
+}): { env: Record<string, string>; envToDelete: string[] } {
+  return launch.spec.sharedToolProcess
+    ? withoutCallerIdentity(launch.env, launch.envToDelete)
+    : { env: launch.env, envToDelete: launch.envToDelete }
+}
 import type { NativeChatSkillRoot } from '../../native-chat/native-chat-skill-roots'
+import type { StructuredAgentLaunchBasis } from '../../runtime/agent-session/launch/structured-agent-launch-composition'
+import { visualsByInstructions } from './acp-visuals-instructions'
+
+/** Resolve visuals, compression, and linked-project skill folders in load order for an ACP launch. */
+export async function resolveAcpBundledSkillInputs(
+  spec: AcpLaunchSpec,
+  basis: Pick<StructuredAgentLaunchBasis, 'visuals' | 'compressionSkill' | 'linkedSkills'>
+) {
+  const loadsBundled = Boolean(spec.skillRoots || visualsByInstructions(spec))
+  const [visuals, compressionSkill, linked] = await Promise.all([
+    loadsBundled ? basis.visuals() : null,
+    loadsBundled ? basis.compressionSkill() : null,
+    basis.linkedSkills()
+  ])
+  // Only a folder with skills: these agents read it once, so a later link reaches them as a list.
+  const linkedRoot = linked.projects.length > 0 ? linked.root : null
+  const roots: NativeChatSkillRoot[] = [
+    ...(visuals ? [visuals.skill] : []),
+    ...(compressionSkill ? [compressionSkill] : []),
+    ...(linkedRoot ? [linkedRoot] : [])
+  ]
+  return { visuals, compressionSkill, linked, linkedRoot, roots }
+}
 
 export type AcpLaunchVisualsDeps = {
   prepareVisuals?: PrepareNativeChatVisuals

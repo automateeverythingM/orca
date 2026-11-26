@@ -10,14 +10,13 @@ import { isNativeLocalLocation } from '../../../../shared/execution-host/executi
 import type { StructuredAgentDefinition } from '../../../native-chat/agent-session-wire/providers/structured-agent-definition'
 import { agentDrivesSession } from '../../../native-chat/agent-session-wire/providers/structured-agent-session-provider-support'
 import type { StructuredAgentCommandSettings } from '../../../native-chat/agent-launch/structured-agent-command-resolution'
-import {
-  createNativeChatVisualsDelivery,
-  type NativeChatVisualsLaunch,
-  type PrepareNativeChatVisuals
+import type {
+  NativeChatVisualsLaunch,
+  PrepareNativeChatVisuals
 } from '../../../native-chat/conversation-files/native-chat-visuals-delivery'
+import type { NativeChatCompressionSkillLocation } from '../../../native-chat/conversation-files/native-chat-compression-skill-location'
 import { resolveAgentSessionLaunchDirectory } from './agent-session-launch-directory'
 import type { AgentSessionRecordStore } from '../records/agent-session-record-store'
-import type { StructuredAgentAdapterContext } from '../installation/structured-agent-runtime-registration-types'
 import {
   sealStructuredSessionChild,
   STRUCTURED_CHILD_ENV_TO_DELETE
@@ -43,6 +42,7 @@ export type StructuredAgentLaunchSources = {
   resolveAgentLaunchEnv?: (agent: string) => Record<string, string>
   resolveCommandSettings?: () => StructuredAgentCommandSettings
   prepareVisuals?: PrepareNativeChatVisuals
+  resolveCompressionSkill?: () => Promise<NativeChatCompressionSkillLocation | null>
   /** Standing instructions the agent's own system prompt carries for this session; null adds none. */
   resolveInstructions?: (
     record: AgentSessionRecord,
@@ -84,6 +84,8 @@ export type StructuredAgentLaunchBasis = {
   environment(): Promise<Record<string, string>>
   /** Null when the chat gets no visuals. */
   visuals(): Promise<NativeChatVisualsLaunch | null>
+  /** Null when the chat does not load Orca's bundled compression skill. */
+  compressionSkill(): Promise<NativeChatCompressionSkillLocation | null>
   /** Null when there are none. A resumed conversation keeps the ones it started with, in both agents. */
   instructions(linkedSkills?: string | null): Promise<string | null>
   /** The MCP servers Orca adds (a bot's own and the host's list); none for a read-only session. */
@@ -216,6 +218,9 @@ async function composedPart<L>(
     visuals: once(async () =>
       readOnly ? null : ((await sources.prepareVisuals?.(record.sessionId)) ?? null)
     ),
+    compressionSkill: once(async () =>
+      readOnly ? null : ((await sources.resolveCompressionSkill?.()) ?? null)
+    ),
     // A launch asks once; the section is the first call's.
     instructions: (() => {
       let read: Promise<string | null> | null = null
@@ -322,45 +327,4 @@ export function composeStructuredLaunchRead<L>(
   }
 }
 
-/** The shared launch inputs of the runtime an agent's adapter is built in. */
-export function structuredAgentLaunchSources(
-  context: Pick<StructuredAgentAdapterContext, 'deps' | 'store' | 'environment' | 'codemode'>
-): StructuredAgentLaunchSources {
-  const { deps } = context
-  return {
-    store: context.store,
-    resolveWorkspacePath: deps.resolveWorkspacePath,
-    resolveBaseEnvironment: context.environment.resolveBaseEnvironment,
-    resolveAgentEnvironment: context.environment.resolveAgentEnvironment,
-    refreshAfterMissingProgram: context.environment.refreshAfterMissingProgram,
-    ...(deps.resolveAgentLaunchEnv ? { resolveAgentLaunchEnv: deps.resolveAgentLaunchEnv } : {}),
-    ...(deps.resolveAgentCommandSettings
-      ? { resolveCommandSettings: deps.resolveAgentCommandSettings }
-      : {}),
-    ...(deps.resolveSessionInstructions
-      ? { resolveInstructions: deps.resolveSessionInstructions }
-      : {}),
-    ...(deps.readOnlySession ? { readOnlySession: deps.readOnlySession } : {}),
-    ...(deps.resolveSessionToolServers
-      ? { resolveToolServers: deps.resolveSessionToolServers }
-      : {}),
-    ...(deps.prepareSessionLaunch ? { prepareLaunch: deps.prepareSessionLaunch } : {}),
-    ...(deps.resolveSessionLinkedSkills
-      ? { resolveLinkedSkills: deps.resolveSessionLinkedSkills }
-      : {}),
-    ...(deps.reportSessionLinkedSkills
-      ? { reportLinkedSkills: deps.reportSessionLinkedSkills }
-      : {}),
-    ...(context.codemode ? { codemode: context.codemode } : {}),
-    // Wired by the real hosts only, so a test runtime never loads the bundled skill.
-    ...(deps.nativeChatVisuals
-      ? {
-          prepareVisuals: createNativeChatVisualsDelivery({
-            stateDirectory: deps.stateDirectory,
-            logger: deps.logger,
-            isEnabled: deps.nativeChatVisuals.isEnabled
-          })
-        }
-      : {})
-  }
-}
+export { structuredAgentLaunchSources } from './structured-agent-launch-sources'

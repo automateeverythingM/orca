@@ -22,6 +22,16 @@ import {
   structuredAgentSessionCommandChangesConversation
 } from '../../../../../../shared/agent-session/view/structured-agent-session-composer'
 import type { AgentType } from '../../../../../../shared/agent-status/contracts/agent-status-types'
+import {
+  applyNativeChatCompressionToSend,
+  isCompressionResetCommand
+} from '../../../../../../shared/native-chat/input/composer/native-chat-compression'
+import { nativeChatSessionSkills } from '../../../../../../shared/native-chat/input/commands/native-chat-skill-visibility'
+import {
+  markNativeChatCompressionApplied,
+  readNativeChatCompression,
+  resetNativeChatCompressionApplied
+} from '../controls/native-chat-compression-state'
 import { dispatchNativeChatStructuredComposerText } from './native-chat-structured-composer-dispatch'
 import type { NativeChatComposerSendIntent } from './native-chat-composer-send-intent'
 import type { NativeChatStructuredComposerTransport } from './native-chat-structured-composer-transport'
@@ -200,13 +210,25 @@ export function useNativeChatStructuredComposerSend({
           (!hostCommand || (current.text.trim() === '' && (current.images?.length ?? 0) === 0))
         )
       }
+      const baseSkillRefs = promptSkillRefs(submission.draft?.document)
+      const compressionState = readNativeChatCompression(draftScopeKey)
+      const compressed = applyNativeChatCompressionToSend({
+        mode: compressionState.selected,
+        appliedMode: compressionState.applied,
+        text,
+        hasAttachments: attachments.length > 0,
+        isCommand: hostCommand,
+        agent,
+        sessionSkills: nativeChatSessionSkills(agent, structuredTransport.sessionCommands),
+        existingSkills: baseSkillRefs
+      })
       const prepareAttachments: StructuredAgentSessionAttachmentPreparation | undefined =
         stagedInput ? (input) => stagedInput.prepare(input, structuredTransport) : undefined
       return dispatchNativeChatStructuredComposerText(
         structuredTransport,
-        text,
+        compressed.text,
         attachments,
-        promptSkillRefs(submission.draft?.document),
+        compressed.skills,
         {
           ...intent,
           ...(prepareAttachments
@@ -222,6 +244,11 @@ export function useNativeChatStructuredComposerSend({
           if (!accepted) {
             finishNativeChatComposerSubmission(draftScopeKey, submission, recoversDraft())
             return false
+          }
+          if (hostCommand && isCompressionResetCommand(text, agent)) {
+            resetNativeChatCompressionApplied(draftScopeKey)
+          } else if (!hostCommand && compressed.nextAppliedMode !== compressionState.applied) {
+            markNativeChatCompressionApplied(draftScopeKey, compressed.nextAppliedMode)
           }
           transferred = true
           completeNativeChatStructuredUserAction(

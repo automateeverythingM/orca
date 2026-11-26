@@ -200,10 +200,11 @@ export function piRpcLaunchPart(
       throw AgentCliInstallationError.tooOld('pi', launchVersion)
     }
     const visuals = await basis.visuals()
+    const compressionSkill = await basis.compressionSkill()
     const linked = await basis.linkedSkills()
     // Only a folder with skills; Pi loads every SKILL.md under it, links included.
     const linkedRoot = linked.projects.length > 0 ? linked.root : null
-    const skillDirs = [visuals?.skill, linkedRoot].flatMap((root) =>
+    const skillDirs = [visuals?.skill, compressionSkill, linkedRoot].flatMap((root) =>
       root ? [root.skillsRoot] : []
     )
     const instructions = await basis.instructions(

@@ -13,6 +13,8 @@ import type {
   SessionOptionsSurface
 } from '../../../../../../shared/native-chat/input/native-chat-session-options'
 import { NativeChatComposerPlanChip, useNativeChatPlanMode } from './NativeChatComposerPlanChip'
+import { NativeChatCompressionPicker } from './NativeChatCompressionPicker'
+import type { NativeChatCompressionMode } from '../../../../../../shared/native-chat/input/composer/native-chat-compression'
 import {
   NativeChatComposerToolbar,
   type NativeChatComposerControl
@@ -61,6 +63,11 @@ export type NativeChatComposerActionsProps = {
   focusComposer?: () => void
   /** Present while the composer is in goal mode; the chip calls it to leave. */
   onExitGoalMode?: () => void
+  /** Per-chat response compression mode; absent in edit sessions and launch prompts. */
+  compression?: {
+    mode: NativeChatCompressionMode
+    onSelect: (mode: NativeChatCompressionMode) => void
+  }
   /** Absent until the session has reported or the transcript can estimate. */
   contextUsage?: NativeChatContextUsageSummary | null
   /** The chat's agent, whose permission modes the picker describes. */
@@ -95,6 +102,7 @@ export const NativeChatComposerActions = memo(function NativeChatComposerActions
   sessionOptionsSnapshot,
   sessionOptionsPickerRequest,
   onExitGoalMode,
+  compression,
   contextUsage,
   focusComposer,
   agent,
@@ -209,6 +217,32 @@ export const NativeChatComposerActions = memo(function NativeChatComposerActions
         />
       )
     },
+    ...(compression
+      ? [
+          {
+            id: 'compression',
+            priority: 4,
+            content: (
+              <NativeChatCompressionPicker
+                mode={compression.mode}
+                onSelect={compression.onSelect}
+                focusComposer={focusComposer}
+              />
+            ),
+            overflow: (close: () => void) => (
+              <NativeChatCompressionPicker
+                mode={compression.mode}
+                inOverflow
+                onSelect={(next) => {
+                  compression.onSelect(next)
+                  close()
+                }}
+                focusComposer={focusComposer}
+              />
+            )
+          }
+        ]
+      : []),
     ...(mode
       ? [
           {

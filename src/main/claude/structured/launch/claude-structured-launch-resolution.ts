@@ -202,12 +202,13 @@ export function claudeStructuredLaunchPart(
       env: await withClaudeLaunchAccountPin(router, claudeProbeEnv(sources), accountHome.path)
     }
     const launchFlags = resolveClaudeLaunchFlags(
-      { ...deps, prepareVisuals: basis.visuals },
+      { ...deps, prepareVisuals: basis.visuals, resolveCompressionSkill: basis.compressionSkill },
       record.sessionId,
       probeLaunch
     )
     const launchArgs = await deps.resolveLaunchArgs()
-    const { thinkingDisplayArgs, visuals, promptSuggestions, refused } = await launchFlags
+    const { thinkingDisplayArgs, visuals, compressionPluginDir, promptSuggestions, refused } =
+      await launchFlags
     noteClaudeMcpConfigRefused(refused.mcpConfig)
     // Refused, Orca's servers go nowhere this launch, so no list edit is this chat's.
     noteSessionIgnoresHostMcp(basis.record.sessionId, refused.mcpConfig)
@@ -219,6 +220,7 @@ export function claudeStructuredLaunchPart(
         pluginDir: visuals.pluginDir,
         scratchDirectory: visuals.visuals.folder
       },
+      ...(compressionPluginDir ? { extraPluginDirs: [compressionPluginDir] } : {}),
       linkedRoot: linked.root
     })
     const permission = claudeStructuredPermissionOptions(basis.permissionMode ?? 'ask')
