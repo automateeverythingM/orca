@@ -2,8 +2,8 @@
 // real fake-crm MCP servers. The writer is a fake (the real one must never run in tests); replay,
 // save and the later lib call are the real code.
 import { build } from 'esbuild'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -66,7 +66,10 @@ beforeEach(async () => {
   await mkdir(join(root, '.orca'))
   await writeFile(
     join(root, '.orca', 'mcp.json'),
-    JSON.stringify({ mcpServers: { 'fake-crm': crm } })
+    // Every fake-crm process writes this file whenever it changes state, so it shows any real write.
+    JSON.stringify({
+      mcpServers: { 'fake-crm': { ...crm, env: { FAKE_CRM_STATE_FILE: stateFile() } } }
+    })
   )
   learnClient = new CodemodeLearnWorkerClient(() =>
     spawnWorkerThread(learnEntry, { name: 'orca-codemode-learn' })
@@ -84,6 +87,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
   rmSync(storeDir, { recursive: true, force: true })
 })
+
+const stateFile = (): string => join(root, 'fake-crm-state.json')
 
 /** A service over the shared Learn store and the same project and home: one Orca session each. */
 function newService(): CodemodeService {
@@ -231,6 +236,16 @@ describe('Learn proposals end to end', () => {
     expect(file).toContain('async function addCreditsByEmail({ email, amount })')
 
     // A new session: the saved function is trusted, so it runs with no approval card.
+    // Control: a lib file nobody trusted does ask for approval in the same setup.
+    await writeFile(
+      join(root, '.orca', 'lib', 'untrusted.js'),
+      '/**\n * @name untrusted\n * @description Not trusted.\n */\nasync function untrusted() {\n  return 1\n}\n'
+    )
+    const control = await chat()
+    cards.length = 0
+    await runJs(control, 'return await lib.untrusted({})')
+    expect(cards.some((title) => title.includes('untrusted'))).toBe(true)
+
     const fresh = await chat()
     cards.length = 0
     const result = await runJs(
@@ -239,7 +254,7 @@ describe('Learn proposals end to end', () => {
     )
     expect(result).toEqual({ text: '=> 7', isError: false })
     expect(await credits(fresh)).toBe(7)
-    expect(cards.filter((title) => title.includes('addCreditsByEmail'))).toEqual([])
+    expect(cards).toEqual([])
   })
 
   it('a draft calling an unrecorded tool fails replay and calls nothing real', async () => {
@@ -253,16 +268,25 @@ return 5`)
     const second = await chat()
     await runJs(second, crmScript(9))
     expect(await credits(second)).toBe(9)
+    const before = await readFile(stateFile(), 'utf8')
 
     const call = methods()
     await call('codemode.learn.propose', {})
     const proposal = await finishedProposal(call)
     expect(proposal).toMatchObject({ state: 'ready', testStatus: 'failed' })
     expect(proposal.testReason).toContain('unrecorded call')
-    // Replay answers only from recordings, so the live server never saw the extra grant.
+    expect(proposal.testReason).toContain('add_credits')
+    // Had the replay reached a real fake-crm, add_credits (+100) would have rewritten the shared
+    // state file; the draft's call also is not a recorded one, so only a live server could answer.
+    expect(await readFile(stateFile(), 'utf8')).toBe(before)
     expect(await credits(second)).toBe(9)
+
+    // Nothing was written for the failed test; only an explicit Save writes the file.
+    const libFile = join(root, '.orca', 'lib', 'addCreditsByEmail.js')
+    expect(existsSync(libFile)).toBe(false)
     await expect(
-      call('codemode.learn.saveProposal', { id: 'nope', scope: 'project' })
-    ).rejects.toThrow('unknown proposal')
+      call('codemode.learn.saveProposal', { id: proposal.id, scope: 'project' })
+    ).resolves.toEqual({ name: 'addCreditsByEmail', scope: 'project' })
+    expect(readFileSync(libFile, 'utf8')).toContain('@saved-by learn')
   })
 })
