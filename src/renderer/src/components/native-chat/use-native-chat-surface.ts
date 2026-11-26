@@ -1,11 +1,18 @@
 import {
   useCallback,
+  useEffect,
+  useMemo,
   useRef,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject
 } from 'react'
 import { useAppStore } from '@/store'
+import type { RuntimeClientTarget } from '../../../../shared/remote-runtime/host-catalog/runtime-client-target'
+import { useNativeChatHostCommandTerminal } from './host-access/native-chat-host-command-terminal'
+import { createNativeChatCodeBlockRunStore } from './markdown/code/native-chat-code-run-store'
+import { createRuntimeCodeBlockRunTransport } from './markdown/code/native-chat-code-run-transport'
+import type { NativeChatCodeRunner } from './markdown/code/native-chat-run-command-context'
 import type { NativeChatSessionHistoryScope } from './native-chat-session-history-scope'
 import { formatShortcutLabel } from '@/lib/keyboard/useShortcutLabel'
 import { getShortcutPlatform } from '@/lib/keyboard/shortcut-platform'
@@ -99,6 +106,41 @@ export function useNativeChatSurface({
   const find = useNativeChatFind(active, rootRef, composerRef, transcriptRef)
   const { onLinkClick, linkActionRequest, requestLinkActions, closeLinkActions } =
     useNativeChatLinkActions(fileLinkContext, rootRef, { sessionId, isVisible })
+  const commandEnvironmentId = fileLinkContext?.runtimeEnvironmentId
+  const commandWorktreeId = fileLinkContext?.worktreeId ?? null
+  const commandCwd = fileLinkContext?.pathBase
+  const commandHostTarget = useMemo<RuntimeClientTarget>(
+    () =>
+      commandEnvironmentId
+        ? { kind: 'environment', environmentId: commandEnvironmentId }
+        : { kind: 'local' },
+    [commandEnvironmentId]
+  )
+  const commandTerminal = useNativeChatHostCommandTerminal({
+    target: commandHostTarget,
+    worktreeId: commandWorktreeId,
+    sourceTabId: fileLinkContext?.sourceTabId ?? tabId,
+    ...(commandCwd ? { cwd: commandCwd } : {})
+  })
+  const codeRunStore = useMemo(
+    () =>
+      commandWorktreeId
+        ? createNativeChatCodeBlockRunStore(
+            createRuntimeCodeBlockRunTransport({
+              target: commandHostTarget,
+              worktreeId: commandWorktreeId,
+              ...(commandCwd ? { cwd: commandCwd } : {})
+            })
+          )
+        : null,
+    [commandHostTarget, commandWorktreeId, commandCwd]
+  )
+  useEffect(() => () => codeRunStore?.dispose(), [codeRunStore])
+  const openInTerminal = commandTerminal?.open
+  const codeRunner = useMemo<NativeChatCodeRunner | undefined>(
+    () => (codeRunStore ? { store: codeRunStore, openInTerminal } : undefined),
+    [codeRunStore, openInTerminal]
+  )
   const rootInput = useNativeChatRootInputRouting({
     tabId,
     rootRef,
@@ -157,6 +199,7 @@ export function useNativeChatSurface({
     appearance,
     find,
     onLinkClick,
+    codeRunner,
 
     requestLinkActions,
     linkActionRequest,

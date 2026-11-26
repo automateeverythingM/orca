@@ -20,10 +20,15 @@ import {
 } from './native-chat-rpc-page-bounds'
 import {
   MOBILE_NATIVE_CHAT_MAX_WINDOW,
+  NativeChatRunCodeBlock,
   NativeChatSession,
   NativeChatUnsubscribe,
   type NativeChatResumePoint
 } from '../../../../../shared/rpc-contract/native-chat/native-chat-params'
+import {
+  resolveCodeBlockRunCwd,
+  runNativeChatCodeBlock
+} from '../../../../native-chat/code-block-run/native-chat-code-block-runner'
 
 // Default to a small transcript tail for fast paired-client paint; clients page older history, while local IPC stays virtualized.
 const MOBILE_NATIVE_CHAT_DEFAULT_WINDOW = 40
@@ -285,6 +290,25 @@ export const NATIVE_CHAT_METHODS = [
       }
       runtime.cleanupSubscriptionsByPrefix(`nativeChat:${connection}:`)
       return { unsubscribed: true }
+    }
+  }),
+  defineStreamingMethod({
+    name: 'nativeChat.runCodeBlock',
+    permission: 'workspace',
+    params: NativeChatRunCodeBlock,
+    handler: async (params, { runtime, signal }, emit) => {
+      if (signal?.aborted) {
+        return
+      }
+      const target = await runtime.resolveRuntimeFileTarget(`id:${params.worktreeId}`)
+      const cwd = await resolveCodeBlockRunCwd(target.worktree.path, params.cwd)
+      await runNativeChatCodeBlock({
+        command: params.command,
+        cwd,
+        language: params.language,
+        signal,
+        emit
+      })
     }
   })
 ]

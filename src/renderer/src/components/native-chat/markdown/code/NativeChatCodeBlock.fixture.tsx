@@ -1,5 +1,11 @@
 import { defineFixture } from '../../../../component-fixtures/component-fixture'
 import { NativeChatCodeBlock } from './NativeChatCodeBlock'
+import { NativeChatRunCommandContext } from './native-chat-run-command-context'
+import {
+  createNativeChatCodeBlockRunStore,
+  type NativeChatCodeBlockRunRecord
+} from './native-chat-code-run-store'
+import { NativeChatMarkdownCodeBlockContext } from '../native-chat-markdown-code-block-context'
 
 const page = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Demo</title>
@@ -58,5 +64,105 @@ export const unlabeledWrapped = defineFixture({
   interact: (frame) => {
     frame.querySelector<HTMLButtonElement>('[data-native-chat-code-block] button')?.click()
     revealActions(frame)
+  }
+})
+
+const bashScript = [
+  'cd /Users/markopavic/orca/workspaces/orca/pteropod',
+  'pnpm run build:desktop:assets || true   # keep going on fence',
+  'pnpm run build:native && pnpm run ensure:electron-runtime',
+  'open dist/mac-arm64/Orca.app'
+].join('\n')
+
+function makeFixtureRunner(initial?: NativeChatCodeBlockRunRecord) {
+  const records = initial ? new Map([['row-1:1', initial]]) : undefined
+  return {
+    store: createNativeChatCodeBlockRunStore(async () => ({ unsubscribe: () => {} }), records),
+    openInTerminal: async () => true
+  }
+}
+
+function renderShellBlock(initial?: NativeChatCodeBlockRunRecord, growing = false) {
+  return (
+    <NativeChatRunCommandContext value={makeFixtureRunner(initial)}>
+      <NativeChatMarkdownCodeBlockContext value={{ rowKey: 'row-1', growing }}>
+        <div className="native-chat-appearance bg-background p-4">
+          <NativeChatCodeBlock language="bash" sourceLine={1} fenceClosed={!growing}>
+            {bashScript}
+          </NativeChatCodeBlock>
+        </div>
+      </NativeChatMarkdownCodeBlockContext>
+    </NativeChatRunCommandContext>
+  )
+}
+
+export const bashRunnable = defineFixture({
+  width: 640,
+  render: () => renderShellBlock(),
+  interact: (frame) => {
+    const run = frame.querySelector<HTMLButtonElement>('button[aria-label="Run command"]')
+    const terminal = frame.querySelector<HTMLButtonElement>('button[aria-label="Open in terminal"]')
+    if (!run || !terminal) {
+      throw new Error('Bash code block must show Run command and Open in terminal buttons')
+    }
+  }
+})
+
+export const bashRunRunning = defineFixture({
+  width: 640,
+  render: () =>
+    renderShellBlock({
+      runId: 1,
+      status: 'running',
+      output:
+        '> orca@2.0.0 build:native\n> node config/scripts/build/build-native.mjs\nCompiling native helpers…',
+      truncated: false,
+      exitCode: null,
+      signal: null,
+      startedAt: 0,
+      durationMs: null
+    })
+})
+
+export const bashRunSucceeded = defineFixture({
+  width: 640,
+  render: () =>
+    renderShellBlock({
+      runId: 1,
+      status: 'succeeded',
+      output:
+        '> orca@2.0.0 build:native\nBuilt native helpers in 3.4s\nElectron runtime verified: dist/mac-arm64/Orca.app',
+      truncated: false,
+      exitCode: 0,
+      signal: null,
+      startedAt: 0,
+      durationMs: 3_420
+    })
+})
+
+export const bashRunFailed = defineFixture({
+  width: 640,
+  render: () =>
+    renderShellBlock({
+      runId: 1,
+      status: 'failed',
+      output:
+        "> orca@2.0.0 build:native\nerror: ENOENT: no such file or directory, open 'dist/mac-arm64/Orca.app'\nELIFECYCLE Command failed with exit code 1.",
+      truncated: false,
+      exitCode: 1,
+      signal: null,
+      startedAt: 0,
+      durationMs: 840
+    })
+})
+
+export const bashStreaming = defineFixture({
+  width: 640,
+  render: () => renderShellBlock(undefined, true),
+  interact: (frame) => {
+    const run = frame.querySelector<HTMLButtonElement>('button[aria-label="Run command"]')
+    if (run) {
+      throw new Error('Streaming bash fence must hide Run command until closed')
+    }
   }
 })

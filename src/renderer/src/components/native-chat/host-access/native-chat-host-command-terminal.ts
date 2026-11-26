@@ -13,13 +13,17 @@ export type NativeChatHostCommandTerminal = {
   open: (command: string, env?: Record<string, string>) => Promise<boolean>
 }
 
-/** Opens a visible terminal on the chat's own host running a setup command; null without a workspace. */
+/** Opens a visible terminal on the chat's own host running a command; null without a workspace. */
 export function useNativeChatHostCommandTerminal(input: {
   target: RuntimeClientTarget
   worktreeId: string | null
   groupId?: string
+  /** Chat tab to look up its tab group when `groupId` is not supplied explicitly. */
+  sourceTabId?: string
+  /** Working directory for subfolder chats; omitted uses the workspace root. */
+  cwd?: string
 }): NativeChatHostCommandTerminal | null {
-  const { worktreeId, groupId } = input
+  const { worktreeId, groupId, sourceTabId, cwd } = input
   const environmentId = input.target.kind === 'environment' ? input.target.environmentId : null
   const [opening, setOpening] = useState(false)
   // Why a ref: a notice and a transcript row can both press, and state lags a double press.
@@ -32,6 +36,14 @@ export function useNativeChatHostCommandTerminal(input: {
       openingRef.current = true
       setOpening(true)
       return (async () => {
+        const store = useAppStore.getState()
+        const resolvedGroupId =
+          groupId ??
+          (sourceTabId
+            ? store.unifiedTabsByWorktree[worktreeId]?.find(
+                (entry) => entry.entityId === sourceTabId
+              )?.groupId
+            : undefined)
         if (environmentId) {
           if (!(await startStoppedWslHostForUserAct(environmentId))) {
             return false
@@ -40,8 +52,9 @@ export function useNativeChatHostCommandTerminal(input: {
             {
               worktreeId,
               environmentId,
-              targetGroupId: groupId,
+              targetGroupId: resolvedGroupId,
               command,
+              ...(cwd && { cwd }),
               ...(env && { env }),
               viewMode: 'terminal',
               activate: true
@@ -53,8 +66,8 @@ export function useNativeChatHostCommandTerminal(input: {
             return false
           }
         } else {
-          const store = useAppStore.getState()
-          const tab = store.createTab(worktreeId, groupId, undefined, {
+          const tab = store.createTab(worktreeId, resolvedGroupId, undefined, {
+            ...(cwd && { startupCwd: cwd }),
             pendingStartup: { command, ...(env && { env }) },
             viewMode: 'terminal'
           })
@@ -77,7 +90,7 @@ export function useNativeChatHostCommandTerminal(input: {
           setOpening(false)
         })
     },
-    [worktreeId, groupId, environmentId]
+    [worktreeId, groupId, sourceTabId, cwd, environmentId]
   )
   return useMemo(() => (worktreeId ? { opening, open } : null), [worktreeId, opening, open])
 }
