@@ -32,6 +32,8 @@ export type LearnPipelineDeps = {
   generate: LearnWriterGenerate
   /** Aborted by Clear (or the app stopping): the writer and replay stop, and so does the run. */
   signal: AbortSignal
+  /** The Learn switch, read before each signal: switched off, the run stops. */
+  enabled: () => boolean
   log: (message: string, error?: unknown) => void
   /** Tests only; default is the bundled worker entry. */
   workerPath?: string
@@ -75,7 +77,11 @@ async function signalsFor(
 
 type Outcome = 'next' | 'stop'
 
-/** Drafts and tests one signal's proposal; 'stop' once a Clear or an abort ended the run. */
+/** Clear (or the app stopping) aborted the run, or the person switched Learn off. */
+const stopped = (deps: LearnPipelineDeps): boolean => deps.signal.aborted || !deps.enabled()
+
+/** Drafts and tests one signal's proposal; 'stop' once a Clear, an abort or the switch ended the
+ *  run. Any error is this signal's alone: it is logged, its proposal failed, and the run goes on. */
 async function proposeOne(
   deps: LearnPipelineDeps,
   opts: LearnRunOptions,
@@ -83,32 +89,36 @@ async function proposeOne(
   created: string[]
 ): Promise<Outcome> {
   const { store } = deps
-  const runs: CodemodeLearnRun[] =
-    signal.kind === 'script' ? await store.runsForShape(signal.script.shape, WRITER_MAX_RUNS) : []
-  const callsBefore =
-    signal.kind === 'script'
-      ? round1(runs.reduce((sum, run) => sum + run.calls.length, 0) / Math.max(runs.length, 1))
-      : signal.chain.tools.length
-  const roots = signal.kind === 'script' ? signal.script.projectRoots : []
-  const proposal = await store.createProposal(
-    {
-      sourceKind: signal.kind,
-      sourceKey: learnSignalKey(signal),
-      sourceSessions: signal.kind === 'script' ? signal.script.sessions : signal.chain.sessions,
-      // Why: project scope saves into the source runs' root, so it must be the only one.
-      projectRoot: roots.length === 1 ? (roots[0] ?? null) : null,
-      callsBefore
-    },
-    opts.now
-  )
-  if (!proposal) {
-    // Why: a Clear came after the run started; it deleted the proposals made so far as well.
-    created.length = 0
-    return 'stop'
-  }
-  const { id } = proposal
-  created.push(id)
+  let id: string | null = null
   try {
+    const runs: CodemodeLearnRun[] =
+      signal.kind === 'script' ? await store.runsForShape(signal.script.shape, WRITER_MAX_RUNS) : []
+    const callsBefore =
+      signal.kind === 'script'
+        ? round1(runs.reduce((sum, run) => sum + run.calls.length, 0) / Math.max(runs.length, 1))
+        : signal.chain.tools.length
+    const roots = signal.kind === 'script' ? signal.script.projectRoots : []
+    if (stopped(deps)) {
+      return 'stop'
+    }
+    const proposal = await store.createProposal(
+      {
+        sourceKind: signal.kind,
+        sourceKey: learnSignalKey(signal),
+        sourceSessions: signal.kind === 'script' ? signal.script.sessions : signal.chain.sessions,
+        // Why: project scope saves into the source runs' root, so it must be the only one.
+        projectRoot: roots.length === 1 ? (roots[0] ?? null) : null,
+        callsBefore
+      },
+      opts.now
+    )
+    if (!proposal) {
+      // Why: a Clear came after the run started; it deleted the proposals made so far as well.
+      created.length = 0
+      return 'stop'
+    }
+    id = proposal.id
+    created.push(id)
     const prompt = buildWriterPrompt(
       signal.kind === 'script'
         ? { kind: 'script', runs }
@@ -116,10 +126,11 @@ async function proposeOne(
       opts.hint
     )
     const written = await runLearnWriter(prompt, { generate: deps.generate, signal: deps.signal })
-    if (!written.ok) {
-      const error = written.canceled ? LEARN_STOPPED_REASON : written.reason
+    if (!written.ok || stopped(deps)) {
+      const halted = (!written.ok && written.canceled) || stopped(deps)
+      const error = halted || written.ok ? LEARN_STOPPED_REASON : written.reason
       await store.updateProposal(id, { state: 'failed', error }, ['writing'])
-      return written.canceled || deps.signal.aborted ? 'stop' : 'next'
+      return halted ? 'stop' : 'next'
     }
     const { draft } = written
     const { source } = draftToLibFile(draft)
@@ -165,11 +176,13 @@ async function proposeOne(
     )
     return 'next'
   } catch (error) {
-    deps.log(`Learn could not finish proposal ${id}`, error)
-    await store
-      .updateProposal(id, { state: 'failed', error: messageOf(error) }, UNFINISHED)
-      .catch(() => false)
-    return deps.signal.aborted ? 'stop' : 'next'
+    deps.log(`Learn could not finish a proposal for ${learnSignalKey(signal)}`, error)
+    if (id !== null) {
+      await store
+        .updateProposal(id, { state: 'failed', error: messageOf(error) }, UNFINISHED)
+        .catch(() => false)
+    }
+    return stopped(deps) ? 'stop' : 'next'
   }
 }
 
@@ -192,7 +205,7 @@ export async function runLearn(
   }
   const signals = await signalsFor(deps, opts)
   for (const signal of signals) {
-    if (deps.signal.aborted) {
+    if (stopped(deps)) {
       break
     }
     if ((await proposeOne(deps, opts, signal, created)) === 'stop') {

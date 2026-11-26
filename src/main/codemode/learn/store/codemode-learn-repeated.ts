@@ -66,13 +66,21 @@ export function sessionShapesOf(db: SyncDatabase, sessionId: string): string[] {
     .map((row) => String(row.shape))
 }
 
-/** The average inner calls of the stored runs that called `lib.<name>`; null when none did. */
-export function libCallsAfterOf(db: SyncDatabase, name: string): number | null {
+/** The average inner calls of the stored runs started at or after `since` that called
+ *  `lib.<name>`, in `projectRoot` (any root when null); null when none did. */
+export function libCallsAfterOf(
+  db: SyncDatabase,
+  name: string,
+  since: number,
+  projectRoot: string | null
+): number | null {
+  const root = projectRoot === null ? null : String(projectRoot)
   const row = db
     .prepare(
-      `SELECT AVG(r.call_count) AS n FROM learn_runs r WHERE EXISTS
+      `SELECT AVG(r.call_count) AS n FROM learn_runs r
+        WHERE r.started_at >= ? AND (? IS NULL OR r.project_root = ?) AND EXISTS
          (SELECT 1 FROM learn_calls c WHERE c.run_id = r.run_id AND c.tool = ?)`
     )
-    .get(`lib.${String(name)}`)
+    .get(Number(since), root, root, `lib.${String(name)}`)
   return row?.n === null || row?.n === undefined ? null : Number(row.n)
 }

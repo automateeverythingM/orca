@@ -139,9 +139,10 @@ export class CodemodeLearnStore {
     return sessionShapesOf(this.db, sessionId)
   }
 
-  /** The average inner calls of the stored runs that called `lib.<name>`; null when none did. */
-  libCallsAfter(name: string): number | null {
-    return libCallsAfterOf(this.db, name)
+  /** The average inner calls of runs since `since` that called `lib.<name>` in `projectRoot`
+   *  (any root when null); null when none did. */
+  libCallsAfter(name: string, since: number, projectRoot: string | null): number | null {
+    return libCallsAfterOf(this.db, name, since, projectRoot)
   }
 
   /** Replaces the cached repeated chains, unless a clear came after their computation started. */

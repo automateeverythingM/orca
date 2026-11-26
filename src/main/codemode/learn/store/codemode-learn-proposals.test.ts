@@ -187,11 +187,21 @@ describe('Learn run lookups for proposals', () => {
   })
 
   it('libCallsAfter averages the calls of runs that called lib.<name>', async () => {
-    expect(await learn.libCallsAfter('plan')).toBeNull()
+    const since = NOW - 1000
+    expect(await learn.libCallsAfter('plan', since, null)).toBeNull()
     await learn.record(run('r1', 's1', 'return lib.plan()', ['lib.plan', 'mcp.a.x']), NOW)
     await learn.record(run('r2', 's2', 'return lib.plan({})', ['lib.plan', 'mcp.a.x', 'x']), NOW)
     await learn.record(run('r3', 's2', 'return lib.planner()', ['lib.planner']), NOW)
-    expect(await learn.libCallsAfter('plan')).toBe(2.5)
-    expect(await learn.libCallsAfter('planner')).toBe(1)
+    expect(await learn.libCallsAfter('plan', since, null)).toBe(2.5)
+    expect(await learn.libCallsAfter('planner', since, null)).toBe(1)
+    // Only runs in the function's project, started once it was saved.
+    await learn.record(
+      { ...run('r4', 's3', 'return lib.plan(1)', ['lib.plan']), projectRoot: '/other' },
+      NOW
+    )
+    expect(await learn.libCallsAfter('plan', since, '/repo')).toBe(2.5)
+    expect(await learn.libCallsAfter('plan', since, '/other')).toBe(1)
+    expect(await learn.libCallsAfter('plan', since, null)).toBe(2)
+    expect(await learn.libCallsAfter('plan', since + 1, null)).toBeNull()
   })
 })

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,6 +24,7 @@ import {
   draftToLibFile,
   parseWriterReply
 } from '../../../../codemode/learn/writer/codemode-learn-writer-reply'
+import { CodemodeLibTrust } from '../../../../codemode/lib/codemode-lib-trust'
 import {
   createLibRecords,
   type CodemodeLibRecords
@@ -31,6 +32,7 @@ import {
 import { OrcaRuntimeService } from '../../../orca-runtime'
 import { eraseRpcMethods, type RpcContext } from '../../core'
 import { requireKnownProject } from './codemode-lib'
+import { codemodeLearnMethods } from './codemode-learn'
 import { codemodeLearnProposalMethods } from './codemode-learn-proposals'
 
 let worker: Awaited<ReturnType<typeof bundleTestWorker>>
@@ -65,14 +67,25 @@ afterEach(() => {
 })
 
 function methods() {
-  const list = codemodeLearnProposalMethods({
+  const service = {
+    learnEnabled: () => enabled,
+    learnStore: () => remote,
+    learnRunner: () => runner,
+    libRecords: () => records,
+    closeLearnStore: async () => {}
+  }
+  const learn = codemodeLearnMethods({
     desktop: () => true,
-    service: async () => ({
-      learnEnabled: () => enabled,
-      learnStore: () => remote,
-      learnRunner: () => runner,
-      libRecords: () => records
-    }),
+    service: async () => service,
+    storeExists: async () => true,
+    removeStoreFiles: async () => {},
+    journal: async () => null,
+    now: () => SIGNAL_NOW + 5,
+    log: vi.fn()
+  })
+  const proposals = codemodeLearnProposalMethods({
+    desktop: () => true,
+    service: async () => service,
     chains: async () => [],
     generate: () => generate,
     projectAccess: (_ctx, projectRoot) =>
@@ -83,7 +96,9 @@ function methods() {
   })
   const ctx: RpcContext = { runtime: new OrcaRuntimeService(null) }
   return async (name: string, params?: unknown): Promise<unknown> => {
-    const method = eraseRpcMethods(list).find((m) => m.name === name)
+    const method = [...eraseRpcMethods(learn), ...eraseRpcMethods(proposals)].find(
+      (m) => m.name === name
+    )
     if (!method) {
       throw new Error(`no method ${name}`)
     }
@@ -278,7 +293,7 @@ describe('codemode.learn.dismissProposal and usage', () => {
           runId: `after-${n}`,
           sessionId: `s${n}`,
           projectRoot: root,
-          startedAt: SIGNAL_NOW,
+          startedAt: SIGNAL_NOW + 10,
           ms: 1,
           ok: true,
           code: 'return lib.plan1({ q: "a" })',
@@ -291,5 +306,108 @@ describe('codemode.learn.dismissProposal and usage', () => {
     expect((await view(call)).usage[p.id]).toEqual({ uses: 2, callsAfter: null })
     await records.usage.recordUse(root, 'plan1')
     expect((await view(call)).usage[p.id]).toEqual({ uses: 3, callsAfter: 1.5 })
+  })
+})
+
+/** Trust whose `record` waits for the test, or fails. */
+class HeldTrust extends CodemodeLibTrust {
+  reached = false
+  release: () => void = () => {}
+  fail = false
+  private readonly gate = new Promise<void>((resolve) => (this.release = resolve))
+
+  override async record(key: string, name: string, source: string): Promise<void> {
+    this.reached = true
+    if (this.fail) {
+      throw new Error('trust file is read-only')
+    }
+    await this.gate
+    return super.record(key, name, source)
+  }
+}
+
+describe('saving claims the proposal first', () => {
+  it('a dismiss during the save is refused, and the save stands', async () => {
+    const trust = new HeldTrust({ homeDir: home })
+    records = { ...records, trust }
+    const p = await readyProposal(1, root)
+    const call = methods()
+    const saving = call('codemode.learn.saveProposal', { id: p.id, scope: 'global' })
+    await vi.waitFor(() => expect(trust.reached).toBe(true))
+    await expect(call('codemode.learn.dismissProposal', { id: p.id })).rejects.toThrow(
+      'already saved'
+    )
+    trust.release()
+    await expect(saving).resolves.toEqual({ name: 'plan1', scope: 'global' })
+    expect(await remote.proposal(p.id)).toMatchObject({
+      state: 'saved',
+      savedAs: { name: 'plan1', scope: 'global' }
+    })
+    expect(await remote.dismissed()).toEqual([])
+  })
+
+  it('a double save writes one file in one scope', async () => {
+    const p = await readyProposal(1, root)
+    const call = methods()
+    const results = await Promise.allSettled([
+      call('codemode.learn.saveProposal', { id: p.id, scope: 'global' }),
+      call('codemode.learn.saveProposal', { id: p.id, scope: 'project' })
+    ])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    const refused = results.find((r) => r.status === 'rejected')
+    expect(refused?.status === 'rejected' && String(refused.reason)).toContain('already saved')
+    const files = [join(home, '.orca', 'lib', 'plan1.js'), join(root, '.orca', 'lib', 'plan1.js')]
+    expect(files.filter((file) => existsSync(file))).toHaveLength(1)
+  })
+
+  it('a failed trust write gives the proposal back its state', async () => {
+    const trust = new HeldTrust({ homeDir: home })
+    trust.fail = true
+    records = { ...records, trust }
+    const p = await readyProposal(1, root)
+    await expect(
+      methods()('codemode.learn.saveProposal', { id: p.id, scope: 'global' })
+    ).rejects.toThrow('trust file is read-only')
+    expect((await remote.proposal(p.id))?.state).toBe('ready')
+  })
+})
+
+describe('dismissing and clearing', () => {
+  it('a dismissed proposal is not listed as a repeat or drafted again', async () => {
+    const shape = await recordSignal(remote, 1, ['s1', 's2'], root)
+    const call = methods()
+    await call('codemode.learn.propose', {})
+    await vi.waitFor(() => expect(runner.running()).toBe(false))
+    const [p] = (await view(call)).proposals
+    await call('codemode.learn.dismissProposal', { id: p!.id })
+    expect(await remote.dismissed()).toEqual([shape])
+    expect(await remote.repeatedScripts(SIGNAL_NOW, 50)).toEqual([])
+    const generateCalls = vi.fn(fakeGenerate())
+    generate = generateCalls
+    await call('codemode.learn.propose', {})
+    await vi.waitFor(() => expect(runner.running()).toBe(false))
+    expect(generateCalls).not.toHaveBeenCalled()
+    expect((await view(call)).proposals).toHaveLength(1)
+  })
+
+  it('Clear during a run stops it and leaves no proposals', async () => {
+    await recordSignal(remote, 1, ['s1', 's2'], root)
+    await recordSignal(remote, 2, ['s1', 's2'], root)
+    let writing = false
+    const pending = vi.fn<LearnWriterGenerate>(
+      (_prompt, opts) =>
+        new Promise((resolve) => {
+          writing = true
+          opts.signal?.addEventListener('abort', () => resolve({ ok: false, error: 'canceled' }))
+        })
+    )
+    generate = pending
+    const call = methods()
+    await call('codemode.learn.propose', {})
+    await vi.waitFor(() => expect(writing).toBe(true))
+    await call('codemode.learn.clear')
+    await vi.waitFor(() => expect(runner.running()).toBe(false))
+    expect(pending).toHaveBeenCalledOnce()
+    expect(await remote.proposals(10)).toEqual([])
   })
 })

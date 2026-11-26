@@ -54,6 +54,7 @@ function deps(over: Partial<LearnPipelineDeps> = {}): LearnPipelineDeps {
     chains: async () => [],
     generate: fakeGenerate(),
     signal: new AbortController().signal,
+    enabled: () => true,
     log: vi.fn(),
     workerPath: worker.workerPath,
     ...over
@@ -150,7 +151,7 @@ describe('runLearn', () => {
     expect(p?.testStatus).toBeUndefined()
   })
 
-  it('late result never overrides a save while testing', async () => {
+  it('a state change while testing is never overwritten', async () => {
     await recordSignal(remote, 1)
     // The proposal is saved the moment it starts testing; the replay result must not land.
     const watched: CodemodeLearnRemote = {
@@ -243,6 +244,43 @@ describe('runLearn', () => {
     const generate = vi.fn(fakeGenerate())
     await runLearn(deps({ generate }), { now: SIGNAL_NOW, hint: 'look for plan lookups' })
     expect(generate.mock.calls[0]?.[0]).toContain('look for plan lookups')
+  })
+})
+
+describe('runLearn stops and goes on', () => {
+  it('Learn switched off while the writer is pending stops the run', async () => {
+    for (let i = 0; i < 3; i++) {
+      await recordSignal(remote, i)
+    }
+    let enabled = true
+    const generate = vi.fn<LearnWriterGenerate>(async (prompt) => {
+      enabled = false
+      return fakeGenerate()(prompt, { timeoutMs: 1 })
+    })
+    const { proposals } = await learn({ generate, enabled: () => enabled })
+    expect(generate).toHaveBeenCalledTimes(1)
+    expect(proposals).toHaveLength(1)
+    const all = await remote.proposals(10)
+    expect(all).toHaveLength(1)
+    expect(all[0]).toMatchObject({ state: 'failed', error: LEARN_STOPPED_REASON })
+  })
+
+  it('a store error on one signal never stops the run', async () => {
+    await recordSignal(remote, 1)
+    const two = await recordSignal(remote, 2)
+    const log = vi.fn()
+    const flaky: CodemodeLearnRemote = {
+      ...remote,
+      runsForShape: async (shape, limit) =>
+        shape === two
+          ? Promise.reject(new Error('disk I/O error'))
+          : remote.runsForShape(shape, limit)
+    }
+    const { proposals } = await learn({ store: flaky, log })
+    expect(proposals).toHaveLength(1)
+    const all = await remote.proposals(10)
+    expect(all.map((p) => [p.name, p.state])).toEqual([['plan1', 'ready']])
+    expect(log).toHaveBeenCalledWith(expect.stringContaining(two), expect.any(Error))
   })
 })
 
