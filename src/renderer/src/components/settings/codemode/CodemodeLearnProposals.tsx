@@ -16,7 +16,6 @@ import { CodemodeLearnProposalCard } from './CodemodeLearnProposalCard'
 
 /** How often the list is read again while a Learn run is going. */
 const POLL_MS = 2_000
-const ALREADY_RUNNING = 'Learn is already running'
 
 /** A function saved from a proposal, with how its use compares to the script it replaced. */
 function SavedProposal({
@@ -33,7 +32,7 @@ function SavedProposal({
       ? t('settings.codemode.learn.proposal.savedProject', 'Saved to project')
       : t('settings.codemode.learn.proposal.savedGlobal', 'Saved as global')
   ]
-  if (usage) {
+  if (usage && usage.uses > 0) {
     parts.push(
       usage.uses === 1
         ? t('settings.codemode.functions.usedOnce', 'Used once')
@@ -69,6 +68,8 @@ export function CodemodeLearnProposals({
   const [hint, setHint] = useState('')
   const [asking, setAsking] = useState(false)
   const [askError, setAskError] = useState<string | null>(null)
+  // Why: bumped by a failed read, so a run still known to be going is read again after the delay.
+  const [retries, setRetries] = useState(0)
   const reads = useRef(0)
 
   const read = useCallback(() => {
@@ -83,6 +84,7 @@ export function CodemodeLearnProposals({
       (caught: unknown) => {
         if (reads.current === id) {
           setReadError(codemodeErrorMessage(caught))
+          setRetries((count) => count + 1)
         }
       }
     )
@@ -95,14 +97,15 @@ export function CodemodeLearnProposals({
     }
   }, [read])
 
-  // Why: each read sets a new view, so this schedules the next read for as long as the run goes.
+  // Why: each read sets a new view (or bumps `retries` when it fails), so this schedules the next
+  // read for as long as the last known view says the run goes.
   useEffect(() => {
     if (!view?.running) {
       return
     }
     const timer = setTimeout(read, POLL_MS)
     return () => clearTimeout(timer)
-  }, [view, read])
+  }, [view, retries, read])
 
   const changed = (): void => {
     read()
@@ -113,7 +116,7 @@ export function CodemodeLearnProposals({
     setAskError(null)
     try {
       const result = await proposeCodemodeLearn(proposeParams(hint))
-      if (result.started || result.reason === ALREADY_RUNNING) {
+      if (result.started || result.code === 'running') {
         setView((current) => (current ? { ...current, running: true } : current))
         read()
       } else {

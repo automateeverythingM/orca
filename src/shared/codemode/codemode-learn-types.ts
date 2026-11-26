@@ -122,7 +122,9 @@ export type CodemodeLearnDraft = {
 export type CodemodeLearnProposeParams = { sessionId?: string; shape?: string; hint?: string }
 
 /** `codemode.learn.propose`: the run started, or why it did not. */
-export type CodemodeLearnProposeResult = { started: true } | { started: false; reason: string }
+export type CodemodeLearnProposeResult =
+  | { started: true }
+  | { started: false; code: 'off' | 'running'; reason: string }
 
 /** A saved proposal's function in use: `callsAfter` is the average inner calls of recorded runs
  *  that called it, null until it has been used 3 times or while no such run is recorded. */

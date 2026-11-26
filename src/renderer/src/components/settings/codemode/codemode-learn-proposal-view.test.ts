@@ -56,12 +56,13 @@ describe('defaultSaveScope', () => {
 })
 
 describe('editedSource', () => {
-  it('only a real edit is sent', () => {
+  it('only a real edit is sent, exactly as shown', () => {
     const p = proposal({ source: 'function a() {}' })
     expect(editedSource(p, null)).toBeUndefined()
     expect(editedSource(p, 'function a() {}')).toBeUndefined()
     expect(editedSource(p, 'function a() { return 1 }')).toBe('function a() { return 1 }')
-    expect(editedSource(p, '   ')).toBeUndefined()
+    // What the card shows is what it sends: a blank edit is sent as it is (the card refuses it first).
+    expect(editedSource(p, '   ')).toBe('   ')
   })
 })
 

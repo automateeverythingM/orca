@@ -201,7 +201,7 @@ export function codemodeLearnProposalMethods(deps: CodemodeLearnProposalMethodDe
       handler: async (params, ctx): Promise<CodemodeLearnProposeResult> => {
         const service = await open(ctx)
         if (!service.learnEnabled()) {
-          return { started: false, reason: 'Learn is off' }
+          return { started: false, code: 'off', reason: 'Learn is off' }
         }
         const store = service.learnStore()
         const generate = deps.generate(ctx)
@@ -222,7 +222,7 @@ export function codemodeLearnProposalMethods(deps: CodemodeLearnProposalMethodDe
           )
         )
         if (!run) {
-          return { started: false, reason: 'Learn is already running' }
+          return { started: false, code: 'running', reason: 'Learn is already running' }
         }
         void run.catch((error: unknown) => deps.log('a Learn run failed', error))
         return { started: true }

@@ -32,24 +32,28 @@ export function CodemodeLearnProposalCard({
   const name = proposal.name ?? t('settings.codemode.learn.proposal.unnamed', 'New function')
   const working = proposal.state === 'writing' || proposal.state === 'testing'
   const saveable = canSaveProposal(proposal)
+  // Why: the code shown and the source sent come from this one value, so what is read is saved.
   const shownSource = edit ?? proposal.source ?? ''
-  const edited = editedSource(proposal, edit) !== undefined
+  const sentSource = editedSource(proposal, edit)
+  const draftBlank = draft !== null && draft.trim() === ''
 
   const act = async (kind: 'save' | 'dismiss'): Promise<void> => {
     setBusy(kind)
     setError(null)
     try {
-      if (kind === 'dismiss') {
-        await dismissCodemodeProposal(proposal.id)
-      } else {
-        const source = editedSource(proposal, edit)
-        await saveCodemodeProposal({ id: proposal.id, scope, ...(source ? { source } : {}) })
-      }
+      await (kind === 'dismiss'
+        ? dismissCodemodeProposal(proposal.id)
+        : saveCodemodeProposal({
+            id: proposal.id,
+            scope,
+            ...(sentSource === undefined ? {} : { source: sentSource })
+          }))
+      // Why: stays busy until the refreshed list replaces this card, so there is no second click.
       onChanged()
     } catch (caught: unknown) {
       setError(codemodeErrorMessage(caught))
+      setBusy(null)
     }
-    setBusy(null)
   }
 
   return (
@@ -61,7 +65,7 @@ export function CodemodeLearnProposalCard({
       <div className="min-w-0 space-y-0.5">
         <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
           <span className="break-all font-mono">{name}</span>
-          {edited ? (
+          {sentSource !== undefined ? (
             <SettingsBadge tone="muted">
               {t('settings.codemode.learn.proposal.edited', 'Edited')}
             </SettingsBadge>
@@ -133,13 +137,19 @@ export function CodemodeLearnProposalCard({
             spellCheck={false}
             className="min-h-48"
           />
-          <div className="flex justify-end gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            {draftBlank ? (
+              <p className="mr-auto text-xs text-destructive">
+                {t('settings.codemode.learn.proposal.emptyCode', 'Code can’t be empty')}
+              </p>
+            ) : null}
             <Button variant="ghost" size="xs" onClick={() => setDraft(null)}>
               {t('settings.codemode.learn.cancel', 'Cancel')}
             </Button>
             <Button
               variant="outline"
               size="xs"
+              disabled={draftBlank}
               onClick={() => {
                 setEdit(draft)
                 setDraft(null)
@@ -156,7 +166,7 @@ export function CodemodeLearnProposalCard({
           </pre>
         </Disclosure>
       ) : null}
-      {saveable ? (
+      {saveable && draft === null ? (
         <p className="text-xs text-muted-foreground">
           {t(
             'settings.codemode.learn.proposal.readFirst',

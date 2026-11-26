@@ -86,6 +86,7 @@ it('Learn from this asks Learn about this chat and script', async () => {
 it('Learn from this says why a run did not start', async () => {
   vi.mocked(learnClient.proposeCodemodeLearn).mockResolvedValueOnce({
     started: false,
+    code: 'off',
     reason: 'Learn is off'
   })
   await show(run(3, 'shape-1'))

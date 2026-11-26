@@ -30,12 +30,12 @@ export function defaultSaveScope(proposal: CodemodeLearnProposal): CodemodeLibSc
   return proposal.projectRoot !== null && proposal.scope !== 'global' ? 'project' : 'global'
 }
 
-/** The person's edit, sent only when it changes the file; main then validates it. */
+/** The person's edit, sent exactly as the card shows it, and only when it changes the file. */
 export function editedSource(
   proposal: CodemodeLearnProposal,
   edit: string | null
 ): string | undefined {
-  if (edit === null || edit.trim() === '' || edit === proposal.source) {
+  if (edit === null || edit === proposal.source) {
     return undefined
   }
   return edit

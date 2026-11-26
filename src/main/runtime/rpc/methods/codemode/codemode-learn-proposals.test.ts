@@ -146,6 +146,7 @@ describe('codemode.learn.propose', () => {
     const call = methods()
     await expect(call('codemode.learn.propose', {})).resolves.toEqual({
       started: false,
+      code: 'off',
       reason: 'Learn is off'
     })
     expect(runner.running()).toBe(false)
@@ -170,6 +171,7 @@ describe('codemode.learn.propose', () => {
     expect((await view(call)).running).toBe(true)
     await expect(call('codemode.learn.propose', {})).resolves.toEqual({
       started: false,
+      code: 'running',
       reason: 'Learn is already running'
     })
     release()

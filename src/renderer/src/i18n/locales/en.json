@@ -2205,7 +2205,8 @@
           "dismissConfirm": "Won’t be suggested again.",
           "savedProject": "Saved to project",
           "savedGlobal": "Saved as global",
-          "callsChange": "was {{before}} calls, now {{after}}"
+          "callsChange": "was {{before}} calls, now {{after}}",
+          "emptyCode": "Code can’t be empty"
         },
         "hint": "What should Learn look for? (optional)",
         "learning": "Learning…",
