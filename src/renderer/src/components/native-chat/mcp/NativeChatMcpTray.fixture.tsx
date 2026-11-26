@@ -63,6 +63,7 @@ function fixture(
   options: {
     runtime?: 'local' | 'remote'
     underGoal?: boolean
+    manageable?: boolean
     codemodeErrors?: Record<string, string>
     codemode?: CodemodeSessionConnectorView[]
   } = {}
@@ -107,6 +108,7 @@ function fixture(
           dismissSignIn={() => {}}
           openUrl={() => {}}
           onClose={() => {}}
+          {...(options.manageable ? { manageServers: () => {} } : {})}
         />
         <div className="px-3 pt-2 sm:px-4">
           <div className="mx-auto h-20 w-full max-w-(--chat-content-max-width) rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
@@ -172,4 +174,18 @@ export const codemodeConnectors = fixture(
     ],
     codemodeErrors: { b2: 'connectors unavailable' }
   }
+)
+
+// A host with MCP servers on: Orca's group first, and the link to its settings.
+export const orcaServers = fixture(
+  {
+    servers: [
+      server('claude.ai Notion', 'connected', { source: 'claudeai', toolCount: 77 }),
+      server('Linear', 'connected', { source: 'orca', toolCount: 23 }),
+      server('Sentry', 'needs-auth', { source: 'orca', canSignIn: true }),
+      server('Postgres', 'connected', { source: 'orca', toolCount: 8 }),
+      server('Context7', 'connected', { source: 'orca', toolCount: 2 })
+    ]
+  },
+  { manageable: true }
 )

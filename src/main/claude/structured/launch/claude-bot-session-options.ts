@@ -1,6 +1,7 @@
 import type { Options as ClaudeAgentSdkOptions } from '@anthropic-ai/claude-agent-sdk'
 import { claudeLaunchServers } from '../../../bots/bot-tools-claude'
-import { botToolsOffInstruction, type BotLaunchTools } from '../../../bots/bot-launch-tools'
+import { botToolsOffInstruction } from '../../../bots/bot-launch-tools'
+import type { SessionMcpTools } from '../../../mcp-servers/session-mcp-tools'
 import type { ReadOnlySessionMode } from '../../../bots/bot-look-around-policy'
 import {
   linkedSkillsSection,
@@ -22,7 +23,7 @@ export async function claudeBotSessionOptions(
     readOnly?: ReadOnlySessionMode | null
   },
   linked: readonly LinkedSkillProject[],
-  tools: BotLaunchTools,
+  tools: SessionMcpTools,
   refused: { mcpConfig: boolean }
 ): Promise<
   Pick<ClaudeAgentSdkOptions, 'systemPrompt' | 'mcpServers' | 'mcpServersDelivery'> &
@@ -31,14 +32,18 @@ export async function claudeBotSessionOptions(
   // Claude loads every linked project's skills, so the section lists none as unloaded.
   const own = await basis.instructions(linkedSkillsSection(linked, []))
   // Managed settings that refuse --mcp-config would stop Claude starting; it starts without them.
-  const toolsOff = tools.botServers.length > 0 && refused.mcpConfig
+  const toolsOff = tools.servers.length > 0 && refused.mcpConfig
   if (refused.mcpConfig && tools.orcaServerNames.length > 0 && !codemodeRefusalLogged) {
     codemodeRefusalLogged = true
     console.warn(
       '[codemode] Claude managed settings refuse MCP config; Claude chats run without run_js'
     )
   }
-  const instructions = toolsOff
+  // Only a bot's own tools are announced off; the host list's go quietly (its settings page says
+  // why), and so do Orca's own (code mode), whose refusal is logged above.
+  const hostAndOrca = tools.hostNames.size + tools.orcaServerNames.length
+  const ownOff = toolsOff && tools.servers.length > hostAndOrca
+  const instructions = ownOff
     ? [own, botToolsOffInstruction("your organization's Claude Code managed settings refuse them")]
         .filter(Boolean)
         .join('\n\n')

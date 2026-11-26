@@ -1,6 +1,14 @@
-// The relay's route families: each names its targets by path, resolves its own tokens to a caller,
-// and says per request whether that caller may reach that target.
+// Route families added to the relay beside its bots' and host list's tools (code mode's connectors):
+// each names its targets by path, resolves its own tokens to a caller, and says per request whether
+// that caller may reach that target.
+import type { IncomingMessage } from 'node:http'
 import type { BotToolCredentialSource } from '../tool-oauth/bot-tool-credential-source'
+import {
+  MCP_HOST_LIST_RELAY_OWNER,
+  relayToolPath,
+  type RelayGrants,
+  type RelayToolPath
+} from './bot-tool-relay-grants'
 import { RelayRefusal } from './bot-tool-relay-requests'
 
 export type RelayAllowance = { ok: true } | { ok: false; status: 403 | 404; message: string }
@@ -44,22 +52,62 @@ export function admittedCaller(
   return caller
 }
 
-export const botCallerKey = (botId: string): string => `bot:${botId}`
+/** The caller a relay grant's owner (a bot, or the host list's shared token) calls as. */
+export const botCallerKey = (owner: string): string => `bot:${owner}`
 
-/** Bots' own tools: a bot's token reaches any credential in its folder. */
-export function botRoute(
-  pattern: RegExp,
-  grantOf: (token: string) => { botId: string; folder: string } | undefined
-): RelayRoute {
+/** What a request reaches: a tool by its credential id under the caller's folder, or a host list
+ *  command server Orca runs once (`process`). */
+export type RelayTarget = {
+  /** Limits, open calls and upstream sessions are kept per caller: `bot:<owner>` or a route's. */
+  callerKey: string
+  folder: string
+  /** The credential id, or `process:<id>` for a command server. */
+  entry: string
+  process?: string
+  /** A token many sessions share: only this computer's limits bound its calls. */
+  shared: boolean
+  /** An added route family (code mode's connectors); absent for bots' and the host list's tools. */
+  route?: RelayRoute
+}
+
+/** An added route's caller, when its token may reach the target; refused otherwise. */
+export function routedTarget(
+  route: RelayRoute,
+  targetId: string,
+  authorization: string | undefined
+): RelayTarget {
+  const caller = admittedCaller(route, targetId, authorization)
   return {
-    pattern,
-    resolve: (token) => {
-      const grant = grantOf(token)
-      return grant ? { callerKey: botCallerKey(grant.botId), folder: grant.folder } : null
-    },
-    allow: () => ({ ok: true }),
-    adoptsUnknownSessions: true,
-    unauthorized: 'This tool needs the bot’s Orca token.'
+    callerKey: caller.callerKey,
+    folder: caller.folder,
+    entry: targetId,
+    shared: false,
+    route
+  }
+}
+
+/** The bot's or the host's token's reach to a tool or command server under its folder. */
+export function grantTarget(
+  grants: Pick<RelayGrants, 'of'>,
+  match: RelayToolPath,
+  authorization: string | undefined
+): RelayTarget {
+  const token = /^Bearer (\S+)$/.exec(authorization ?? '')?.[1]
+  const grant = token ? grants.of(token) : undefined
+  if (!grant) {
+    throw new RelayRefusal(401, 'This tool needs the bot’s Orca token.')
+  }
+  const folder = grant.folders[match.scope]
+  if (!folder) {
+    throw new RelayRefusal(404, 'This token has no such tool.')
+  }
+  return {
+    callerKey: botCallerKey(grant.owner),
+    folder,
+    entry: match.process === undefined ? match.credentialId : `process:${match.process}`,
+    ...(match.process === undefined ? {} : { process: match.process }),
+    // Every non-bot session shares the host's token, so only this computer's limits bound its calls.
+    shared: grant.owner === MCP_HOST_LIST_RELAY_OWNER
   }
 }
 
@@ -86,4 +134,35 @@ export class RelayRoutes {
     }
     return null
   }
+}
+
+/** Checks loopback origin/host, matches the route or tool path, and authorizes the target. */
+export function resolveRelayTarget(
+  routes: RelayRoutes,
+  grants: Pick<RelayGrants, 'of'>,
+  req: IncomingMessage,
+  port: number
+): { method: string; target: RelayTarget } {
+  const host = req.headers.host
+  // A browser page can reach loopback too; Orca's agents send no Origin and name this address.
+  if (
+    req.headers.origin !== undefined ||
+    (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`)
+  ) {
+    throw new RelayRefusal(403, 'Not allowed.')
+  }
+  const url = req.url ?? ''
+  const routed = routes.match(url)
+  const match = routed ? null : relayToolPath(url)
+  if (!routed && !match) {
+    throw new RelayRefusal(404, 'Not found.')
+  }
+  const method = req.method ?? ''
+  if (!['POST', 'GET', 'DELETE'].includes(method)) {
+    throw new RelayRefusal(405, 'Method not allowed.')
+  }
+  const target = routed
+    ? routedTarget(routed.route, routed.targetId, req.headers.authorization)
+    : grantTarget(grants, match!, req.headers.authorization)
+  return { method, target }
 }

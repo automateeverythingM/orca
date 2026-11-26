@@ -102,7 +102,7 @@ describe('relay route for direct connector access', () => {
   it('keeps bot tokens and chat tokens on their own routes', async () => {
     const { id, origin } = await setUp()
     const token = await launch('s1')
-    const bot = await relay!.grant('scout', env.current().dir)
+    const bot = await relay!.grant('scout', { bot: env.current().dir })
     const before = mcpPosts()
     expect((await post(`${origin}/c/${id}/mcp`, bot.token)).status).toBe(401)
     expect((await post(`${origin}/bot-tools/${id}/mcp`, token)).status).toBe(401)

@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest'
 import type { BotToolServer } from '../../../../shared/bot-tools'
 import { acpCodemodeUnavailableRow, acpSessionMcpServers } from '../../../acp/launch/acp-mcp-server'
 import { acpBotMcpServers } from '../../../bots/bot-tools-acp'
-import {
-  BotLaunchTools,
-  CODEMODE_TOKEN_ENV,
-  withBotLaunchToolsEnv
-} from '../../../bots/bot-launch-tools'
+import { SessionMcpTools, withSessionMcpToolsEnv } from '../../../mcp-servers/session-mcp-tools'
 import { codexBotToolsThreadConfig } from '../../../bots/bot-tools-codex'
 import { PI_BOT_TOOLS_ENV, piBotToolsConfig } from '../../../bots/bot-tools-pi'
 import { claudeBotSessionOptions } from '../../../claude/structured/launch/claude-bot-session-options'
-import { codemodeGateMode, withCodemodeTools } from './structured-agent-codemode-launch'
+import {
+  CODEMODE_TOKEN_ENV,
+  codemodeGateMode,
+  withCodemodeTools
+} from './structured-agent-codemode-launch'
 
 const TOKEN = 'a'.repeat(64)
 const URL = 'http://127.0.0.1:4100/codemode/mcp'
@@ -41,8 +41,8 @@ function codemode(enabled: boolean) {
 
 function toolsFor(
   agent: string,
-  base: BotLaunchTools = BotLaunchTools.none
-): Promise<BotLaunchTools> {
+  base: SessionMcpTools = SessionMcpTools.none
+): Promise<SessionMcpTools> {
   return withCodemodeTools(base, codemode(true).launch, {
     agent,
     sessionId: 's1',
@@ -63,7 +63,7 @@ describe('code mode in a structured launch', () => {
       orca: { type: 'http', url: URL, headers: { authorization: REFERENCED } },
       fake: { type: 'http', url: FAKE_URL, headers: { authorization: REFERENCED } }
     })
-    const env = withBotLaunchToolsEnv({ NO_PROXY: 'corp.example' }, tools)
+    const env = withSessionMcpToolsEnv({ NO_PROXY: 'corp.example' }, tools)
     expect(env[CODEMODE_TOKEN_ENV]).toBe(TOKEN)
     expect(env.NO_PROXY).toBe('corp.example,127.0.0.1,localhost,::1')
   })
@@ -77,13 +77,13 @@ describe('code mode in a structured launch', () => {
 
   it("puts the literal bearer in Codex's thread config and none of it in Codex's env", async () => {
     const tools = await toolsFor('codex')
-    expect(codexBotToolsThreadConfig(tools, [])).toEqual({
+    expect(codexBotToolsThreadConfig(tools, new Set())).toEqual({
       'mcp_servers.orca.url': URL,
       'mcp_servers.orca.http_headers': { authorization: BEARER },
       'mcp_servers.fake.url': FAKE_URL,
       'mcp_servers.fake.http_headers': { authorization: BEARER }
     })
-    expect(withBotLaunchToolsEnv({}, tools)[CODEMODE_TOKEN_ENV]).toBeUndefined()
+    expect(withSessionMcpToolsEnv({}, tools)[CODEMODE_TOKEN_ENV]).toBeUndefined()
     expect(tools.commandEnv).toEqual({})
   })
 
@@ -93,13 +93,13 @@ describe('code mode in a structured launch', () => {
       orca: { url: URL, headers: { authorization: REFERENCED } },
       fake: { url: FAKE_URL, headers: { authorization: REFERENCED } }
     })
-    expect(withBotLaunchToolsEnv({}, tools)[CODEMODE_TOKEN_ENV]).toBe(TOKEN)
+    expect(withSessionMcpToolsEnv({}, tools)[CODEMODE_TOKEN_ENV]).toBe(TOKEN)
     expect(PI_BOT_TOOLS_ENV).toBe('ORCA_PI_BOT_TOOLS')
   })
 
   it('adds nothing and opens no code-mode session when the setting is off', async () => {
     const off = codemode(false)
-    const tools = await withCodemodeTools(BotLaunchTools.none, off.launch, {
+    const tools = await withCodemodeTools(SessionMcpTools.none, off.launch, {
       agent: 'claude',
       sessionId: 's1',
       launchId: 'launch-1',
@@ -110,16 +110,22 @@ describe('code mode in a structured launch', () => {
     expect(off.launched).toEqual([])
     expect(tools.servers).toEqual([])
     expect(piBotToolsConfig(tools)).toBeNull()
-    expect(codexBotToolsThreadConfig(tools, [])).toEqual({})
+    expect(codexBotToolsThreadConfig(tools, new Set())).toEqual({})
     expect(await claudeBotSessionOptions(basis, [], tools, { mcpConfig: false })).toEqual({})
   })
 
   it('replaces a bot server named like a connector with the connector', async () => {
     const relay = { grant: async () => ({ origin: 'http://127.0.0.1:4300', token: 'bot' }) }
-    const base = await BotLaunchTools.for(relay, { botId: 'b1', folder: '/bot', agent: 'claude' }, [
-      { name: 'fake', command: 'bot-fake', args: [] },
-      { name: 'keep', command: 'bot-keep', args: [] }
-    ])
+    const base = await SessionMcpTools.for(
+      relay,
+      { bot: { botId: 'b1', folder: '/bot' }, agent: 'claude' },
+      {
+        own: [
+          { name: 'fake', command: 'bot-fake', args: [] },
+          { name: 'keep', command: 'bot-keep', args: [] }
+        ]
+      }
+    )
     const tools = await toolsFor('claude', base)
     const options = await claudeBotSessionOptions(basis, [], tools, { mcpConfig: false })
     expect(options.mcpServers).toEqual({

@@ -30,7 +30,9 @@ const EXCLUDED_AREAS: ReadonlySet<string> = new Set([
   // prepareLaunch hands out auth env for any pane; tmuxCompat sends keys and runs shell commands.
   'agentTeams',
   // Bot management stores permission modes, member grants, schedules and prompts.
-  'bots'
+  'bots',
+  // The host's MCP server list: stored commands the host runs, agents' own MCP files, relay tokens.
+  'mcpServers'
 ])
 
 // Why: a script must never answer or change its own chat's approvals, questions or mode.
@@ -44,7 +46,9 @@ const CLIENT_PROTOCOL_AREAS: ReadonlySet<string> = new Set(['desktopBrowserBridg
 const CLIENT_PROTOCOL_PREFIXES = [
   'browser.clientHost.',
   'browser.clientPage.',
-  'browser.screencast.'
+  'browser.screencast.',
+  // A paired client's auto-name Try again / Dismiss; Try again also runs AI branch naming.
+  'worktree.autoName.'
 ]
 const CLIENT_PROTOCOL_LAST_SEGMENT =
   /^(commandResult|commandResultChunk|requestResult)$|unsubscribe/i
@@ -58,7 +62,10 @@ export const CODEMODE_ORCA_CLIENT_PROTOCOL_METHODS: ReadonlySet<string> = new Se
   'terminal.updateViewport',
   'terminal.setViewerColors',
   'browser.grab.viewportBridge',
-  'sidebarInputs.repoIcons'
+  'sidebarInputs.repoIcons',
+  // A live-text viewer saying it is shown, and paired desktops' orchestration sync feed.
+  'agentSession.liveTextShown',
+  'agentActivity.orchestration'
 ])
 
 export function isClientProtocolMethod(name: string): boolean {

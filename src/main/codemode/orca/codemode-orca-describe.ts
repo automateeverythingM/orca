@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { unwrapLazyZodSchema } from '../../../shared/schema/lazy-zod-schema'
 import type { OrcaMethodEntry, OrcaMethodIndex } from './codemode-orca-method-index'
 import type { OrcaMethodLabel } from './codemode-orca-method-policy'
 
@@ -14,6 +15,41 @@ const SCHEMA_UNAVAILABLE = { description: 'schema unavailable' }
 // changes at runtime, so cache by the schema object itself.
 const schemaCache = new WeakMap<object, unknown>()
 
+/** `seen` keyed by the schema a lazy contract stands for, so its proxy and the schema are one entry. */
+class LazyContractSeen<V> extends Map<z.core.$ZodType, V> {
+  override get(key: z.core.$ZodType): V | undefined {
+    return super.get(unlazy(key))
+  }
+  override set(key: z.core.$ZodType, value: V): this {
+    return super.set(unlazy(key), value)
+  }
+  override has(key: z.core.$ZodType): boolean {
+    return super.has(unlazy(key))
+  }
+}
+
+const unlazy = (schema: z.core.$ZodType): z.core.$ZodType =>
+  schema instanceof z.ZodType ? unwrapLazyZodSchema(schema) : schema
+
+/**
+ * `z.toJSONSchema` of what a caller passes. Upstream's lazy contracts are Proxies nested anywhere in
+ * a schema, and each schema's own processor looks itself up by its real identity, so the walk keys
+ * every schema by the one a proxy stands for. Each classic schema carries its own processor.
+ */
+function inputJsonSchema(params: z.ZodType): unknown {
+  const ctx = z.core.initializeContext({
+    processors: {},
+    io: 'input',
+    target: 'draft-2020-12',
+    unrepresentable: 'any'
+  })
+  ctx.seen = new LazyContractSeen()
+  const root = unwrapLazyZodSchema(params)
+  z.core.processSchema(root, ctx)
+  z.core.extractDefs(ctx, root)
+  return z.core.finalize(ctx, root)
+}
+
 function paramsSchema(entry: OrcaMethodEntry): unknown {
   if (entry.params === null) {
     return null
@@ -24,11 +60,7 @@ function paramsSchema(entry: OrcaMethodEntry): unknown {
   }
   let converted: unknown
   try {
-    converted = z.toJSONSchema(entry.params, {
-      io: 'input',
-      target: 'draft-2020-12',
-      unrepresentable: 'any'
-    })
+    converted = inputJsonSchema(entry.params)
   } catch {
     converted = SCHEMA_UNAVAILABLE
   }
