@@ -11,7 +11,10 @@ import type {
 } from './source-control-text-generation-types'
 
 /** A child that answers `stdout` on close, or never closes when `stdout` is null. */
-function fakeSpawn(stdout: string | null): {
+function fakeSpawn(
+  stdout: string | null,
+  exit: { code: number; stderr: string } = { code: 0, stderr: '' }
+): {
   spawnAgent: SpawnSourceControlAgent
   spawned: SourceControlAgentSpawnInput[]
   stdin: string[]
@@ -30,8 +33,9 @@ function fakeSpawn(stdout: string | null): {
         if (stdout !== null) {
           setTimeout(() => {
             out.emit('data', Buffer.from(stdout))
-            child.emit('exit', 0)
-            child.emit('close', 0)
+            err.emit('data', Buffer.from(exit.stderr))
+            child.emit('exit', exit.code)
+            child.emit('close', exit.code)
           }, 0)
         }
       }
@@ -82,6 +86,8 @@ describe('runGenerationRequest codemode-learn', () => {
     expect(spawn.args[tools + 1]).toBe('')
     expect(spawn.args).not.toContain('--allowedTools')
     expect(spawn.args).toContain('--strict-mcp-config')
+    // The prompt holds recorded tool data, so Claude keeps no session file of it.
+    expect(spawn.args).toContain('--no-session-persistence')
     expect(
       spawn.args.slice(spawn.args.indexOf('--model'), spawn.args.indexOf('--model') + 2)
     ).toEqual(['--model', 'opus'])
@@ -125,5 +131,25 @@ describe('runGenerationRequest codemode-learn', () => {
     })
     const args = fake.spawned[0].args
     expect(args[args.indexOf('--tools') + 1]).not.toBe('')
+    expect(args).not.toContain('--no-session-persistence')
+  })
+
+  it('asks for an update instead of retrying without --no-session-persistence', async () => {
+    const fake = fakeSpawn('', {
+      code: 1,
+      stderr: "error: unknown option '--no-session-persistence'\n"
+    })
+    const result = await runGenerationRequest({
+      params: { agentId: 'claude', model: 'opus' },
+      prompt: 'P',
+      target: { kind: 'local', cwd },
+      operation: 'codemode-learn',
+      spawnAgent: fake.spawnAgent
+    })
+    expect(result).toEqual({
+      success: false,
+      error: 'This Claude CLI can’t run without saving its session. Update Claude Code.'
+    })
+    expect(fake.spawned).toHaveLength(1)
   })
 })

@@ -10,7 +10,7 @@ const GUARD_GRACE_MS = 5_000
 export type LearnWriterGenerate = (
   prompt: string,
   opts: { timeoutMs: number; signal?: AbortSignal }
-) => Promise<{ ok: true; text: string } | { ok: false; error: string }>
+) => Promise<{ ok: true; text: string } | { ok: false; error: string; timedOut?: true }>
 
 export type LearnWriterResult =
   | { ok: true; draft: CodemodeLearnDraft }
@@ -37,18 +37,22 @@ export async function runLearnWriter(
     ended.resolve(CANCELED)
   }
   deps.signal?.addEventListener('abort', onAbort, { once: true })
+  // One message whichever deadline fires first: this guard or the generation's own.
+  const timedOut: LearnWriterResult = {
+    ok: false,
+    reason: `The writer timed out after ${Math.round(timeoutMs / 1000)} s.`
+  }
   const timer = setTimeout(() => {
     stop.abort()
-    ended.resolve({
-      ok: false,
-      reason: `The writer timed out after ${Math.round(timeoutMs / 1000)} s.`
-    })
+    ended.resolve(timedOut)
   }, timeoutMs + GUARD_GRACE_MS)
   const generation = (async (): Promise<LearnWriterResult> => {
     try {
       const reply = await deps.generate(prompt, { timeoutMs, signal: stop.signal })
       if (!reply.ok) {
-        return { ok: false, reason: `The writer could not run: ${reply.error}` }
+        return reply.timedOut
+          ? timedOut
+          : { ok: false, reason: `The writer could not run: ${reply.error}` }
       }
       return parseWriterReply(reply.text)
     } catch (error) {

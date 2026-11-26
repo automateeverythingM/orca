@@ -54,6 +54,7 @@ function rules(kind: WriterPromptInput['kind']): string {
     '- calls_saved: about how many tool calls one use of the function replaces.',
     '- scope: "project" when the function depends on this project (its files, paths or repo), otherwise "global".',
     `- name: a camelCase JavaScript identifier, at most 64 characters, not one of: ${[...CODEMODE_LIB_RESERVED].join(', ')}.`,
+    '- params: camelCase names that are not JavaScript keywords, not the reserved names above, and not code mode names (mcp, orca, lib, read, write, edit, grep, find, bash, print).',
     '- worth: false when there is no reusable task here (one-off work, nothing to generalize); then say why in "why" and leave the other fields out.'
   ].join('\n')
 }

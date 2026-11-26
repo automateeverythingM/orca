@@ -46,8 +46,16 @@ export async function runGenerationRequest(input: {
   /** How long a local agent may run; the source-control default when absent. */
   timeoutMs?: number
 }): Promise<InternalTextGenerationResult> {
+  // Learn prompts carry recorded tool results (customer data): Claude must keep no session file of them.
+  const noSessionPersistence =
+    input.operation === 'codemode-learn' && input.params.agentId === 'claude'
   const params = {
     ...input.params,
+    ...(noSessionPersistence
+      ? {
+          agentArgs: [input.params.agentArgs, '--no-session-persistence'].filter(Boolean).join(' ')
+        }
+      : {}),
     backslash: commandBackslashMode(input.target),
     // Both prompts carry text the agent must not act on: the user's words, or recorded tool data.
     toolFree: input.operation === 'dictation-cleanup' || input.operation === 'codemode-learn'
@@ -119,6 +127,13 @@ export async function runGenerationRequest(input: {
     },
     failedExit: (outcome) => (outcome.success ? undefined : outcome.failureOutput)
   })
+  if (noSessionPersistence && refusedSessionPersistenceFlag(result)) {
+    // Never retry without the flag: that would save the prompt. An older CLI must be updated instead.
+    return {
+      success: false,
+      error: 'This Claude CLI can’t run without saving its session. Update Claude Code.'
+    }
+  }
   if (
     input.operation !== 'jira-issue-summary' &&
     !result.success &&
@@ -160,4 +175,10 @@ export async function runGenerationRequest(input: {
   return rawOutput
     ? { ...result, rawOutput }
     : { success: false, ...emptyResultFailure(input.operation, plan.label) }
+}
+
+/** Commander's refusal of a flag an older Claude CLI does not know. */
+function refusedSessionPersistenceFlag(result: InternalTextGenerationResult): boolean {
+  const stderr = result.success ? '' : (result.failureOutput?.stderr ?? '')
+  return /unknown option '?--no-session-persistence/i.test(stderr)
 }

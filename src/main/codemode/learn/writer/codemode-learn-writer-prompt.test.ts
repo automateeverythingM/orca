@@ -5,6 +5,7 @@ import type {
 } from '../../../../shared/codemode/codemode-learn-types'
 import {
   buildWriterPrompt,
+  WRITER_MAX_RUNS,
   WRITER_PROMPT_MAX_BYTES,
   WRITER_SAMPLE_MAX_BYTES
 } from './codemode-learn-writer-prompt'
@@ -90,6 +91,16 @@ describe('buildWriterPrompt', () => {
     expect(close).toBeGreaterThan(open)
     // At most 3 source runs reach the writer.
     expect(huge).not.toContain('Run 4')
+  })
+
+  it('sends at most 3 runs', () => {
+    const runs = ['r1', 'r2', 'r3', 'r4'].map((id) => run(id, [call(0)], `return '${id}'`))
+    const prompt = buildWriterPrompt({ kind: 'script', runs })
+    expect(WRITER_MAX_RUNS).toBe(3)
+    expect(prompt).toContain('Run 3 of 3')
+    expect(prompt).toContain("return 'r3'")
+    expect(prompt).not.toContain('Run 4')
+    expect(prompt).not.toContain("return 'r4'")
   })
 
   it('marks recordings the recorder cut', () => {

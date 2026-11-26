@@ -1,5 +1,8 @@
 import { existsSync, readdirSync } from 'node:fs'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   runGenerationRequest: vi.fn(),
@@ -35,7 +38,13 @@ type GenerationInput = {
 
 const lastInput = (): GenerationInput => mocks.runGenerationRequest.mock.calls.at(-1)?.[0]
 
-beforeEach(() => {
+let parentDir = ''
+afterEach(async () => {
+  await rm(dirname(parentDir), { recursive: true, force: true })
+})
+
+beforeEach(async () => {
+  parentDir = join(await mkdtemp(join(tmpdir(), 'orca-learn-gen-test-')), 'orca-codemode-learn')
   vi.clearAllMocks()
   mocks.prepareEnv.mockResolvedValue({ ok: true, env: { HOME: '/home/test' } })
 })
@@ -50,7 +59,7 @@ describe('createLearnWriterGenerate', () => {
       return { success: true, rawOutput: '{"worth":false}' }
     })
     const resolvers = {}
-    const generate = createLearnWriterGenerate({ getAgentEnvResolvers: () => resolvers })
+    const generate = createLearnWriterGenerate({ getAgentEnvResolvers: () => resolvers, parentDir })
     expect(await generate('PROMPT', { timeoutMs: 180_000 })).toEqual({
       ok: true,
       text: '{"worth":false}'
@@ -65,10 +74,17 @@ describe('createLearnWriterGenerate', () => {
     expect(input.target.laneId).toEqual(expect.any(String))
     expect(entriesDuringRun).toEqual([])
     expect(existsSync(cwdDuringRun)).toBe(false)
+    // One fixed parent, a fresh child per request; the parent stays.
+    expect(dirname(cwdDuringRun)).toBe(parentDir)
+    expect(existsSync(parentDir)).toBe(true)
+    const first = cwdDuringRun
+    await generate('AGAIN', { timeoutMs: 1000 })
+    expect(lastInput().target.cwd).not.toBe(first)
+    expect(dirname(lastInput().target.cwd)).toBe(parentDir)
   })
 
   it('reports env and generation failures as errors', async () => {
-    const generate = createLearnWriterGenerate({ getAgentEnvResolvers: () => undefined })
+    const generate = createLearnWriterGenerate({ getAgentEnvResolvers: () => undefined, parentDir })
     mocks.prepareEnv.mockResolvedValueOnce({ ok: false, error: 'Claude is not signed in.' })
     expect(await generate('P', { timeoutMs: 1000 })).toEqual({
       ok: false,
@@ -77,11 +93,18 @@ describe('createLearnWriterGenerate', () => {
     expect(mocks.runGenerationRequest).not.toHaveBeenCalled()
     mocks.runGenerationRequest.mockResolvedValueOnce({
       success: false,
-      error: 'Generation timed out after 180s.'
+      error: 'Generation timed out after 180s.',
+      errorCode: 'timedOut'
     })
     expect(await generate('P', { timeoutMs: 1000 })).toEqual({
       ok: false,
-      error: 'Generation timed out after 180s.'
+      error: 'Generation timed out after 180s.',
+      timedOut: true
+    })
+    mocks.runGenerationRequest.mockResolvedValueOnce({ success: false, error: 'Claude exited 1.' })
+    expect(await generate('P', { timeoutMs: 1000 })).toEqual({
+      ok: false,
+      error: 'Claude exited 1.'
     })
   })
 
@@ -93,7 +116,7 @@ describe('createLearnWriterGenerate', () => {
       expect(input.shouldExecute?.()).toBe(false)
       return { success: false, error: 'Generation canceled.', canceled: true }
     })
-    const generate = createLearnWriterGenerate({ getAgentEnvResolvers: () => undefined })
+    const generate = createLearnWriterGenerate({ getAgentEnvResolvers: () => undefined, parentDir })
     expect(await generate('P', { timeoutMs: 1000, signal: stop.signal })).toEqual({
       ok: false,
       error: 'Generation canceled.'

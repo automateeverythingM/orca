@@ -16,6 +16,20 @@ export type WriterReplyResult =
   | { ok: false; reason: string }
 
 const PARAM_NAME = /^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/
+
+// Words strict-mode JavaScript will not bind as a function or parameter name.
+const JS_RESERVED: ReadonlySet<string> = new Set(
+  (
+    'break case catch class const continue debugger default delete do else enum export extends ' +
+    'false finally for function if import in instanceof new null return super switch this throw ' +
+    'true try typeof var void while with yield let static implements interface package private ' +
+    'protected public await arguments eval'
+  ).split(' ')
+)
+// The sandbox's own names: a parameter called `mcp` would hide the tools the body calls.
+const SANDBOX_GLOBALS: ReadonlySet<string> = new Set(
+  'mcp orca lib read write edit grep find bash print'.split(' ')
+)
 const MAX_CANDIDATES = 20
 
 const paramSchema = z.object({
@@ -71,7 +85,9 @@ function firstObjectIn(text: string): Record<string, unknown> | null {
   for (let tries = 0; from !== -1 && tries < MAX_CANDIDATES; tries++) {
     const end = objectEnd(text, from)
     if (end === -1) {
-      return null
+      // An unclosed brace in prose (`{email as a param`): the reply may start at a later one.
+      from = text.indexOf('{', from + 1)
+      continue
     }
     try {
       const value: unknown = JSON.parse(text.slice(from, end))
@@ -134,10 +150,20 @@ export function parseWriterReply(raw: string): WriterReplyResult {
       reason: `The writer chose an invalid function name: ${reply.name.slice(0, 80)}`
     }
   }
-  if (CODEMODE_LIB_RESERVED.has(reply.name)) {
+  if (CODEMODE_LIB_RESERVED.has(reply.name) || JS_RESERVED.has(reply.name)) {
     return { ok: false, reason: `The writer chose a reserved function name: ${reply.name}` }
   }
   const params = reply.params.map(cleanParam)
+  const badParam = params.find(
+    (p) =>
+      JS_RESERVED.has(p.name) || CODEMODE_LIB_RESERVED.has(p.name) || SANDBOX_GLOBALS.has(p.name)
+  )
+  if (badParam) {
+    return {
+      ok: false,
+      reason: `The writer chose a reserved parameter name: ${badParam.name} (a JavaScript keyword or a name code mode already uses)`
+    }
+  }
   if (new Set(params.map((p) => p.name)).size !== params.length) {
     return { ok: false, reason: 'The writer named a parameter twice.' }
   }

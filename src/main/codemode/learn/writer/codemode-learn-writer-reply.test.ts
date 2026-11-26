@@ -45,6 +45,18 @@ describe('parseWriterReply', () => {
     expect(parsed.ok && parsed.draft.body).toBe(body)
   })
 
+  it('skips unfenced {not json} prose before the reply', () => {
+    expect(parseWriterReply(`Thinking {not json} then:\n${JSON.stringify(reply())}`)).toEqual({
+      ok: true,
+      draft: DRAFT
+    })
+  })
+
+  it('skips an unclosed brace in unfenced prose', () => {
+    const raw = `I'll use {email as a param.\n${JSON.stringify(reply())}`
+    expect(parseWriterReply(raw)).toEqual({ ok: true, draft: DRAFT })
+  })
+
   it('fails on garbage', () => {
     expect(parseWriterReply('I could not do that.')).toEqual({
       ok: false,
@@ -87,6 +99,39 @@ describe('parseWriterReply', () => {
       ok: false,
       reason: 'The writer chose a reserved function name: describe'
     })
+  })
+
+  it('refuses JS keywords as names', () => {
+    expect(parseWriterReply(JSON.stringify(reply({ name: 'delete' })))).toEqual({
+      ok: false,
+      reason: 'The writer chose a reserved function name: delete'
+    })
+  })
+
+  it('refuses keyword, reserved and sandbox parameter names', () => {
+    for (const name of [
+      'class',
+      'arguments',
+      'list',
+      'then',
+      'mcp',
+      'orca',
+      'lib',
+      'read',
+      'bash',
+      'print'
+    ]) {
+      const parsed = parseWriterReply(JSON.stringify(reply({ params: [{ name }] })))
+      expect(parsed).toEqual({
+        ok: false,
+        reason: `The writer chose a reserved parameter name: ${name} (a JavaScript keyword or a name code mode already uses)`
+      })
+    }
+    expect(parseWriterReply(JSON.stringify(reply({ params: [{ name: 'reader' }] })))).toMatchObject(
+      {
+        ok: true
+      }
+    )
   })
 
   it('fails when the writer says it is not worth saving', () => {

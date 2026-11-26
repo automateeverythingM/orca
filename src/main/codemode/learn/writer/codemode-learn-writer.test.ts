@@ -45,6 +45,18 @@ describe('runLearnWriter', () => {
     })
   })
 
+  it('gives the same timeout message when the generation itself times out', async () => {
+    const generate: LearnWriterGenerate = async () => ({
+      ok: false,
+      error: 'Generation timed out after 180s.',
+      timedOut: true
+    })
+    expect(await runLearnWriter('P', { generate })).toEqual({
+      ok: false,
+      reason: 'The writer timed out after 180 s.'
+    })
+  })
+
   it('maps a thrown generation to a readable failure', async () => {
     const generate: LearnWriterGenerate = async () => {
       throw new Error('spawn EACCES')
