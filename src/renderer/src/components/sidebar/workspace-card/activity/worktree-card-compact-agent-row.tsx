@@ -6,6 +6,11 @@ import {
   agentStateLabel,
   type AgentDotState
 } from '@/components/agent/status/AgentStateDot'
+import {
+  SessionCompleteIndicator,
+  SessionCompleteToggleButton,
+  useSessionCompletedState
+} from '@/components/agent/status/SessionCompleteControls'
 import { AgentChildRowContent } from '@/components/agent/status/AgentChildRowContent'
 import type { DashboardAgentRow as DashboardAgentRowData } from '@/components/dashboard/rows/dashboard-agent-row'
 import { AgentTypeIcon } from '@/components/agent/icons/agent-type-icon'
@@ -174,6 +179,9 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
   const model = agent.entry.model?.trim() ?? ''
   const shortTime = getCompactAgentTime(agent, now)
   const cacheTimer = usePromptCacheCountdownForPane(agent.paneKey, cacheTimerActive)
+  const canToggleComplete = agent.rowSource !== 'subagent'
+  const { isCompleted, toggleCompleted } = useSessionCompletedState(agent.paneKey, agent.entry)
+  const completed = canToggleComplete && isCompleted
 
   const handleActivate = useCallback(
     (e: React.MouseEvent) => {
@@ -199,7 +207,8 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
   // Focused fills wash out muted text; brighten the lead while preserving unread emphasis.
   const leadClassName = cn(
     isUnvisited ? 'font-semibold text-foreground' : 'font-normal text-muted-foreground/90',
-    highlighted && !isUnvisited && 'text-foreground'
+    highlighted && !isUnvisited && 'text-foreground',
+    completed && 'line-through opacity-65'
   )
 
   const modelChip =
@@ -250,14 +259,22 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
       ) : (
         <>
           {/* Show the actionable disabled reason over every hit area. */}
-          <AgentStateDot
-            state={dotState}
-            size="sm"
-            title={sendTargetDisabledReason ? null : undefined}
-            tooltipSide="right"
-            progress={presentation.progress}
-            unread={isUnvisited}
-          />
+          {completed ? (
+            <SessionCompleteIndicator
+              size="sm"
+              title={sendTargetDisabledReason ? null : undefined}
+              tooltipSide="right"
+            />
+          ) : (
+            <AgentStateDot
+              state={dotState}
+              size="sm"
+              title={sendTargetDisabledReason ? null : undefined}
+              tooltipSide="right"
+              progress={presentation.progress}
+              unread={isUnvisited}
+            />
+          )}
           {!hideIcon && (
             <span className="inline-flex shrink-0" title={formatAgentTypeLabel(agent.agentType)}>
               <AgentTypeIcon agentType={agent.agentType} size={13} />
@@ -288,12 +305,34 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
       )}
       {cacheTimer && <CacheTimer startedAt={cacheTimer.startedAt} ttlMs={cacheTimer.ttlMs} />}
       {hasChildDisclosure ? (
-        <DashboardAgentChildDisclosure
-          childAgentCount={childAgentCount}
-          childAgentsExpanded={childAgentsExpanded}
-          onToggleChildAgents={onToggleChildAgents}
-          timestamp={timestamp}
-        />
+        <>
+          {canToggleComplete && !sendTargetStatus && (
+            <SessionCompleteToggleButton
+              isCompleted={completed}
+              onToggle={toggleCompleted}
+              className="can-hover:opacity-0 transition-opacity duration-150 group-hover/compact-agent-row:opacity-100 focus-visible:opacity-100"
+            />
+          )}
+          <DashboardAgentChildDisclosure
+            childAgentCount={childAgentCount}
+            childAgentsExpanded={childAgentsExpanded}
+            onToggleChildAgents={onToggleChildAgents}
+            timestamp={timestamp}
+          />
+        </>
+      ) : canToggleComplete && !sendTargetStatus ? (
+        <span className="relative grid shrink-0 grid-cols-1 grid-rows-1 items-center justify-items-end">
+          {timestamp && (
+            <span className="[grid-area:1/1] pointer-events-none transition-opacity duration-150 group-hover/compact-agent-row:opacity-0 [@media(hover:none)]:opacity-0">
+              {timestamp}
+            </span>
+          )}
+          <SessionCompleteToggleButton
+            isCompleted={completed}
+            onToggle={toggleCompleted}
+            className="[grid-area:1/1] can-hover:opacity-0 transition-opacity duration-150 group-hover/compact-agent-row:opacity-100 focus-visible:opacity-100"
+          />
+        </span>
       ) : (
         timestamp
       )}

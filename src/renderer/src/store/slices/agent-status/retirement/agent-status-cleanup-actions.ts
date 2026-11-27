@@ -78,6 +78,7 @@ export function createAgentStatusCleanupActions(
         const nextAck = removePaneKeys(s.acknowledgedAgentsByPaneKey, paneKeys)
         const nextClearedAt = removePaneKeys(s.activityClearedAtByPaneKey, paneKeys)
         const nextManualUnread = removePaneKeys(s.manuallyUnreadTurnsByPaneKey, paneKeys)
+        const nextCompleted = removePaneKeys(s.completedSessionsByPaneKey, paneKeys)
         return {
           agentStatusByPaneKey: next,
           ...processRetirement.patch,
@@ -89,6 +90,9 @@ export function createAgentStatusCleanupActions(
             : {}),
           ...(nextManualUnread !== s.manuallyUnreadTurnsByPaneKey
             ? { manuallyUnreadTurnsByPaneKey: nextManualUnread }
+            : {}),
+          ...(nextCompleted !== s.completedSessionsByPaneKey
+            ? { completedSessionsByPaneKey: nextCompleted }
             : {}),
           agentStatusEpoch: s.agentStatusEpoch + 1,
           sortEpoch: s.sortEpoch + 1
@@ -112,7 +116,8 @@ export function createAgentStatusCleanupActions(
       const hasPaneActivityState = [
         current.acknowledgedAgentsByPaneKey,
         current.activityClearedAtByPaneKey,
-        current.manuallyUnreadTurnsByPaneKey
+        current.manuallyUnreadTurnsByPaneKey,
+        current.completedSessionsByPaneKey
       ].some((record) => Object.keys(record).some((key) => key.startsWith(prefix)))
       if (
         toRemove.length === 0 &&
@@ -141,6 +146,7 @@ export function createAgentStatusCleanupActions(
           s.manuallyUnreadTurnsByPaneKey,
           tabIdPrefix
         )
+        const nextCompleted = removePaneKeysByTabPrefix(s.completedSessionsByPaneKey, tabIdPrefix)
         return {
           agentStatusByPaneKey: next,
           agentLaunchConfigByPaneKey: nextLaunchConfigs,
@@ -153,6 +159,9 @@ export function createAgentStatusCleanupActions(
             : {}),
           ...(nextManualUnread !== s.manuallyUnreadTurnsByPaneKey
             ? { manuallyUnreadTurnsByPaneKey: nextManualUnread }
+            : {}),
+          ...(nextCompleted !== s.completedSessionsByPaneKey
+            ? { completedSessionsByPaneKey: nextCompleted }
             : {}),
           agentStatusEpoch: s.agentStatusEpoch + 1,
           sortEpoch: s.sortEpoch + 1

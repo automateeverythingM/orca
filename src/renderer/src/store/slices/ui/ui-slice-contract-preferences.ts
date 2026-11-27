@@ -74,6 +74,8 @@ export type UISlicePreferences = {
   setHideDetachedHeadWorkspaces: (v: boolean) => void
   hideWorkspacesFromOtherDevices: boolean
   setHideWorkspacesFromOtherDevices: (v: boolean) => void
+  hideCompletedSessions: boolean
+  setHideCompletedSessions: (v: boolean) => void
   alwaysShowDefaultBranchWorkspace: boolean
   setAlwaysShowDefaultBranchWorkspace: (v: boolean) => void
   explorerDisplayRootByWorktree: Record<string, string>
