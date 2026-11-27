@@ -21,7 +21,16 @@ if (process.platform !== 'darwin') {
 }
 
 const args = process.argv.slice(2)
-const bundleId = readArg('--bundle-id') ?? 'com.stablyai.orca'
+// Must match the app's bundle ID (see ORCA_LOCAL_APP_ID in config/electron-builder.config.cjs).
+const isMacRelease = [
+  'ORCA_MAC_RELEASE',
+  'ORCA_MAC_HOURLY',
+  'ORCA_MAC_DAILY',
+  'ORCA_MAC_ADHOC'
+].some((name) => process.env[name] === '1')
+const bundleId =
+  readArg('--bundle-id') ??
+  ((!isMacRelease && process.env.ORCA_LOCAL_APP_ID) || 'com.stablyai.orca')
 const outputPath = readArg('--output') ?? defaultOutputPath
 // Why: dev launches only need the host architecture; release builds ship a
 // universal binary matching the app's x64 + arm64 targets.

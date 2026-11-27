@@ -134,7 +134,10 @@ const devChannelRepo = isHourlyChannel
     : isAdhocChannel
       ? 'orca-adhoc'
       : null
-const appId = 'com.stablyai.orca'
+// Why: a local build sharing the release bundle ID with a different signature makes TCC grants
+// flip between the two (Desktop/Documents prompts after every install). Local builds may take
+// their own ID (`com.stablyai.orca.dev.*` stays trusted by the computer-use helper); release never.
+const appId = (!isMacRelease && process.env.ORCA_LOCAL_APP_ID) || 'com.stablyai.orca'
 const featureWallResources = {
   from: 'resources/onboarding/feature-wall',
   to: 'onboarding/feature-wall'

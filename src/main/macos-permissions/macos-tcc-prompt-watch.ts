@@ -14,7 +14,9 @@ const ORCA_RESPONSIBLE_IDENTIFIERS = new Set([
   'com.stablyai.orca.dev',
   'com.stablyai.orca.dev.helper',
   'com.stablyai.orca.local',
-  'com.stablyai.orca.local.helper'
+  'com.stablyai.orca.local.helper',
+  'com.stablyai.orca.dev.local',
+  'com.stablyai.orca.dev.local.helper'
 ])
 
 const WATCHED_SERVICES = new Set([
