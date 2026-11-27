@@ -88,9 +88,6 @@ export function createAgentStatusDropActions(
         const nextManualUnread = opts?.paneRemoved
           ? removeAcknowledgement(s.manuallyUnreadTurnsByPaneKey, paneKey)
           : s.manuallyUnreadTurnsByPaneKey
-        const nextCompleted = opts?.paneRemoved
-          ? removeAcknowledgement(s.completedSessionsByPaneKey, paneKey)
-          : s.completedSessionsByPaneKey
         const nextConversations = opts?.paneRemoved
           ? removePaneKeys(s.agentConversationsByPaneKey, new Set([paneKey]))
           : s.agentConversationsByPaneKey
@@ -115,9 +112,6 @@ export function createAgentStatusDropActions(
               : {}),
             ...(nextManualUnread !== s.manuallyUnreadTurnsByPaneKey
               ? { manuallyUnreadTurnsByPaneKey: nextManualUnread }
-              : {}),
-            ...(nextCompleted !== s.completedSessionsByPaneKey
-              ? { completedSessionsByPaneKey: nextCompleted }
               : {})
           }
           return Object.keys(cleanupPatch).length > 0 ? cleanupPatch : s
@@ -138,7 +132,6 @@ export function createAgentStatusDropActions(
             : {}),
           activityClearedAtByPaneKey: nextClearedAt,
           manuallyUnreadTurnsByPaneKey: nextManualUnread,
-          completedSessionsByPaneKey: nextCompleted,
           agentStatusEpoch:
             hasLive || migrationUnsupported.changed ? s.agentStatusEpoch + 1 : s.agentStatusEpoch,
           sortEpoch: hasLive || migrationUnsupported.changed ? s.sortEpoch + 1 : s.sortEpoch

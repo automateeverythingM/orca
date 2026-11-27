@@ -19,8 +19,6 @@ type ActivityActions = Pick<
   | 'applyActivityClearedAt'
   | 'manuallyUnreadTurnsByPaneKey'
   | 'clearManuallyUnreadTurns'
-  | 'completedSessionsByPaneKey'
-  | 'setSessionCompleted'
 >
 
 const ACKNOWLEDGEMENT_REFRESH_MS = 24 * 60 * 60 * 1000
@@ -176,36 +174,6 @@ export function createUiActivityActions(set: UISliceSet, _get: UISliceGet): Acti
           }
         }
         return next ? { activityClearedAtByPaneKey: next } : s
-      }),
-    completedSessionsByPaneKey: {},
-    setSessionCompleted: (paneKey, completed) => {
-      if (!paneKey) {
-        return
-      }
-      set((s) => {
-        if (!completed) {
-          if (s.completedSessionsByPaneKey[paneKey] === undefined) {
-            return s
-          }
-          const next = { ...s.completedSessionsByPaneKey }
-          delete next[paneKey]
-          return {
-            completedSessionsByPaneKey: linkRecordWrite(next, s.completedSessionsByPaneKey, [
-              paneKey
-            ])
-          }
-        }
-        const liveEntry = s.agentStatusByPaneKey.get(paneKey)
-        const stamp = Math.max(
-          Date.now(),
-          liveEntry ? latestAgentTurnTimestamp(liveEntry) : 0,
-          liveEntry ? usableTimestamp(liveEntry.updatedAt) : 0
-        )
-        const next = { ...s.completedSessionsByPaneKey, [paneKey]: stamp }
-        return {
-          completedSessionsByPaneKey: linkRecordWrite(next, s.completedSessionsByPaneKey, [paneKey])
-        }
       })
-    }
   }
 }

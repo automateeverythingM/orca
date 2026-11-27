@@ -14,7 +14,6 @@ import {
 } from './worktree-card-send-target-inputs'
 import { useAgentPresentation, useWorktreeAgentRow } from './useWorktreeAgentRows'
 import { useHostRootKeys } from './use-worktree-agent-host-roots'
-import { useVisibleWorktreeAgentRoots } from './worktree-completed-session-visibility'
 import { KeyedSummary } from './worktree-card-agent-keyed-summary'
 import type { ExecutionHostId } from '../../../../../../shared/execution-host/execution-host'
 import { useWorktreeAgentDisplay } from './use-worktree-agent-display'
@@ -51,8 +50,7 @@ export default React.memo(function WorktreeCardAgents({
     `roots\0${worktreeId}`,
     useCallback((p) => p.display.roots(worktreeId), [worktreeId])
   )
-  const hostRoots = useHostRootKeys(worktreeId, executionHostId, allRoots)
-  const roots = useVisibleWorktreeAgentRoots(worktreeId, hostRoots)
+  const roots = useHostRootKeys(worktreeId, executionHostId, allRoots)
   return roots.length ? (
     <WorktreeCardAgentsBody
       worktreeId={worktreeId}

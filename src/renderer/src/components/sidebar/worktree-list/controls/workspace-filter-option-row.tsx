@@ -1,7 +1,6 @@
 import type React from 'react'
 import {
   CalendarClock,
-  CheckCheck,
   GitBranch,
   GitCommitHorizontal,
   MonitorSmartphone,
@@ -24,7 +23,6 @@ export type WorkspaceFilterOptionKey = Extract<
   | 'hideCliCreatedWorkspaces'
   | 'hideWorkspacesFromOtherDevices'
   | 'hideDetachedHeadWorkspaces'
-  | 'hideCompletedSessions'
 >
 
 type FilterRow = {
@@ -117,21 +115,6 @@ const FILTER_ROWS: Record<WorkspaceFilterOptionKey, FilterRow> = {
       ),
     checked: (state) => state.hideDetachedHeadWorkspaces,
     set: (next) => useAppStore.getState().setHideDetachedHeadWorkspaces(next)
-  },
-  hideCompletedSessions: {
-    icon: <CheckCheck className="size-3.5" />,
-    label: () =>
-      translate(
-        'auto.components.sidebar.SidebarWorkspaceFilterSection.completedSessions',
-        'Hide completed sessions'
-      ),
-    ariaLabel: () =>
-      translate(
-        'auto.components.sidebar.SidebarWorkspaceFilterSection.completedSessionsAria',
-        'Hide sessions marked complete under workspaces'
-      ),
-    checked: (state) => state.hideCompletedSessions,
-    set: (next) => useAppStore.getState().setHideCompletedSessions(next)
   }
 }
 

@@ -2,7 +2,6 @@ import React, { useCallback } from 'react'
 import { ChevronDown, Send, X } from 'lucide-react'
 import { useTranslate } from '@/i18n/use-translate'
 import { cn } from '@/lib/class-names'
-import { SessionCompleteToggleButton } from '@/components/agent/status/SessionCompleteControls'
 import { DashboardAgentChildDisclosure } from './DashboardAgentChildDisclosure'
 
 type DashboardAgentRowTrailingControlsProps = {
@@ -15,8 +14,6 @@ type DashboardAgentRowTrailingControlsProps = {
   hideExpand: boolean
   /** Subagents have no dismissible store entry; hide the otherwise inert control. */
   hideDismiss?: boolean
-  isCompleted?: boolean
-  onToggleComplete?: () => void
   sendTargetStatus?: 'eligible' | 'disabled' | 'sending'
   onDismiss: (paneKey: string) => void
   onToggleExpanded: () => void
@@ -32,8 +29,6 @@ export function DashboardAgentRowTrailingControls({
   expanded,
   hideExpand,
   hideDismiss = false,
-  isCompleted = false,
-  onToggleComplete,
   sendTargetStatus,
   onDismiss,
   onToggleExpanded,
@@ -128,58 +123,16 @@ export function DashboardAgentRowTrailingControls({
           >
             {relativeTimestamp}
           </span>
-          <span
-            className={cn(
-              '[grid-area:1/1] inline-flex items-center gap-1',
-              'can-hover:opacity-0 transition-opacity duration-150',
-              'group-hover/agent-row:opacity-100 focus-within:opacity-100'
-            )}
-          >
-            {onToggleComplete && (
-              <SessionCompleteToggleButton
-                isCompleted={isCompleted}
-                onToggle={onToggleComplete}
-                iconClassName="size-3.5"
-              />
-            )}
-            <button
-              type="button"
-              onClick={handleDismiss}
-              onMouseDown={stopMouseDown}
-              onKeyDown={stopKeyDown}
-              className="inline-flex items-center justify-center text-muted-foreground/70 hover:text-foreground"
-              aria-label={t(
-                'auto.components.dashboard.DashboardAgentRow.b06e13fcf7',
-                'Dismiss agent'
-              )}
-              title={t('auto.components.dashboard.DashboardAgentRow.5ae84475cc', 'Dismiss')}
-            >
-              <X className="size-3.5" />
-            </button>
-          </span>
-        </span>
-      )}
-      {!sendTargetStatus && !hideDismiss && (hasChildDisclosure || relativeTimestamp === null) && (
-        <span
-          className={cn(
-            'inline-flex shrink-0 items-center gap-1',
-            'can-hover:opacity-0 transition-opacity duration-150',
-            'group-hover/agent-row:opacity-100 focus-within:opacity-100'
-          )}
-        >
-          {onToggleComplete && (
-            <SessionCompleteToggleButton
-              isCompleted={isCompleted}
-              onToggle={onToggleComplete}
-              iconClassName="size-3.5"
-            />
-          )}
           <button
             type="button"
             onClick={handleDismiss}
             onMouseDown={stopMouseDown}
             onKeyDown={stopKeyDown}
-            className="inline-flex shrink-0 items-center justify-center text-muted-foreground/70 hover:text-foreground"
+            className={cn(
+              '[grid-area:1/1] inline-flex items-center justify-center text-muted-foreground/70 hover:text-foreground',
+              'can-hover:opacity-0 transition-opacity duration-150',
+              'group-hover/agent-row:opacity-100 focus-visible:opacity-100'
+            )}
             aria-label={t(
               'auto.components.dashboard.DashboardAgentRow.b06e13fcf7',
               'Dismiss agent'
@@ -189,6 +142,23 @@ export function DashboardAgentRowTrailingControls({
             <X className="size-3.5" />
           </button>
         </span>
+      )}
+      {!sendTargetStatus && !hideDismiss && (hasChildDisclosure || relativeTimestamp === null) && (
+        <button
+          type="button"
+          onClick={handleDismiss}
+          onMouseDown={stopMouseDown}
+          onKeyDown={stopKeyDown}
+          className={cn(
+            'inline-flex shrink-0 items-center justify-center text-muted-foreground/70 hover:text-foreground',
+            'can-hover:opacity-0 transition-opacity duration-150',
+            'group-hover/agent-row:opacity-100 focus-visible:opacity-100'
+          )}
+          aria-label={t('auto.components.dashboard.DashboardAgentRow.b06e13fcf7', 'Dismiss agent')}
+          title={t('auto.components.dashboard.DashboardAgentRow.5ae84475cc', 'Dismiss')}
+        >
+          <X className="size-3.5" />
+        </button>
       )}
       {hasChildDisclosure && (
         <DashboardAgentChildDisclosure

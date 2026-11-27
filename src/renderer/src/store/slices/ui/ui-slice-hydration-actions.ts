@@ -152,7 +152,6 @@ export function createUiHydrationActions(set: UISliceSet, _get: UISliceGet): Par
           hideCliCreatedWorkspaces: ui.hideCliCreatedWorkspaces === true,
           hideDetachedHeadWorkspaces: ui.hideDetachedHeadWorkspaces === true,
           hideWorkspacesFromOtherDevices: ui.hideWorkspacesFromOtherDevices === true,
-          hideCompletedSessions: ui.hideCompletedSessions === true,
           // Why !== false: profiles written before #8873 have no key, and they are
           // precisely the ones showing the bug, so absence must mean "exempt".
           alwaysShowDefaultBranchWorkspace: ui.alwaysShowDefaultBranchWorkspace !== false,
@@ -207,11 +206,19 @@ export function createUiHydrationActions(set: UISliceSet, _get: UISliceGet): Par
           }),
           customPets,
           // Why: fall back to default when the persisted id is unknown (e.g. custom pet removed elsewhere) so the overlay renders.
-          petId:
-            typeof petId === 'string' &&
-            (isBundledPetId(petId) || customPets.some((m) => m.id === petId))
-              ? petId
-              : DEFAULT_PET_ID,
+          petId: ((): string => {
+            const id = petId
+            if (typeof id !== 'string') {
+              return DEFAULT_PET_ID
+            }
+            if (isBundledPetId(id)) {
+              return id
+            }
+            if (customPets.some((m) => m.id === id)) {
+              return id
+            }
+            return DEFAULT_PET_ID
+          })(),
           dismissedUpdateVersion: ui.dismissedUpdateVersion ?? null,
           ...hydrateUnexpectedSignoutDismissal(s, ui.dismissedUnexpectedSignoutVersion),
           // Reject channels unknown to this build; activeChannel falls back only on null, otherwise leaking invalid values to listBuilds/controls.

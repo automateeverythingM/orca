@@ -174,7 +174,6 @@ export function buildRetractedMirroredTabSweepPatch(
     agentStatusEpoch: agentStatusPatch?.agentStatusEpoch ?? state.agentStatusEpoch,
     migrationUnsupportedByPtyId: state.migrationUnsupportedByPtyId ?? {},
     manuallyUnreadTurnsByPaneKey: state.manuallyUnreadTurnsByPaneKey ?? {},
-    completedSessionsByPaneKey: state.completedSessionsByPaneKey ?? {},
     paneForegroundAgentByPaneKey: state.paneForegroundAgentByPaneKey ?? {},
     recentlyClosedAgentStatusTabIds: state.recentlyClosedAgentStatusTabIds ?? {},
     recentlyRetiredAgentStatusPaneKeys: state.recentlyRetiredAgentStatusPaneKeys ?? {},

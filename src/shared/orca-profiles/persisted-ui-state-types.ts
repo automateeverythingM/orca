@@ -92,8 +92,6 @@ export type PersistedUIState = {
   hideDetachedHeadWorkspaces?: boolean
   /** Hide workspaces with known provenance from another paired device or the host UI. */
   hideWorkspacesFromOtherDevices?: boolean
-  /** Hide agent and chat session rows explicitly marked complete under workspaces in the sidebar. */
-  hideCompletedSessions?: boolean
   /** Keep each project's main workspace out of the "Hide sleeping" sweep. Absent means on (#8873). */
   alwaysShowDefaultBranchWorkspace?: boolean
   /** Per-worktree Explorer dotfile visibility. Missing entries inherit the default: show. */
@@ -196,8 +194,6 @@ export type PersistedUIState = {
   activityClearedAtByPaneKey?: Record<string, number>
   /** Renderer ui:set explicit unread turn stamps survive restart alongside acknowledgments and cutoffs. */
   manuallyUnreadTurnsByPaneKey?: Record<string, number>
-  /** Renderer ui:set timestamps for sessions explicitly marked complete by the user; a newer turn reopens them. */
-  completedSessionsByPaneKey?: Record<string, number>
   /** User-hidden setup-guide sidebar entry; a reversible declutter pref (Help menu stays available), not completion. */
   setupGuideSidebarDismissed?: boolean
   /** One-shot marker for the browser setup-guide milestone; profiles missing it are evaluated once in the renderer (completion needs runtime probes). */

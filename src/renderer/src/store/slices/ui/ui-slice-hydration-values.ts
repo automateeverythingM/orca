@@ -168,15 +168,11 @@ export function hydrateAgentReadState(
   ui: PersistedUIState
 ): Pick<
   UISlice,
-  | 'acknowledgedAgentsByPaneKey'
-  | 'activityClearedAtByPaneKey'
-  | 'manuallyUnreadTurnsByPaneKey'
-  | 'completedSessionsByPaneKey'
+  'acknowledgedAgentsByPaneKey' | 'activityClearedAtByPaneKey' | 'manuallyUnreadTurnsByPaneKey'
 > {
   return {
     acknowledgedAgentsByPaneKey: sanitizePaneKeyTimestampRecord(ui.acknowledgedAgentsByPaneKey),
     activityClearedAtByPaneKey: sanitizePaneKeyTimestampRecord(ui.activityClearedAtByPaneKey),
-    manuallyUnreadTurnsByPaneKey: sanitizePaneKeyTimestampRecord(ui.manuallyUnreadTurnsByPaneKey),
-    completedSessionsByPaneKey: sanitizePaneKeyTimestampRecord(ui.completedSessionsByPaneKey)
+    manuallyUnreadTurnsByPaneKey: sanitizePaneKeyTimestampRecord(ui.manuallyUnreadTurnsByPaneKey)
   }
 }

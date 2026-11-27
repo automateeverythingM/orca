@@ -7,7 +7,6 @@ import { WorktreeCardDetailSection } from './WorktreeCardDetailSection'
 import StatusIndicator from '../surface/StatusIndicator'
 import { useWorktreeActivityStatus } from '../activity/use-worktree-activity-status'
 import { useWorktreeAgentRows } from '../activity/useWorktreeAgentRows'
-import { useVisibleNonCompletedRows } from '../activity/worktree-completed-session-visibility'
 import {
   WORKTREE_CONTEXT_MENU_PORTAL_SCOPE_ATTR,
   WorktreeContextMenuPortalScope
@@ -51,7 +50,6 @@ export function WorktreeCardLineActivity({
   const activityHostId =
     hasHostCopies && runtimeOwner ? toRuntimeExecutionHostId(runtimeOwner) : executionHostId
   const agents = useWorktreeAgentRows(worktreeId, true, activityHostId)
-  const visibleAgents = useVisibleNonCompletedRows(agents)
   let status = workspaceStatus
   if (hasHostCopies) {
     // The bare-ID rollup cannot attribute terminal titles or permission to one copy.
@@ -63,7 +61,7 @@ export function WorktreeCardLineActivity({
     }
     status = rankWorktreeStatus('active', flags)
   }
-  if (visibleAgents.length === 0 && status !== 'permission') {
+  if (agents.length === 0 && status !== 'permission') {
     return null
   }
   return (

@@ -31,7 +31,6 @@ export const UI_STATE_DISPOSITIONS = {
   acknowledgedAgentsByPaneKey: moveDisposition(38, { note: 'Pane keys are kept.' }),
   activityClearedAtByPaneKey: moveDisposition(38, { note: 'Pane keys are kept.' }),
   manuallyUnreadTurnsByPaneKey: moveDisposition(38, { note: 'Pane keys are kept.' }),
-  completedSessionsByPaneKey: moveDisposition(38, { note: 'Pane keys are kept.' }),
   trustedOrcaHooks: notApplicableDisposition(
     40,
     'Kept by repoId, which the move keeps; wsl-moved-repo-ui-retention.ts stops the trust prune dropping it.'
@@ -108,7 +107,6 @@ export const UI_STATE_GLOBAL_FIELDS = [
   'hideCliCreatedWorkspaces',
   'hideDetachedHeadWorkspaces',
   'hideWorkspacesFromOtherDevices',
-  'hideCompletedSessions',
   'alwaysShowDefaultBranchWorkspace',
   'agentsHideWorkspacesFromOtherDevices',
   'agentsHideAutomationGeneratedWorkspaces',

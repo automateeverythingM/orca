@@ -44,7 +44,6 @@ export const SIDEBAR_VIEW_UI_FIELDS = [
   'hideCliCreatedWorkspaces',
   'hideDetachedHeadWorkspaces',
   'hideWorkspacesFromOtherDevices',
-  'hideCompletedSessions',
   'filterRepoIds',
   'collapsedGroups',
   'workspaceStatuses',

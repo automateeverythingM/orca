@@ -12,7 +12,6 @@ import './WorktreeCardMeta'
 import { hasWorktreeCardDetails } from '../metadata/WorktreeCardMetaBadges'
 import { usePromptCacheCountdownStartedAt } from '../activity/CacheTimer'
 import { useWorktreeAgentRows } from '../activity/useWorktreeAgentRows'
-import { useVisibleNonCompletedRows } from '../activity/worktree-completed-session-visibility'
 import type { WorktreeCardSecondaryDetailsInputs } from './worktree-card-secondary-details-inputs'
 import { useWorktreeBot } from '@/components/bots/use-worktree-bot'
 
@@ -70,11 +69,8 @@ export function useWorktreeCardSecondaryDetails({
     newCardStyle || showInlineAgentList,
     worktree.hostId
   )
-  const visibleInlineAgentRows = useVisibleNonCompletedRows(inlineAgentRows)
   const inlineAgentRowsVisible =
-    showInlineAgentList &&
-    agentActivityDisplayMode === 'compact' &&
-    visibleInlineAgentRows.length > 0
+    showInlineAgentList && agentActivityDisplayMode === 'compact' && inlineAgentRows.length > 0
   const showAggregateCacheTimer = !compactCards && !inlineAgentRowsVisible
   const handleOpenGitHubIssueInOrca = useCallback(
     (e: React.MouseEvent) => {

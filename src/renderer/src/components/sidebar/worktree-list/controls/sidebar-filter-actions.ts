@@ -18,7 +18,6 @@ export type SidebarFilterState = {
   hideCliCreatedWorkspaces: boolean
   hideDetachedHeadWorkspaces: boolean
   hideWorkspacesFromOtherDevices: boolean
-  hideCompletedSessions?: boolean
   /** Keeps each project's main workspace out of the "Hide sleeping" sweep; absent means on. */
   alwaysShowDefaultBranchWorkspace?: boolean
   visibleWorkspaceHostIds?: readonly ExecutionHostId[] | null
@@ -34,7 +33,6 @@ export function sidebarWorkspaceRowFilters(state: SidebarFilterState): Workspace
     hideCliCreatedWorkspaces: state.hideCliCreatedWorkspaces,
     hideDetachedHeadWorkspaces: state.hideDetachedHeadWorkspaces,
     hideWorkspacesFromOtherDevices: state.hideWorkspacesFromOtherDevices,
-    hideCompletedSessions: state.hideCompletedSessions === true,
     filterRepoIds: state.filterRepoIds,
     visibleHostIds: resolveVisibleWorkspaceHostIds(
       state.visibleWorkspaceHostIds,
@@ -55,7 +53,6 @@ export function selectSidebarFilterState(
     hideCliCreatedWorkspaces: state.hideCliCreatedWorkspaces,
     hideDetachedHeadWorkspaces: state.hideDetachedHeadWorkspaces,
     hideWorkspacesFromOtherDevices: state.hideWorkspacesFromOtherDevices,
-    hideCompletedSessions: state.hideCompletedSessions,
     alwaysShowDefaultBranchWorkspace: state.alwaysShowDefaultBranchWorkspace,
     visibleWorkspaceHostIds: state.visibleWorkspaceHostIds,
     workspaceHostScope: state.workspaceHostScope
@@ -75,7 +72,6 @@ export type SidebarFilterSetters = Pick<
   | 'setHideCliCreatedWorkspaces'
   | 'setHideDetachedHeadWorkspaces'
   | 'setHideWorkspacesFromOtherDevices'
-  | 'setHideCompletedSessions'
   | 'setFilterRepoIds'
   | 'setVisibleWorkspaceHostIds'
 >
@@ -105,8 +101,6 @@ const RESET_SIDEBAR_FILTER: Record<
     store.setHideWorkspacesFromOtherDevices(
       NO_WORKSPACE_ROW_FILTERS.hideWorkspacesFromOtherDevices
     ),
-  hideCompletedSessions: (store) =>
-    store.setHideCompletedSessions(NO_WORKSPACE_ROW_FILTERS.hideCompletedSessions),
   filterRepoIds: (store) => store.setFilterRepoIds([...NO_WORKSPACE_ROW_FILTERS.filterRepoIds]),
   visibleHostIds: (store) => store.setVisibleWorkspaceHostIds(null)
 }

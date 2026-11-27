@@ -8,14 +8,12 @@ import {
 } from '../../../../../../shared/bots/bot-sidebar-workspaces'
 import { overlapCutoutMask } from '@/lib/overlap-cutout-mask'
 import { useWorktreeAgentRows } from './useWorktreeAgentRows'
-import { useVisibleNonCompletedRows } from './worktree-completed-session-visibility'
 
 /** What a one-line card says about its agents; the hover card lists every one. */
 export function useWorktreeLineAgent(worktreeId: string): BotWorkspaceLineAgent | null {
   const rows = useWorktreeAgentRows(worktreeId)
-  const visibleRows = useVisibleNonCompletedRows(rows)
   return botWorkspaceLineAgent(
-    visibleRows.map((row) => ({
+    rows.map((row) => ({
       agentType: row.agentType,
       subagent: row.rowSource === 'subagent',
       state: row.state

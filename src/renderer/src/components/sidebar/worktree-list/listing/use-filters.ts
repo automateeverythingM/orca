@@ -97,9 +97,7 @@ const REVEAL_WORKSPACE: Record<keyof WorkspaceRowFilters, (context: RevealContex
     }
   },
   // Turning the exemption off only narrows; "Hide sleeping" above is what reveals.
-  alwaysShowDefaultBranchWorkspace: () => {},
-  // Hiding completed sessions only filters session rows inside a card, never the workspace itself.
-  hideCompletedSessions: () => {}
+  alwaysShowDefaultBranchWorkspace: () => {}
 }
 
 function getRevealTargetHostId(state: AppState, worktree: Worktree, repo: Repo | undefined) {

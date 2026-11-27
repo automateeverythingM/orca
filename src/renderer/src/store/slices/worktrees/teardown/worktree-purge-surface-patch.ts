@@ -68,7 +68,6 @@ export function buildWorktreePurgeSurfacePatch(
     acknowledgedAgentsByPaneKey: omitByPaneKeyTabPrefix(s.acknowledgedAgentsByPaneKey),
     activityClearedAtByPaneKey: omitByPaneKeyTabPrefix(s.activityClearedAtByPaneKey),
     manuallyUnreadTurnsByPaneKey: omitByPaneKeyTabPrefix(s.manuallyUnreadTurnsByPaneKey),
-    completedSessionsByPaneKey: omitByPaneKeyTabPrefix(s.completedSessionsByPaneKey),
     paneForegroundAgentByPaneKey: omitByPaneKeyTabPrefix(s.paneForegroundAgentByPaneKey),
     sleepingAgentSessionsByPaneKey: sleeping.sleepingAgentSessionsByPaneKey,
     ...removeTabsAttention(s, doomedTabIds),

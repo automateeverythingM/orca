@@ -145,7 +145,6 @@ export function usePersistedUIWriter(): void {
       hideCliCreatedWorkspaces: s.hideCliCreatedWorkspaces,
       hideDetachedHeadWorkspaces: s.hideDetachedHeadWorkspaces,
       hideWorkspacesFromOtherDevices: s.hideWorkspacesFromOtherDevices,
-      hideCompletedSessions: s.hideCompletedSessions,
       alwaysShowDefaultBranchWorkspace: s.alwaysShowDefaultBranchWorkspace,
       explorerDisplayRootByWorktree: s.explorerDisplayRootByWorktree,
       showDotfilesByWorktree: s.showDotfilesByWorktree,
@@ -156,9 +155,7 @@ export function usePersistedUIWriter(): void {
       // Retain Clear completed across restart.
       activityClearedAtByPaneKey: s.activityClearedAtByPaneKey,
       // Retain explicit mark-unread across restart.
-      manuallyUnreadTurnsByPaneKey: s.manuallyUnreadTurnsByPaneKey,
-      // Retain explicit mark-complete across restart.
-      completedSessionsByPaneKey: s.completedSessionsByPaneKey
+      manuallyUnreadTurnsByPaneKey: s.manuallyUnreadTurnsByPaneKey
     }))
   )
   useEffect(() => {

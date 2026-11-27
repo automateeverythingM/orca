@@ -12,10 +12,6 @@ import {
   agentStateProgressLabel,
   type AgentDotState
 } from '@/components/agent/status/AgentStateDot'
-import {
-  SessionCompleteIndicator,
-  useSessionCompletedState
-} from '@/components/agent/status/SessionCompleteControls'
 import { AgentTypeIcon } from '@/components/agent/icons/agent-type-icon'
 import { formatAgentTypeLabel } from '../../../../shared/agent-status/presentation/agent-type-label'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -158,9 +154,6 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
     [onActivate, agent]
   )
   const sendTargetRow = useAgentSendTargetRow(agent.paneKey, sendTargetStatus, onSendTargetClick)
-  const canToggleComplete = agent.rowSource !== 'subagent'
-  const { isCompleted, toggleCompleted } = useSessionCompletedState(agent.paneKey, agent.entry)
-  const completed = canToggleComplete && isCompleted
   const startedAt = agent.startedAt > 0 ? agent.startedAt : null
   const doneAt = lastEnteredDoneAt(agent)
   const conversationName = useAgentRowConversationName(agent)
@@ -249,8 +242,7 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
         expanded ? 'h-auto whitespace-pre-wrap break-words' : 'h-[1lh] truncate',
         isUnvisited ? 'font-semibold text-foreground' : 'font-normal text-muted-foreground',
         // Why: the selected-row fill washes out muted text — keep it readable.
-        highlighted && !isUnvisited && 'text-foreground/90',
-        completed && 'line-through opacity-65'
+        highlighted && !isUnvisited && 'text-foreground/90'
       )}
       title={displayLabel}
     >
@@ -318,29 +310,25 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
       ) : null}
       <div className="flex items-center gap-1.5">
         {/* Why: state dot sits in the leading gutter so the eye can scan one column for row state. */}
-        {completed ? (
-          <SessionCompleteIndicator size={stateDotSize} tooltipSide="top" />
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                className="inline-flex shrink-0 items-center justify-center"
-                aria-label={dotTooltipLabel}
-              >
-                <AgentStateDot
-                  state={dotState}
-                  size={stateDotSize}
-                  title={null}
-                  progress={presentation.progress}
-                  unread={isUnvisited}
-                />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="top" sideOffset={4}>
-              {dotTooltipLabel}
-            </TooltipContent>
-          </Tooltip>
-        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="inline-flex shrink-0 items-center justify-center"
+              aria-label={dotTooltipLabel}
+            >
+              <AgentStateDot
+                state={dotState}
+                size={stateDotSize}
+                title={null}
+                progress={presentation.progress}
+                unread={isUnvisited}
+              />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={4}>
+            {dotTooltipLabel}
+          </TooltipContent>
+        </Tooltip>
         {/* Why: subagent rows skip the icon — agentType holds a child's name, which AgentTypeIcon would draw as a misleading letter; nesting conveys identity. */}
         {!hideIdentityIcon && agent.rowSource !== 'subagent' && (
           <span className="inline-flex shrink-0" title={identityTitle}>
@@ -379,8 +367,6 @@ const DashboardAgentRow = React.memo(function DashboardAgentRow({
           expanded={expanded}
           hideExpand={hideExpand}
           hideDismiss={agent.rowSource === 'subagent'}
-          isCompleted={completed}
-          onToggleComplete={canToggleComplete ? toggleCompleted : undefined}
           sendTargetStatus={sendTargetStatus}
           onDismiss={onDismiss}
           onToggleExpanded={handleToggleExpanded}

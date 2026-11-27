@@ -204,8 +204,7 @@ const OPTION_ITEMS: Record<WorkspaceViewOptionKey, ComponentType<OptionItemProps
   ),
   hideDetachedHeadWorkspaces: () => (
     <WorkspaceFilterOptionRow optionKey="hideDetachedHeadWorkspaces" />
-  ),
-  hideCompletedSessions: () => <WorkspaceFilterOptionRow optionKey="hideCompletedSessions" />
+  )
 }
 
 function SectionHeading({ section }: { section: WorkspaceViewSection }): JSX.Element | null {

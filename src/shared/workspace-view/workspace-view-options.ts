@@ -141,8 +141,7 @@ export const WORKSPACE_VIEW_OPTIONS = [
     section: 'filters',
     label: 'Hide other-client workspaces'
   },
-  { key: 'hideDetachedHeadWorkspaces', section: 'filters', label: 'Hide detached HEAD' },
-  { key: 'hideCompletedSessions', section: 'filters', label: 'Hide completed sessions' }
+  { key: 'hideDetachedHeadWorkspaces', section: 'filters', label: 'Hide detached HEAD' }
 ] as const satisfies readonly { key: string; section: WorkspaceViewSection; label: string }[]
 
 export type WorkspaceViewOption = (typeof WORKSPACE_VIEW_OPTIONS)[number]
@@ -178,8 +177,7 @@ const SHOWN: Record<WorkspaceViewOptionKey, (context: WorkspaceViewOptionContext
   // Why the current value: an active filter must stay reachable to turn it off.
   hideWorkspacesFromOtherDevices: (context) =>
     context.mayHaveServerHosts || context.hideWorkspacesFromOtherDevices,
-  hideDetachedHeadWorkspaces: () => true,
-  hideCompletedSessions: () => true
+  hideDetachedHeadWorkspaces: () => true
 }
 
 /** The options a surface renders now, grouped by section in menu order; empty sections are dropped. */

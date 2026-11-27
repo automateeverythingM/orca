@@ -170,9 +170,6 @@ export type UISliceCore = {
   /** Session-local protection for turns explicitly marked unread. */
   manuallyUnreadTurnsByPaneKey: Record<string, number>
   clearManuallyUnreadTurns: (paneKeys: string[]) => void
-  /** User-marked session completion timestamps by paneKey; a newer non-boundary turn reopens the session. */
-  completedSessionsByPaneKey: Record<string, number>
-  setSessionCompleted: (paneKey: string, completed: boolean) => void
   activeView: TopLevelView
   previousViewBeforeTasks: Exclude<UiViewHistory, 'tasks'>
   previousViewBeforeSettings: Exclude<UiViewHistory, 'settings'>

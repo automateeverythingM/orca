@@ -2,7 +2,6 @@ import React, { useCallback, useMemo, useState } from 'react'
 import {
   CalendarClock,
   Check,
-  CheckCheck,
   FolderPlus,
   GitBranch,
   GitCommitHorizontal,
@@ -69,8 +68,6 @@ const SidebarFilter = React.memo(function SidebarFilter({
   const setHideCliCreatedWorkspaces = useAppStore((s) => s.setHideCliCreatedWorkspaces)
   const hideDetachedHeadWorkspaces = useAppStore((s) => s.hideDetachedHeadWorkspaces)
   const setHideDetachedHeadWorkspaces = useAppStore((s) => s.setHideDetachedHeadWorkspaces)
-  const hideCompletedSessions = useAppStore((s) => s.hideCompletedSessions)
-  const setHideCompletedSessions = useAppStore((s) => s.setHideCompletedSessions)
   const alwaysShowDefaultBranchWorkspace = useAppStore((s) => s.alwaysShowDefaultBranchWorkspace)
   const setAlwaysShowDefaultBranchWorkspace = useAppStore(
     (s) => s.setAlwaysShowDefaultBranchWorkspace
@@ -233,15 +230,6 @@ const SidebarFilter = React.memo(function SidebarFilter({
           label={t('auto.components.sidebar.SidebarFilter.detachedHead', 'Hide detached HEAD')}
           checked={hideDetachedHeadWorkspaces}
           onChange={setHideDetachedHeadWorkspaces}
-        />
-        <FilterToggleRow
-          icon={<CheckCheck className="size-3.5" />}
-          label={t(
-            'auto.components.sidebar.SidebarFilter.completedSessions',
-            'Hide completed sessions'
-          )}
-          checked={hideCompletedSessions}
-          onChange={setHideCompletedSessions}
         />
 
         {canFilterRepos && (
