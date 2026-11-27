@@ -5,7 +5,7 @@ import {
 } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { app, BrowserWindow, nativeImage } from 'electron'
-import classicIcon from '../../../../resources/icon.png?asset'
+import { packagedClassicIcon as classicIcon } from './mac-fork-build'
 import classicDevIcon from '../../../../resources/icon-dev.png?asset'
 import classicDevMacIcon from '../../../../resources/icon-dev-mac.png?asset'
 import watercolorIcon from '../../../../resources/app-icons/orca-watercolor.png?asset'

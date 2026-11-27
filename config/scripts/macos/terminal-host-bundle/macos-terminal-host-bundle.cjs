@@ -21,6 +21,10 @@ const {
 
 const MAC_TERMINAL_HOST_NAME = 'Orca Agents'
 const MAC_TERMINAL_HOST_EXECUTABLE = 'Orca Agents'
+// Shown in privacy prompts; a fork build (its own bundle ID) says so. The bundle and executable keep their names.
+function macTerminalHostDisplayName(appId) {
+  return appId === 'com.stablyai.orca' ? MAC_TERMINAL_HOST_NAME : 'Orca Fork Agents'
+}
 const macTerminalHostSignIgnore = [`/Contents/Helpers/${MAC_TERMINAL_HOST_NAME}\\.app(/|$)`]
 const NODE_PTY_FILES = [
   'package.json',
@@ -212,8 +216,8 @@ function buildMacTerminalHostInfo({ appInfo, usageDescriptions, minimumOs }) {
   return {
     ...usageDescriptions,
     CFBundleIdentifier: appInfo.CFBundleIdentifier,
-    CFBundleName: MAC_TERMINAL_HOST_NAME,
-    CFBundleDisplayName: MAC_TERMINAL_HOST_NAME,
+    CFBundleName: macTerminalHostDisplayName(appInfo.CFBundleIdentifier),
+    CFBundleDisplayName: macTerminalHostDisplayName(appInfo.CFBundleIdentifier),
     CFBundleExecutable: MAC_TERMINAL_HOST_EXECUTABLE,
     CFBundlePackageType: 'APPL',
     CFBundleInfoDictionaryVersion: '6.0',
@@ -229,8 +233,8 @@ function buildMacTerminalHostInfo({ appInfo, usageDescriptions, minimumOs }) {
 function findMacTerminalHostInfoProblems(info, { appId, usageDescriptions, minimumOs }) {
   const problems = []
   for (const [key, expected] of Object.entries({
-    CFBundleName: MAC_TERMINAL_HOST_NAME,
-    CFBundleDisplayName: MAC_TERMINAL_HOST_NAME,
+    CFBundleName: macTerminalHostDisplayName(appId),
+    CFBundleDisplayName: macTerminalHostDisplayName(appId),
     CFBundleExecutable: MAC_TERMINAL_HOST_EXECUTABLE
   })) {
     if (info[key] !== expected) {

@@ -138,6 +138,10 @@ const devChannelRepo = isHourlyChannel
 // flip between the two (Desktop/Documents prompts after every install). Local builds may take
 // their own ID (`com.stablyai.orca.dev.*` stays trusted by the computer-use helper); release never.
 const appId = (!isMacRelease && process.env.ORCA_LOCAL_APP_ID) || 'com.stablyai.orca'
+// A local build with its own ID is the fork: its own name and icon, so it is never mistaken for the release.
+const isForkBuild = appId !== 'com.stablyai.orca'
+const macIcon = isForkBuild ? 'resources/build/icon-fork.icns' : 'resources/build/icon.icns'
+const FORK_DISPLAY_NAME = 'Orca Fork'
 const featureWallResources = {
   from: 'resources/onboarding/feature-wall',
   to: 'onboarding/feature-wall'
@@ -711,7 +715,7 @@ module.exports = {
     // Set for ONNX Runtime (#22690, #39135), now gone; transcribe-cpp needs 11.0, Electron 12.0. Kept until
     // Kelvin decides. The update-manifest gate reads this from Info.plist.
     minimumSystemVersion: '13.4',
-    icon: 'resources/build/icon.icns',
+    icon: macIcon,
     entitlements: 'resources/build/entitlements.mac.plist',
     entitlementsInherit: 'resources/build/entitlements.mac.plist',
     ...(isMacRelease
@@ -724,7 +728,9 @@ module.exports = {
       '/Contents/Resources/agent-browser-darwin-[^/]+$',
       ...macTerminalHostSignIgnore
     ],
-    extendInfo: macUsageDescriptions,
+    extendInfo: isForkBuild
+      ? { ...macUsageDescriptions, CFBundleName: FORK_DISPLAY_NAME, CFBundleDisplayName: FORK_DISPLAY_NAME }
+      : macUsageDescriptions,
     // Local macOS builds need no release credentials; hardening/notarization stay on explicit release paths.
     hardenedRuntime: isMacRelease,
     // Dev notarization preserves TCC identifier/team identity across cdhash changes; unticketed hourly updates otherwise lose folder grants with EPERM and no prompt.
@@ -953,7 +959,7 @@ async function packageMacTerminalHost(appPath, context) {
   await buildMacTerminalHost({
     appPath,
     arch,
-    iconPath: resolve(__dirname, '../resources/build/icon.icns'),
+    iconPath: resolve(__dirname, '..', macIcon),
     entitlementsPath: resolve(__dirname, '../resources/build/entitlements.mac.plist'),
     usageDescriptions: macUsageDescriptions,
     signCode: (path, { entitlements }) =>
