@@ -729,7 +729,8 @@ module.exports = {
       ...macTerminalHostSignIgnore
     ],
     extendInfo: isForkBuild
-      ? { ...macUsageDescriptions, CFBundleName: FORK_DISPLAY_NAME, CFBundleDisplayName: FORK_DISPLAY_NAME }
+      ? // CFBundleName must stay "Orca": Electron finds "<CFBundleName> Helper.app" at startup.
+        { ...macUsageDescriptions, CFBundleDisplayName: FORK_DISPLAY_NAME }
       : macUsageDescriptions,
     // Local macOS builds need no release credentials; hardening/notarization stay on explicit release paths.
     hardenedRuntime: isMacRelease,

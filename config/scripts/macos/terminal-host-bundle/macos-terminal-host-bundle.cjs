@@ -216,7 +216,7 @@ function buildMacTerminalHostInfo({ appInfo, usageDescriptions, minimumOs }) {
   return {
     ...usageDescriptions,
     CFBundleIdentifier: appInfo.CFBundleIdentifier,
-    CFBundleName: macTerminalHostDisplayName(appInfo.CFBundleIdentifier),
+    CFBundleName: MAC_TERMINAL_HOST_NAME,
     CFBundleDisplayName: macTerminalHostDisplayName(appInfo.CFBundleIdentifier),
     CFBundleExecutable: MAC_TERMINAL_HOST_EXECUTABLE,
     CFBundlePackageType: 'APPL',
@@ -233,7 +233,7 @@ function buildMacTerminalHostInfo({ appInfo, usageDescriptions, minimumOs }) {
 function findMacTerminalHostInfoProblems(info, { appId, usageDescriptions, minimumOs }) {
   const problems = []
   for (const [key, expected] of Object.entries({
-    CFBundleName: macTerminalHostDisplayName(appId),
+    CFBundleName: MAC_TERMINAL_HOST_NAME,
     CFBundleDisplayName: macTerminalHostDisplayName(appId),
     CFBundleExecutable: MAC_TERMINAL_HOST_EXECUTABLE
   })) {
