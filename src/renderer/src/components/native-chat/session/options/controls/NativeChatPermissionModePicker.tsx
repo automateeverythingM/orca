@@ -217,7 +217,11 @@ function NativeChatPermissionModePickerInner({
               }
             >
               {iconOnly ? (
-                <TriggerIcon className="size-3.5 shrink-0" aria-hidden />
+                // Fork: Full access keeps its caution tint while closed, so bypass is visible at a glance.
+                <TriggerIcon
+                  className={`size-3.5 shrink-0 ${shown === 'full-access' ? 'text-status-warning' : ''}`}
+                  aria-hidden
+                />
               ) : isAgentChatPermissionMode(shown) ? (
                 <NativeChatPermissionModeName mode={shown} label={label} truncate />
               ) : (
