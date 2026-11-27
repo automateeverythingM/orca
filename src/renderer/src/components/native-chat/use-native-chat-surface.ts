@@ -138,9 +138,27 @@ export function useNativeChatSurface({
   // Tie disposal to pane lifetime, not Activity visibility, so hiding/switching tabs never kills or bricks the store.
   useNativeChatPaneLifetimeEffect(useCallback(() => () => codeRunStore?.dispose(), [codeRunStore]))
   const openInTerminal = commandTerminal?.open
+  const sendToChat = useCallback(
+    (text: string): boolean => {
+      const composer = composerRef.current
+      if (!composer) {
+        return false
+      }
+      if (composer.sendText?.(text)) {
+        return true
+      }
+      if (composer.acceptsText()) {
+        composer.appendText(text, { glow: true })
+        composer.focus({ caretAtEnd: true })
+        return true
+      }
+      return false
+    },
+    [composerRef]
+  )
   const codeRunner = useMemo<NativeChatCodeRunner | undefined>(
-    () => (codeRunStore ? { store: codeRunStore, openInTerminal } : undefined),
-    [codeRunStore, openInTerminal]
+    () => (codeRunStore ? { store: codeRunStore, openInTerminal, sendToChat } : undefined),
+    [codeRunStore, openInTerminal, sendToChat]
   )
   const rootInput = useNativeChatRootInputRouting({
     tabId,

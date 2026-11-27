@@ -23,6 +23,7 @@ import type {
   NativeChatComposerHandle
 } from '../../composer/native-chat-composer-types'
 import type { NativeChatStructuredComposerTransport } from '../../composer/submit/native-chat-structured-composer-transport'
+import type { NativeChatStructuredComposerSend } from '../../composer/submit/use-native-chat-structured-composer-send'
 
 export function useNativeChatComposerEditSession({
   editSession,
@@ -48,7 +49,7 @@ export function useNativeChatComposerEditSession({
   draftScopeKey: string
   agent: AgentType
   structuredTransport: NativeChatStructuredComposerTransport | undefined
-  sendStructured: (text: string) => void
+  sendStructured: NativeChatStructuredComposerSend
   ptyCommandRouting: Parameters<typeof useNativeChatPickerCommandDispatch>[0]
   setNotice: (text: string) => void
   disabled: boolean
@@ -130,8 +131,18 @@ export function useNativeChatComposerEditSession({
     [disabled, editSession, sendHeld, sendOrQueue]
   )
   const submit = useLatestHandler(() => send())
+  const sendText = useLatestHandler((text: string): boolean => {
+    if (disabled || editSession || !text.trim()) {
+      return false
+    }
+    if (structuredTransport) {
+      void sendStructured(text, [])
+      return true
+    }
+    return handle.current?.resend?.(text, []) ?? false
+  })
   // The pane's own handle object, so its identity changes only when that handle does.
-  useImperativeHandle(ref, () => Object.assign(handle.current!, { submit }))
+  useImperativeHandle(ref, () => Object.assign(handle.current!, { submit, sendText }))
   const chooseEditItem = useCallback(
     (item: Parameters<typeof completeItem>[0]) => {
       if (item.kind === 'command' && refuseEditCommand(`/${item.name}`)) {

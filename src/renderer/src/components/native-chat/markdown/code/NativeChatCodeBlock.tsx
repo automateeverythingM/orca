@@ -17,7 +17,9 @@ import { NativeChatMarkdownCodeBlockContext } from '../native-chat-markdown-code
 import { useNativeChatDisclosure } from '../../messages/disclosure/native-chat-disclosure-store'
 import { NativeChatHighlightedCode } from './NativeChatHighlightedCode'
 import { NativeChatHtmlPreview, NativeChatHtmlViewToggle } from './NativeChatHtmlPreview'
-import { NativeChatCodeRunControls, NativeChatCodeRunOutput } from './NativeChatCodeRunOutput'
+import { NativeChatCodeRunControls } from './NativeChatCodeRunControls'
+import { NativeChatCodeRunOutput } from './NativeChatCodeRunOutput'
+import { formatCodeBlockRunChatPrompt } from '../../../../../../shared/native-chat/code-block-run/native-chat-code-block-output'
 import { isHtmlDocumentCodeBlock } from '../../../../../../shared/markdown/html-document-fences'
 import {
   isRunnableShellLanguage,
@@ -109,6 +111,24 @@ export function NativeChatCodeBlock({
     [openInTerminal, runnableCommand]
   )
 
+  const sendToChat = codeRunner?.sendToChat
+  const handleSendToChat = useCallback(() => {
+    if (!sendToChat || !runRecord || runRecord.status === 'running' || !runnableCommand) {
+      return false
+    }
+    return sendToChat(
+      formatCodeBlockRunChatPrompt({
+        command: runnableCommand,
+        language,
+        status: runRecord.status,
+        exitCode: runRecord.exitCode,
+        signal: runRecord.signal,
+        output: runRecord.output,
+        error: runRecord.error
+      })
+    )
+  }, [language, runRecord, runnableCommand, sendToChat])
+
   const actions = code ? (
     <>
       {codeRunner && runnableCommand ? (
@@ -189,6 +209,7 @@ export function NativeChatCodeBlock({
           onRun={handleRunInline}
           onStop={handleStopInline}
           onClear={handleClearInline}
+          onSendToChat={sendToChat ? handleSendToChat : undefined}
         />
       ) : null}
       {code && !language ? (

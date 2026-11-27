@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   appendBoundedCodeBlockOutput,
+  formatCodeBlockRunChatPrompt,
   formatCodeBlockRunDuration,
   sanitizeCodeBlockRunChunk
 } from './native-chat-code-block-output'
@@ -27,5 +28,32 @@ describe('native-chat code block run output', () => {
     expect(formatCodeBlockRunDuration(1_250)).toBe('1.3s')
     expect(formatCodeBlockRunDuration(61_000)).toBe('1m 1s')
     expect(formatCodeBlockRunDuration(119_600)).toBe('2m 0s')
+  })
+
+  it('formats failed and succeeded prompts with bounded output tails', () => {
+    const failed = formatCodeBlockRunChatPrompt({
+      command: 'pnpm test',
+      language: 'bash',
+      status: 'failed',
+      exitCode: 1,
+      signal: null,
+      output: '0123456789abcdefghij',
+      maxOutputChars: 10
+    })
+    expect(failed).toContain('This command failed (exit 1):')
+    expect(failed).toContain('```bash\npnpm test\n```')
+    expect(failed).toContain('... [earlier output omitted]\nabcdefghij')
+    expect(failed).toContain('Please diagnose the failure and fix it.')
+
+    const succeeded = formatCodeBlockRunChatPrompt({
+      command: 'echo ok',
+      status: 'succeeded',
+      exitCode: 0,
+      signal: null,
+      output: ''
+    })
+    expect(succeeded).toContain('I ran this command and it succeeded:')
+    expect(succeeded).toContain('Output: (no output)')
+    expect(succeeded).not.toContain('Please diagnose')
   })
 })

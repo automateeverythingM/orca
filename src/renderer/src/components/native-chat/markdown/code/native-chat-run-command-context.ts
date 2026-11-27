@@ -6,6 +6,8 @@ export type NativeChatCodeRunner = {
   store: NativeChatCodeBlockRunStore
   /** Open the command in a full interactive terminal tab on the chat's host. */
   openInTerminal?: (command: string) => Promise<boolean>
+  /** Send a run's command and output back to the chat agent. */
+  sendToChat?: (text: string) => boolean
 }
 
 /** Runs shell code blocks on the chat's host; undefined outside a workspace chat. */

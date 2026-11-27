@@ -23332,7 +23332,10 @@
       "commandRunning": "Running…",
       "commandSucceeded": "Succeeded",
       "commandFailed": "Failed",
-      "commandStopped": "Stopped"
+      "commandStopped": "Stopped",
+      "sentToAgent": "Sent to agent",
+      "fixWithAgent": "Fix with agent",
+      "sendOutputToChat": "Send result to chat"
     },
     "tab": {
       "bar": {

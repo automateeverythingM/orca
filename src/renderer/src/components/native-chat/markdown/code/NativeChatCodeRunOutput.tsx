@@ -4,11 +4,10 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  CornerDownLeft,
   Loader2,
-  Play,
   RotateCw,
   Square,
-  Terminal,
   X,
   XCircle
 } from 'lucide-react'
@@ -17,106 +16,8 @@ import { cn } from '@/lib/class-names'
 import { formatCodeBlockRunDuration } from '../../../../../../shared/native-chat/code-block-run/native-chat-code-block-output'
 import { NativeChatCopyButton } from '../../messages/actions/NativeChatCopyButton'
 import { useNativeChatPaneLifetimeEffect } from '../../pane/ownership/native-chat-pane-lifetime'
+import { CODE_RUN_ACTION_BUTTON_CLASS } from './NativeChatCodeRunControls'
 import type { NativeChatCodeBlockRunRecord } from './native-chat-code-run-store'
-
-const ACTION_BUTTON_CLASS =
-  'flex size-6 shrink-0 items-center justify-center rounded-md text-chat-foreground-faint transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
-
-export function NativeChatCodeRunControls({
-  running,
-  onRun,
-  onStop,
-  onOpenInTerminal
-}: {
-  running: boolean
-  onRun: () => void
-  onStop: () => void
-  onOpenInTerminal?: () => Promise<boolean>
-}): React.JSX.Element {
-  const t = useTranslate()
-  const runLabel = running
-    ? t('components.native-chat.stopCommand', 'Stop command')
-    : t('components.native-chat.runCommand', 'Run command')
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={running ? onStop : onRun}
-        aria-label={runLabel}
-        title={runLabel}
-        className={cn(ACTION_BUTTON_CLASS, running && 'text-destructive hover:text-destructive')}
-      >
-        {running ? <Square className="size-3 fill-current" /> : <Play className="size-3.5" />}
-      </button>
-      {onOpenInTerminal ? (
-        <NativeChatCodeTerminalButton onOpenInTerminal={onOpenInTerminal} />
-      ) : null}
-    </>
-  )
-}
-
-function NativeChatCodeTerminalButton({
-  onOpenInTerminal
-}: {
-  onOpenInTerminal: () => Promise<boolean>
-}): React.JSX.Element {
-  const t = useTranslate()
-  const [opening, setOpening] = useState(false)
-  const [opened, setOpened] = useState(false)
-  const resetTimerRef = useRef<number | null>(null)
-
-  useNativeChatPaneLifetimeEffect(
-    useCallback(() => {
-      return () => {
-        if (resetTimerRef.current !== null) {
-          window.clearTimeout(resetTimerRef.current)
-        }
-      }
-    }, [])
-  )
-
-  const handleOpen = useCallback(() => {
-    if (opening) {
-      return
-    }
-    setOpening(true)
-    void onOpenInTerminal()
-      .then((didOpen) => {
-        if (!didOpen) {
-          return
-        }
-        setOpened(true)
-        if (resetTimerRef.current !== null) {
-          window.clearTimeout(resetTimerRef.current)
-        }
-        resetTimerRef.current = window.setTimeout(() => {
-          resetTimerRef.current = null
-          setOpened(false)
-        }, 1500)
-      })
-      .finally(() => {
-        setOpening(false)
-      })
-  }, [onOpenInTerminal, opening])
-
-  const label = opened
-    ? t('components.native-chat.ranInTerminal', 'Opened in terminal')
-    : t('components.native-chat.openInTerminal', 'Open in terminal')
-
-  return (
-    <button
-      type="button"
-      onClick={handleOpen}
-      disabled={opening}
-      aria-label={label}
-      title={label}
-      className={cn(ACTION_BUTTON_CLASS, opened && 'text-status-success')}
-    >
-      {opened ? <Check className="size-3.5" /> : <Terminal className="size-3.5" />}
-    </button>
-  )
-}
 
 export function NativeChatCodeRunOutput({
   record,
@@ -124,7 +25,8 @@ export function NativeChatCodeRunOutput({
   onToggleExpanded,
   onRun,
   onStop,
-  onClear
+  onClear,
+  onSendToChat
 }: {
   record: NativeChatCodeBlockRunRecord
   expanded: boolean
@@ -132,6 +34,7 @@ export function NativeChatCodeRunOutput({
   onRun: () => void
   onStop: () => void
   onClear: () => void
+  onSendToChat?: () => boolean
 }): React.JSX.Element {
   const t = useTranslate()
   const outputRef = useRef<HTMLPreElement | null>(null)
@@ -156,19 +59,19 @@ export function NativeChatCodeRunOutput({
   }, [expanded, record.output, record.status])
 
   const isRunning = record.status === 'running'
+  const isFailed = record.status === 'failed'
   const hasOutput = record.output.length > 0
   const hasError = Boolean(record.error)
   const showEmptyNotice = !isRunning && !hasOutput && !hasError
   const hasBody = hasOutput || hasError || showEmptyNotice
 
-  const failureDetail =
-    record.status === 'failed'
-      ? record.exitCode !== null
-        ? t('components.native-chat.exitCode', 'exit {{code}}', { code: record.exitCode })
-        : record.signal
-          ? record.signal
-          : null
-      : null
+  const failureDetail = isFailed
+    ? record.exitCode !== null
+      ? t('components.native-chat.exitCode', 'exit {{code}}', { code: record.exitCode })
+      : record.signal
+        ? record.signal
+        : null
+    : null
 
   return (
     <div
@@ -180,7 +83,7 @@ export function NativeChatCodeRunOutput({
           type="button"
           onClick={onToggleExpanded}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-chat-foreground-faint transition-colors hover:text-chat-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left text-chat-foreground-faint transition-colors hover:text-chat-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {expanded ? (
             <ChevronDown className="size-3.5 shrink-0" />
@@ -204,13 +107,19 @@ export function NativeChatCodeRunOutput({
         </button>
 
         <div className="flex shrink-0 items-center gap-0.5">
+          {!isRunning && onSendToChat ? (
+            <SendRunResultButton failed={isFailed} onSend={onSendToChat} />
+          ) : null}
           {isRunning ? (
             <button
               type="button"
               onClick={onStop}
               aria-label={t('components.native-chat.stopCommand', 'Stop command')}
               title={t('components.native-chat.stopCommand', 'Stop command')}
-              className={cn(ACTION_BUTTON_CLASS, 'text-destructive hover:text-destructive')}
+              className={cn(
+                CODE_RUN_ACTION_BUTTON_CLASS,
+                'text-destructive hover:text-destructive'
+              )}
             >
               <Square className="size-3 fill-current" />
             </button>
@@ -220,7 +129,7 @@ export function NativeChatCodeRunOutput({
               onClick={onRun}
               aria-label={t('components.native-chat.rerunCommand', 'Run again')}
               title={t('components.native-chat.rerunCommand', 'Run again')}
-              className={ACTION_BUTTON_CLASS}
+              className={CODE_RUN_ACTION_BUTTON_CLASS}
             >
               <RotateCw className="size-3.5" />
             </button>
@@ -237,7 +146,7 @@ export function NativeChatCodeRunOutput({
             onClick={onClear}
             aria-label={t('components.native-chat.dismissOutput', 'Dismiss output')}
             title={t('components.native-chat.dismissOutput', 'Dismiss output')}
-            className={ACTION_BUTTON_CLASS}
+            className={CODE_RUN_ACTION_BUTTON_CLASS}
           >
             <X className="size-3.5" />
           </button>
@@ -275,6 +184,79 @@ export function NativeChatCodeRunOutput({
         </div>
       ) : null}
     </div>
+  )
+}
+
+function SendRunResultButton({
+  failed,
+  onSend
+}: {
+  failed: boolean
+  onSend: () => boolean
+}): React.JSX.Element {
+  const t = useTranslate()
+  const [sent, setSent] = useState(false)
+  const resetTimerRef = useRef<number | null>(null)
+
+  useNativeChatPaneLifetimeEffect(
+    useCallback(() => {
+      return () => {
+        if (resetTimerRef.current !== null) {
+          window.clearTimeout(resetTimerRef.current)
+        }
+      }
+    }, [])
+  )
+
+  const handleClick = useCallback(() => {
+    if (!onSend()) {
+      return
+    }
+    setSent(true)
+    if (resetTimerRef.current !== null) {
+      window.clearTimeout(resetTimerRef.current)
+    }
+    resetTimerRef.current = window.setTimeout(() => {
+      resetTimerRef.current = null
+      setSent(false)
+    }, 1500)
+  }, [onSend])
+
+  if (failed) {
+    const label = sent
+      ? t('components.native-chat.sentToAgent', 'Sent to agent')
+      : t('components.native-chat.fixWithAgent', 'Fix with agent')
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        aria-label={label}
+        title={label}
+        className={cn(
+          'mr-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-chat-code-border bg-chat-canvas/60 px-2 text-xs font-medium text-chat-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          sent && 'text-status-success'
+        )}
+      >
+        {sent ? <Check className="size-3" /> : <CornerDownLeft className="size-3" />}
+        <span>{label}</span>
+      </button>
+    )
+  }
+
+  const label = sent
+    ? t('components.native-chat.sentToAgent', 'Sent to agent')
+    : t('components.native-chat.sendOutputToChat', 'Send result to chat')
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      aria-label={label}
+      title={label}
+      className={cn(CODE_RUN_ACTION_BUTTON_CLASS, sent && 'text-status-success')}
+    >
+      {sent ? <Check className="size-3.5" /> : <CornerDownLeft className="size-3.5" />}
+    </button>
   )
 }
 

@@ -78,7 +78,8 @@ function makeFixtureRunner(initial?: NativeChatCodeBlockRunRecord) {
   const records = initial ? new Map([['row-1:1', initial]]) : undefined
   return {
     store: createNativeChatCodeBlockRunStore(async () => ({ unsubscribe: () => {} }), records),
-    openInTerminal: async () => true
+    openInTerminal: async () => true,
+    sendToChat: () => true
   }
 }
 
