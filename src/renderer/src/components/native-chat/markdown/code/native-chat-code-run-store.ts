@@ -44,7 +44,7 @@ export function createNativeChatCodeBlockRunStore(
   const activeSubscriptions = new Map<string, { runId: number; unsubscribe: () => void }>()
   const listenersByKey = new Map<string, Set<() => void>>()
   let nextRunId = 1
-  let disposed = false
+  let epoch = 0
 
   const notify = (blockKey: string): void => {
     const listeners = listenersByKey.get(blockKey)
@@ -84,11 +84,9 @@ export function createNativeChatCodeBlockRunStore(
   }
 
   const run = ({ blockKey, command, language }: NativeChatCodeBlockRunStartArgs): void => {
-    if (disposed) {
-      return
-    }
     cancelActive(blockKey)
     const runId = nextRunId++
+    const runEpoch = epoch
     const startedAt = Date.now()
     let settled = false
 
@@ -103,7 +101,7 @@ export function createNativeChatCodeBlockRunStore(
       durationMs: null
     })
 
-    const isCurrent = (): boolean => !disposed && records.get(blockKey)?.runId === runId
+    const isCurrent = (): boolean => epoch === runEpoch && records.get(blockKey)?.runId === runId
 
     const finishWithFailure = (message: string): void => {
       if (settled || !isCurrent()) {
@@ -207,7 +205,7 @@ export function createNativeChatCodeBlockRunStore(
   }
 
   const dispose = (): void => {
-    disposed = true
+    epoch += 1
     for (const active of activeSubscriptions.values()) {
       try {
         active.unsubscribe()

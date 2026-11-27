@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -13,6 +12,7 @@ import { useNativeChatHostCommandTerminal } from './host-access/native-chat-host
 import { createNativeChatCodeBlockRunStore } from './markdown/code/native-chat-code-run-store'
 import { createRuntimeCodeBlockRunTransport } from './markdown/code/native-chat-code-run-transport'
 import type { NativeChatCodeRunner } from './markdown/code/native-chat-run-command-context'
+import { useNativeChatPaneLifetimeEffect } from './pane/ownership/native-chat-pane-lifetime'
 import type { NativeChatSessionHistoryScope } from './native-chat-session-history-scope'
 import { formatShortcutLabel } from '@/lib/keyboard/useShortcutLabel'
 import { getShortcutPlatform } from '@/lib/keyboard/shortcut-platform'
@@ -135,7 +135,8 @@ export function useNativeChatSurface({
         : null,
     [commandHostTarget, commandWorktreeId, commandCwd]
   )
-  useEffect(() => () => codeRunStore?.dispose(), [codeRunStore])
+  // Tie disposal to pane lifetime, not Activity visibility, so hiding/switching tabs never kills or bricks the store.
+  useNativeChatPaneLifetimeEffect(useCallback(() => () => codeRunStore?.dispose(), [codeRunStore]))
   const openInTerminal = commandTerminal?.open
   const codeRunner = useMemo<NativeChatCodeRunner | undefined>(
     () => (codeRunStore ? { store: codeRunStore, openInTerminal } : undefined),
