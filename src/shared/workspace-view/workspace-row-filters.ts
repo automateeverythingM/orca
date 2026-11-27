@@ -12,6 +12,7 @@ export type WorkspaceRowFilters = WorkspaceKindSwitches & {
   /** Keeps each project's main workspace out of the "Hide sleeping" sweep. Absent means on (#8873). */
   alwaysShowDefaultBranchWorkspace?: boolean
   hideWorkspacesFromOtherDevices: boolean
+  hideCompletedSessions: boolean
   filterRepoIds: readonly string[]
   /** The hosts shown; null shows every host. */
   visibleHostIds: readonly ExecutionHostId[] | null
@@ -26,6 +27,7 @@ export const WORKSPACE_ROW_FILTER_UI_FIELDS = {
   hideCliCreatedWorkspaces: 'hideCliCreatedWorkspaces',
   hideDetachedHeadWorkspaces: 'hideDetachedHeadWorkspaces',
   hideWorkspacesFromOtherDevices: 'hideWorkspacesFromOtherDevices',
+  hideCompletedSessions: 'hideCompletedSessions',
   filterRepoIds: 'filterRepoIds',
   visibleHostIds: 'visibleWorkspaceHostIds'
 } as const satisfies { [Key in keyof WorkspaceRowFilters]: keyof PersistedUIState }
@@ -44,6 +46,7 @@ export const NO_WORKSPACE_ROW_FILTERS: WorkspaceRowFilters = {
   hideCliCreatedWorkspaces: false,
   hideDetachedHeadWorkspaces: false,
   hideWorkspacesFromOtherDevices: false,
+  hideCompletedSessions: false,
   filterRepoIds: [],
   visibleHostIds: null
 }

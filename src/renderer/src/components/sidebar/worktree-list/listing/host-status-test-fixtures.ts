@@ -99,6 +99,7 @@ export const visibilityArgs: Parameters<typeof useVisibleSidebarWorktrees>[0] = 
     hideCliCreatedWorkspaces: false,
     hideDetachedHeadWorkspaces: false,
     hideWorkspacesFromOtherDevices: false,
+    hideCompletedSessions: false,
     alwaysShowDefaultBranchWorkspace: true,
     visibleWorkspaceHostIds: null,
     workspaceHostScope: 'all'

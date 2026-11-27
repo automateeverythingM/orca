@@ -136,6 +136,7 @@ export const hostViewSettingsSchema = z
         'hideWorkspacesFromOtherDevices',
         z.boolean()
       ),
+      hideCompletedSessions: salvagedOptional('hideCompletedSessions', z.boolean()),
       projectOrderBy: salvagedOptional('projectOrderBy', z.enum(WORKSPACE_PROJECT_ORDER_ARMS)),
       // Kept as strings: a property a newer desktop adds is carried back unchanged on write.
       worktreeCardProperties: salvagedOptional('worktreeCardProperties', z.array(z.string())),

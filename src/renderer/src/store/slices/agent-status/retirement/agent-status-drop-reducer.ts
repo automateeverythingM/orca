@@ -23,6 +23,7 @@ export type AgentStatusTabPrefixDropState = Pick<
   | 'agentStatusEpoch'
   | 'migrationUnsupportedByPtyId'
   | 'manuallyUnreadTurnsByPaneKey'
+  | 'completedSessionsByPaneKey'
   | 'recentlyClosedAgentStatusTabIds'
   | 'recentlyRetiredAgentStatusPaneKeys'
   | 'sortEpoch'
@@ -108,6 +109,15 @@ export function buildAgentStatusTabPrefixDropPatch(
             tabIdPrefix,
             completedOrphanKeySet
           )
+    const nextCompleted = opts?.preserveActivityClearedState
+      ? s.completedSessionsByPaneKey
+      : opts?.paneKeys
+        ? removePaneKeys(s.completedSessionsByPaneKey, opts.paneKeys)
+        : removePaneKeysByTabPrefix(
+            s.completedSessionsByPaneKey,
+            tabIdPrefix,
+            completedOrphanKeySet
+          )
 
     if (liveKeys.length === 0 && launchConfigKeys.length === 0 && !migrationUnsupported.changed) {
       if (nextAck !== s.acknowledgedAgentsByPaneKey) {
@@ -118,6 +128,9 @@ export function buildAgentStatusTabPrefixDropPatch(
             : {}),
           ...(nextManualUnread !== s.manuallyUnreadTurnsByPaneKey
             ? { manuallyUnreadTurnsByPaneKey: nextManualUnread }
+            : {}),
+          ...(nextCompleted !== s.completedSessionsByPaneKey
+            ? { completedSessionsByPaneKey: nextCompleted }
             : {}),
           agentConversationsByPaneKey: nextConversations,
           recentlyClosedAgentStatusTabIds: nextClosedTabs,
@@ -133,6 +146,9 @@ export function buildAgentStatusTabPrefixDropPatch(
           : {}),
         ...(nextManualUnread !== s.manuallyUnreadTurnsByPaneKey
           ? { manuallyUnreadTurnsByPaneKey: nextManualUnread }
+          : {}),
+        ...(nextCompleted !== s.completedSessionsByPaneKey
+          ? { completedSessionsByPaneKey: nextCompleted }
           : {})
       }
     }
@@ -165,6 +181,9 @@ export function buildAgentStatusTabPrefixDropPatch(
         : {}),
       ...(nextManualUnread !== s.manuallyUnreadTurnsByPaneKey
         ? { manuallyUnreadTurnsByPaneKey: nextManualUnread }
+        : {}),
+      ...(nextCompleted !== s.completedSessionsByPaneKey
+        ? { completedSessionsByPaneKey: nextCompleted }
         : {}),
       // Bump epochs only for live-map changes; metadata-only sweeps do not affect sort/freshness.
       agentStatusEpoch:

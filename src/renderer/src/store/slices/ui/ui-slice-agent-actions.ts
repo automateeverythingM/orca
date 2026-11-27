@@ -41,6 +41,8 @@ export function createUiAgentActions(
   | 'applyActivityClearedAt'
   | 'manuallyUnreadTurnsByPaneKey'
   | 'clearManuallyUnreadTurns'
+  | 'completedSessionsByPaneKey'
+  | 'setSessionCompleted'
 > {
   return {
     ...createUiActivityActions(set, get),

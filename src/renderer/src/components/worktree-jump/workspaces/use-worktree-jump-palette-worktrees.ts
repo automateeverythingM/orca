@@ -109,6 +109,7 @@ export function useWorktreeJumpPaletteWorktrees({
         hideCliCreatedWorkspaces,
         hideDetachedHeadWorkspaces,
         hideWorkspacesFromOtherDevices,
+        hideCompletedSessions: false,
         filterRepoIds: [],
         visibleHostIds: null
       },

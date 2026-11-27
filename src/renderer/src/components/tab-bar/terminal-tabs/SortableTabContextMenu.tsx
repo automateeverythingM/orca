@@ -1,4 +1,14 @@
-import { CopyX, Pencil, Pin, PinOff, SquareTerminal, Timer, X } from 'lucide-react'
+import {
+  CheckCheck,
+  CopyX,
+  Pencil,
+  Pin,
+  PinOff,
+  RotateCcw,
+  SquareTerminal,
+  Timer,
+  X
+} from 'lucide-react'
 import {
   ContextMenuItem,
   ContextMenuSeparator,
@@ -16,6 +26,8 @@ import type { NativeChatTabSession } from '../session-actions/tab-session-histor
 import { CopyTabIdMenuItem } from '../pane-actions/CopyTabIdMenuItem'
 import { useAllowAutoClose } from './use-allow-auto-close'
 import { CloseSplitPaneMenuItem } from '../pane-actions/CloseSplitPaneMenuItem'
+import { useSessionCompletedState } from '@/components/agent/status/SessionCompleteControls'
+import { structuredAgentSessionPaneKey } from '../../../../../shared/agent-session/view/structured-agent-session-projection'
 
 const TAB_COLORS = [
   {
@@ -160,6 +172,12 @@ export function SortableTabContextMenu({
     worktreeId: tab.worktreeId,
     sessionId: nativeChat?.sessionId
   })
+  const chatPaneKey = nativeChat ? structuredAgentSessionPaneKey(tab.id, nativeChat.sessionId) : ''
+  const chatEntry = useAppStore((s) =>
+    chatPaneKey ? s.agentStatusByPaneKey.get(chatPaneKey) : undefined
+  )
+  const { isCompleted: isChatCompleted, toggleCompleted: toggleChatCompleted } =
+    useSessionCompletedState(chatPaneKey, chatEntry)
 
   return (
     <ContextMenuContent
@@ -199,6 +217,21 @@ export function SortableTabContextMenu({
         />
       ) : null}
       <ContextMenuSeparator />
+      {nativeChat ? (
+        <ContextMenuItem onSelect={toggleChatCompleted}>
+          {isChatCompleted ? (
+            <RotateCcw className="size-3.5 shrink-0" />
+          ) : (
+            <CheckCheck className="size-3.5 shrink-0" />
+          )}
+          {isChatCompleted
+            ? t('components.tab.bar.SortableTabContextMenu.reopenSession', 'Reopen Session')
+            : t(
+                'components.tab.bar.SortableTabContextMenu.markSessionComplete',
+                'Mark Session Complete'
+              )}
+        </ContextMenuItem>
+      ) : null}
       {closable && (canPin || isPinned) ? (
         <ContextMenuItem onSelect={onTogglePin}>
           {isPinned ? (

@@ -48,7 +48,8 @@ export function createAgentStatusWorktreeDropActions(
           [
             ...Object.keys(s.acknowledgedAgentsByPaneKey),
             ...Object.keys(s.activityClearedAtByPaneKey),
-            ...Object.keys(s.manuallyUnreadTurnsByPaneKey)
+            ...Object.keys(s.manuallyUnreadTurnsByPaneKey),
+            ...Object.keys(s.completedSessionsByPaneKey)
           ].filter(
             (key) =>
               !paneSurvives && (paneKeyMatchesAnyTabPrefix(key, tabPrefixes) || liveKeySet.has(key))
@@ -57,6 +58,7 @@ export function createAgentStatusWorktreeDropActions(
         const nextAck = removePaneKeys(s.acknowledgedAgentsByPaneKey, activityStateKeys)
         const nextClearedAt = removePaneKeys(s.activityClearedAtByPaneKey, activityStateKeys)
         const nextManualUnread = removePaneKeys(s.manuallyUnreadTurnsByPaneKey, activityStateKeys)
+        const nextCompleted = removePaneKeys(s.completedSessionsByPaneKey, activityStateKeys)
         if (
           liveKeys.length === 0 &&
           launchConfigKeys.length === 0 &&
@@ -71,6 +73,9 @@ export function createAgentStatusWorktreeDropActions(
               : {}),
             ...(nextManualUnread !== s.manuallyUnreadTurnsByPaneKey
               ? { manuallyUnreadTurnsByPaneKey: nextManualUnread }
+              : {}),
+            ...(nextCompleted !== s.completedSessionsByPaneKey
+              ? { completedSessionsByPaneKey: nextCompleted }
               : {})
           }
           return Object.keys(cleanupPatch).length > 0 ? cleanupPatch : s
@@ -99,6 +104,9 @@ export function createAgentStatusWorktreeDropActions(
             : {}),
           ...(nextManualUnread !== s.manuallyUnreadTurnsByPaneKey
             ? { manuallyUnreadTurnsByPaneKey: nextManualUnread }
+            : {}),
+          ...(nextCompleted !== s.completedSessionsByPaneKey
+            ? { completedSessionsByPaneKey: nextCompleted }
             : {}),
           agentStatusEpoch:
             hadLive || migrationUnsupported.changed ? s.agentStatusEpoch + 1 : s.agentStatusEpoch,
