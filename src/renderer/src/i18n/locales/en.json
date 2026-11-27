@@ -26406,7 +26406,11 @@
       "deadline": "Restart by {{deadline}}. Orca saves your sessions before restarting.",
       "download": "Open downloads"
     },
-    "remoteUpdateBusy": "This server is already updating. Check again once it finishes."
+    "remoteUpdateBusy": "This server is already updating. Check again once it finishes.",
+    "notifyOnly": {
+      "localBuildNote": "Upstream release notification only — merge upstream and rebuild to update this local build.",
+      "settingsVersionAvailable": "Upstream version {{version}} is available. Merge upstream and rebuild to update this local build."
+    }
   },
   "jira": {
     "connect": {

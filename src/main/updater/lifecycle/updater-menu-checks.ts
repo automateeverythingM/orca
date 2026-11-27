@@ -103,12 +103,17 @@ export abstract class UpdaterMenuChecks extends UpdaterScheduling {
       this.markUpdateCheckLaunched(attemptId)
       return autoUpdater.checkForUpdates()
     }
-    const run = this.pinDefaultReleaseFeed(checkVariant).then((preflightResult) => {
-      if (preflightResult === 'not-available') {
-        this.settleHeldUpdateCheck(attemptId)
+    const run = this.runNotifyOnlyUpstreamCheck(attemptId, checkVariant).then((handled) => {
+      if (handled) {
         return false
       }
-      return launch()
+      return this.pinDefaultReleaseFeed(checkVariant).then((preflightResult) => {
+        if (preflightResult === 'not-available') {
+          this.settleHeldUpdateCheck(attemptId)
+          return false
+        }
+        return launch()
+      })
     })
     void Promise.resolve(run)
       .then((launchResult) => {

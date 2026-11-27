@@ -10,6 +10,13 @@ import {
 } from './updater-state'
 import { UpdaterCheckFailure } from './updater-check-failure'
 import { getDelayedUpdateWakeDelayMs } from '../releases/updater-release-delay'
+import { releaseSelectionPolicy } from '../releases/updater-release-policy'
+import { updateDelayDaysToMs } from '../../../shared/updater/update-delay'
+import type { UpdateCheckVariant } from './updater-types'
+import {
+  checkUpstreamReleaseForNotification,
+  hasPackagedUpdateConfig
+} from './local-build-update-notification'
 
 export abstract class UpdaterScheduling extends UpdaterCheckFailure {
   protected getAutomaticRetryInterval(): number {
@@ -101,11 +108,21 @@ export abstract class UpdaterScheduling extends UpdaterCheckFailure {
       this.markUpdateCheckLaunched(attemptId)
       return autoUpdater.checkForUpdates()
     }
-    const run = this.pinDefaultReleaseFeed().then((preflightResult) =>
-      preflightResult === 'not-available' ? this.settleHeldUpdateCheck(attemptId) : launch()
-    )
+    const run = this.runNotifyOnlyUpstreamCheck(attemptId).then((handled) => {
+      if (handled) {
+        return false
+      }
+      return this.pinDefaultReleaseFeed().then((preflightResult) =>
+        preflightResult === 'not-available' ? this.settleHeldUpdateCheck(attemptId) : launch()
+      )
+    })
     void Promise.resolve(run)
-      .then(() => this.handleSettledUpdateCheckPromise(attemptId))
+      .then((launchResult) => {
+        if (launchResult === false) {
+          return
+        }
+        this.handleSettledUpdateCheckPromise(attemptId)
+      })
       .catch((err) => {
         if (!this.isActiveUpdateCheckAttempt(attemptId)) {
           return
@@ -157,6 +174,75 @@ export abstract class UpdaterScheduling extends UpdaterCheckFailure {
     if (wakeMs !== null) {
       this.scheduleAutomaticUpdateCheck(wakeMs)
     }
+  }
+
+  /** Local/fork builds lack `app-update.yml`: query upstream releases for notification without running electron-updater. */
+  protected async runNotifyOnlyUpstreamCheck(
+    attemptId: number,
+    variant: UpdateCheckVariant = 'default'
+  ): Promise<boolean> {
+    if (await hasPackagedUpdateConfig()) {
+      return false
+    }
+    if (!this.isActiveUpdateCheckAttempt(attemptId)) {
+      return true
+    }
+    const currentVersion = app.getVersion()
+    const team = this.getTeamUpdatePolicy?.()
+    const { isPerfCheck, includePrerelease, delayDays, minimumVersion } = releaseSelectionPolicy({
+      team,
+      variant,
+      version: currentVersion,
+      includePrerelease: this.includePrereleaseActive,
+      memberChannel: this.getReleaseChannelOverride?.() ?? null,
+      ignoreDelay: this.ignoreUpdateDelayOnce,
+      getUpdateDelayDays: this.getUpdateDelayDays
+    })
+    this.ignoreUpdateDelayOnce = false
+    const outcome = await checkUpstreamReleaseForNotification({
+      currentVersion,
+      includePrerelease,
+      ...(isPerfCheck ? { releaseFilter: 'perf' as const } : {}),
+      ...(minimumVersion ? { minimumVersion } : {}),
+      ...(delayDays > 0 ? { minReleaseAgeMs: updateDelayDaysToMs(delayDays), delayDays } : {})
+    })
+    if (!this.isActiveUpdateCheckAttempt(attemptId)) {
+      return true
+    }
+    const userInitiated = this.getSettledCheckUserInitiated()
+    this.finishActiveUpdateCheckAttempt()
+    this.clearBackgroundCheckLaunchPending()
+    this.backgroundCheckPromotedToUserInitiated = false
+    this.userInitiatedCheck = false
+    if (outcome.kind === 'not-available') {
+      this.delayedUpdate = outcome.delayedUpdate
+      this.clearAvailableUpdateContext()
+      this.recordCompletedUpdateCheck()
+      if (!userInitiated) {
+        this.scheduleAutomaticUpdateCheck(AUTO_UPDATE_CHECK_INTERVAL_MS)
+      }
+      this.scheduleCheckWhenDelayedUpdateClears()
+      this.sendSettledCheckStatus({ state: 'not-available', userInitiated })
+      return true
+    }
+    this.delayedUpdate = null
+    this.availableVersion = outcome.version
+    this.availableReleaseUrl = null
+    if (outcome.publishingWindow) {
+      this.scheduleAutomaticUpdateCheck(AUTO_UPDATE_RETRY_INTERVAL_MS)
+    } else {
+      this.recordCompletedUpdateCheck()
+      if (!userInitiated) {
+        this.scheduleAutomaticUpdateCheck(AUTO_UPDATE_CHECK_INTERVAL_MS)
+      }
+    }
+    this.sendStatus({
+      state: 'available',
+      version: outcome.version,
+      changelog: outcome.changelog,
+      notifyOnly: true
+    })
+    return true
   }
 
   protected checkForUpdatesInBackground(): void {

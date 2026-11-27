@@ -98,6 +98,8 @@ export type UpdateStatus = (
       /** Linux only: a package manager owns this install, so Orca cannot apply the update itself.
        *  Additive and optional — older clients simply keep offering their own download. */
       externallyManaged?: boolean
+      /** Local/fork build without app-update.yml: notify about upstream releases without downloading. */
+      notifyOnly?: boolean
     }
   | {
       state: 'not-available'

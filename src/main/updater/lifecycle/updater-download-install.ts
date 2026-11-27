@@ -81,18 +81,23 @@ export abstract class UpdaterDownloadInstall extends UpdaterRequiredRestart {
     }
     this.automaticDownloadOfferVersion =
       eligible && backgroundCheck && status.state === 'available' ? status.version : null
+    const isNotifyOnly = status.state === 'available' && status.notifyOnly === true
     const autoDownload =
+      !isNotifyOnly &&
       backgroundCheck &&
       this.pendingUserInitiatedCheckAfterInFlight === null &&
       status.state === 'available' &&
       this.canDownloadAutomatically(status.version)
     this.sendStatus(
-      required
+      required && !isNotifyOnly
         ? { ...status, ...this.requiredUpdateStatusFields() }
         : autoDownload
           ? { ...status, automaticDownload: true }
           : status
     )
+    if (isNotifyOnly) {
+      return
+    }
     if (required && status.state === 'available' && !status.externallyManaged) {
       this.downloadUpdate()
     } else if (autoDownload) {
@@ -190,6 +195,9 @@ export abstract class UpdaterDownloadInstall extends UpdaterRequiredRestart {
       this.macInstallerStagingVersion !== null ||
       this.downloadInFlight
     ) {
+      return
+    }
+    if (this.currentStatus.state === 'available' && this.currentStatus.notifyOnly) {
       return
     }
     // Retain availableVersion after errors so Retry Download still works.

@@ -27,7 +27,7 @@ function updateReportFields(status: UpdateStatus | undefined): string[] {
     return ['upd=ready']
   }
   if (
-    (status?.state === 'available' && status.externallyManaged) ||
+    (status?.state === 'available' && (status.externallyManaged || status.notifyOnly)) ||
     (status?.state === 'error' &&
       (status.recovery?.reason === 'manual-install-required' ||
         status.messageCode === 'linuxPackageExternallyManaged'))

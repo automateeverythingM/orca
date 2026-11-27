@@ -142,7 +142,9 @@ export function GeneralUpdateSettingsSection({
             )}
           </Button>
 
-          {updateStatus.state === 'available' && !updateStatus.externallyManaged ? (
+          {updateStatus.state === 'available' &&
+          !updateStatus.externallyManaged &&
+          !updateStatus.notifyOnly ? (
             <Button
               variant="default"
               size="sm"
@@ -233,11 +235,17 @@ export function GeneralUpdateSettingsSection({
                     'Version {{version}} is available. Update Orca through your system package manager — Orca cannot install this release itself.',
                     { version: updateStatus.version }
                   )
-                : t(
-                    'auto.components.settings.GeneralUpdateSettingsSection.versionAvailable',
-                    'Version {{version}} is available.',
-                    { version: updateStatus.version }
-                  )}
+                : updateStatus.notifyOnly
+                  ? t(
+                      'updates.notifyOnly.settingsVersionAvailable',
+                      'Upstream version {{version}} is available. Merge upstream and rebuild to update this local build.',
+                      { version: updateStatus.version }
+                    )
+                  : t(
+                      'auto.components.settings.GeneralUpdateSettingsSection.versionAvailable',
+                      'Version {{version}} is available.',
+                      { version: updateStatus.version }
+                    )}
               {updateStatus.source !== 'local' && (
                 <a
                   href={

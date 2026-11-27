@@ -21,6 +21,19 @@ function ExternallyManagedNote(): React.JSX.Element {
   )
 }
 
+/** Local/fork builds check upstream releases for notification without overwriting the custom build. */
+function NotifyOnlyNote(): React.JSX.Element {
+  const t = useTranslate()
+  return (
+    <p className="text-xs leading-relaxed text-muted-foreground">
+      {t(
+        'updates.notifyOnly.localBuildNote',
+        'Upstream release notification only — merge upstream and rebuild to update this local build.'
+      )}
+    </p>
+  )
+}
+
 export function UpdateAvailableRichContent({
   release,
   releasesBehind,
@@ -31,7 +44,8 @@ export function UpdateAvailableRichContent({
   onMediaLoad,
   onUpdate,
   onClose,
-  externallyManaged = false
+  externallyManaged = false,
+  notifyOnly = false
 }: {
   release: NonNullable<ChangelogData['release']>
   releasesBehind: number | null
@@ -43,6 +57,7 @@ export function UpdateAvailableRichContent({
   onUpdate: () => void
   onClose: () => void
   externallyManaged?: boolean
+  notifyOnly?: boolean
 }): React.JSX.Element {
   const t = useTranslate()
   const showMedia =
@@ -109,6 +124,8 @@ export function UpdateAvailableRichContent({
       </button>
       {externallyManaged ? (
         <ExternallyManagedNote />
+      ) : notifyOnly ? (
+        <NotifyOnlyNote />
       ) : (
         <Button variant="default" size="sm" onClick={onUpdate} className="w-full cursor-pointer">
           {t('auto.components.UpdateCard.ec8fe71cfc', 'Update')}
@@ -123,13 +140,15 @@ export function UpdateAvailableSimpleContent({
   releaseUrl,
   onUpdate,
   onClose,
-  externallyManaged = false
+  externallyManaged = false,
+  notifyOnly = false
 }: {
   version: string
   releaseUrl?: string
   onUpdate: () => void
   onClose: () => void
   externallyManaged?: boolean
+  notifyOnly?: boolean
 }): React.JSX.Element {
   const t = useTranslate()
   return (
@@ -155,6 +174,8 @@ export function UpdateAvailableSimpleContent({
       </p>
       {externallyManaged ? (
         <ExternallyManagedNote />
+      ) : notifyOnly ? (
+        <NotifyOnlyNote />
       ) : (
         <p className="text-xs leading-relaxed text-muted-foreground">
           {t('auto.components.UpdateCard.fdd4a364fa', "Sessions won't be interrupted.")}
@@ -169,7 +190,7 @@ export function UpdateAvailableSimpleContent({
           {t('auto.components.UpdateCard.44324ef542', 'Release notes')}
         </button>
       )}
-      {!externallyManaged && (
+      {!externallyManaged && !notifyOnly && (
         <Button
           variant="default"
           size="sm"

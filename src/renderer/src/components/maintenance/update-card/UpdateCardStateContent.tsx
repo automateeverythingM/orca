@@ -173,6 +173,7 @@ export function UpdateCardStateContent({
       onUpdate={onUpdate}
       onClose={onDismiss}
       externallyManaged={status.externallyManaged}
+      notifyOnly={status.notifyOnly}
     />
   ) : (
     <UpdateAvailableSimpleContent
@@ -181,6 +182,7 @@ export function UpdateCardStateContent({
       onUpdate={onUpdate}
       onClose={onDismiss}
       externallyManaged={status.externallyManaged}
+      notifyOnly={status.notifyOnly}
     />
   )
 }
